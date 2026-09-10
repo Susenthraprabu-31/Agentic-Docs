@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Property Report — {{ county|title }}, {{ state }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Georgia, serif; margin: 0; padding: 40px; color: #1a1a1a; background: #fff; }
+    h1 { font-size: 26px; border-bottom: 3px solid #2563eb; padding-bottom: 10px; margin-bottom: 4px; }
+    h2 { font-size: 17px; margin-top: 32px; margin-bottom: 10px; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 10px; }
+    .meta { color: #64748b; font-size: 13px; margin: 2px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 18px 0; font-size: 13px; }
+    th, td { border: 1px solid #ddd; padding: 7px 11px; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; color: #334155; white-space: nowrap; }
+    td { vertical-align: top; }
+    .prop-key { font-weight: 600; color: #475569; width: 190px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-wd { background: #dbeafe; color: #1d4ed8; }
+    .badge-sale { background: #dcfce7; color: #166534; }
+    .badge-other { background: #f1f5f9; color: #475569; }
+
+    /* Chain of Title timeline */
+    .chain-wrap { padding: 4px 0; }
+    .chain-entry { display: flex; gap: 16px; margin-bottom: 18px; position: relative; }
+    .chain-entry::before {
+      content: "";
+      position: absolute;
+      left: 7px; top: 22px;
+      width: 2px; bottom: -18px;
+      background: #cbd5e1;
+    }
+    .chain-entry:last-child::before { display: none; }
+    .chain-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563eb; flex-shrink: 0; margin-top: 3px; }
+    .chain-body { flex: 1; }
+    .chain-date { font-size: 12px; color: #64748b; margin-bottom: 2px; }
+    .chain-type { font-weight: 700; font-size: 14px; }
+    .chain-parties { font-size: 12px; color: #475569; margin-top: 2px; }
+    .chain-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .chain-current {
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: 6px; padding: 8px 14px; margin-bottom: 18px; font-size: 13px;
+    }
+    .chain-current .label { font-size: 11px; color: #2563eb; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+    .chain-current .owner { font-size: 15px; font-weight: 700; margin-top: 2px; }
+
+    /* GIS map */
+    .gis-wrap { text-align: center; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc; }
+    .gis-wrap img { max-width: 100%; border-radius: 4px; }
+    .gis-none { color: #94a3b8; font-size: 13px; font-style: italic; padding: 20px 0; }
+
+    /* Summary footer card */
+    .summary-card {
+      border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 22px;
+      margin-top: 32px; background: #f8fafc;
+      display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    }
+    .summary-card .col { flex: 1; min-width: 180px; }
+    .summary-card .s-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
+    .summary-card .s-value { font-size: 14px; font-weight: 700; color: #1e293b; margin-top: 2px; }
+
+    .page-footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <h1>Property Public Records Report</h1>
+  <p class="meta">{{ county|title }} County, {{ state }} — Query: {{ query_type }} = {{ query_value }}</p>
+  <p class="meta">Generated: {{ generated_at }}</p>
+
+  <!-- ═══════════════════════════════
+       1. PROPERTY DETAILS
+       ═══════════════════════════════ -->
+  <h2>Property Details</h2>
+  {% if property %}
+  {% set raw = property.raw_json or {} %}
+  <table>
+    <tr><th class="prop-key">Owner</th><td>{{ property.owner_name or '—' }}</td></tr>
+    <tr><th class="prop-key">APN / Parcel ID</th><td>{{ property.apn or '—' }}</td></tr>
+    <tr><th class="prop-key">Property Address</th><td>{{ property.property_address or '—' }}</td></tr>
+    <tr>
+      <th class="prop-key">Legal Description</th>
+      <td style="font-size:12px;">{{ property.legal_desc or '—' }}</td>
+    </tr>
+    <tr>
+      <th class="prop-key">Assessed Value</th>
+      <td>
+        {% if property.assessed_value %}
+          ${{ "{:,.0f}".format(property.assessed_value | float) }}
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    {% if raw.mailing_address %}<tr><th class="prop-key">Mailing Address</th><td>{{ raw.mailing_address }}</td></tr>{% endif %}
+    {% if raw.land_value %}<tr><th class="prop-key">Land Value</th><td>${{ "{:,.0f}".format(raw.land_value | float) }}</td></tr>{% endif %}
+    {% if raw.building_value %}<tr><th class="prop-key">Building Value</th><td>${{ "{:,.0f}".format(raw.building_value | float) }}</td></tr>{% endif %}
+    {% if raw.total_value %}<tr><th class="prop-key">Total Value</th><td>${{ "{:,.0f}".format(raw.total_value | float) }}</td></tr>{% endif %}
+    {% if raw.tax_year %}<tr><th class="prop-key">Tax Year</th><td>{{ raw.tax_year }}</td></tr>{% endif %}
+    {% if raw.property_class %}<tr><th class="prop-key">Property Class</th><td>{{ raw.property_class }}</td></tr>{% endif %}
+    {% if raw.zoning %}<tr><th class="prop-key">Zoning</th><td>{{ raw.zoning }}</td></tr>{% endif %}
+    {% if raw.lot_size or raw.acreage %}<tr><th class="prop-key">Lot Size / Acreage</th><td>{{ raw.lot_size or raw.acreage }}</td></tr>{% endif %}
+    {% if raw.year_built %}<tr><th class="prop-key">Year Built</th><td>{{ raw.year_built }}</td></tr>{% endif %}
+    {% if raw.bedrooms or raw.bathrooms %}<tr><th class="prop-key">Bed / Bath</th><td>{{ raw.bedrooms or '—' }} bd / {{ raw.bathrooms or '—' }} ba</td></tr>{% endif %}
+    {% if raw.living_area %}<tr><th class="prop-key">Living Area (sq ft)</th><td>{{ raw.living_area }}</td></tr>{% endif %}
+  </table>
+  {% else %}
+  <p style="color:#64748b;">No assessor records found.</p>
+  {% endif %}
+
+  <!-- ═══════════════════════════════
+       2. TAX RECORDS
+       ═══════════════════════════════ -->
+  <h2>Tax Records</h2>
+  {% if tax_record %}
+  {% set tax = tax_record.raw_json or {} %}
+  <table>
+    <tr><th class="prop-key">Tax Account</th><td>{{ tax.tax_account or '—' }}</td></tr>
+    <tr><th class="prop-key">Owner</th><td>{{ tax_record.owner_name or '—' }}</td></tr>
+    <tr><th class="prop-key">Tax Year</th><td>{{ tax.tax_year or '—' }}</td></tr>
+    <tr><th class="prop-key">Bill Number</th><td>{{ tax.bill_number or '—' }}</td></tr>
+    <tr>
+      <th class="prop-key">Amount Due</th>
+      <td>
+        {% if tax.amount_due is not none %}
+          ${{ "{:,.2f}".format(tax.amount_due | float) }}
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    {% if tax_record.property_address %}<tr><th class="prop-key">Property Address</th><td>{{ tax_record.property_address }}</td></tr>{% endif %}
+    {% if tax.mailing_address %}<tr><th class="prop-key">Mailing Address</th><td>{{ tax.mailing_address }}</td></tr>{% endif %}
+  </table>
+
+  {% if tax.yearly_due_summary %}
+  <p class="meta" style="margin-top:14px;">Yearly Due Summary</p>
+  <table>
+    <thead><tr><th>Year</th><th>Status</th><th>Due</th></tr></thead>
+    <tbody>
+      {% for row in tax.yearly_due_summary %}
+      <tr>
+        <td>{{ row.year or '—' }}</td>
+        <td>{{ row.label or '—' }}</td>
+        <td>{{ row.due or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% for tab_name, tab_data in (tax.tabs or {}).items() %}
+    {% if tab_name != 'Summary' and tab_data.tables %}
+    <h3 style="font-size:14px;color:#334155;margin-top:18px;">{{ tab_name }}</h3>
+    {% for table in tab_data.tables %}
+      {% if table.rows %}
+      <table>
+        {% if table.headers %}
+        <thead><tr>{% for h in table.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+        {% endif %}
+        <tbody>
+          {% for row in table.rows %}
+            {% if not table.headers or row != table.headers %}
+            <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    {% endfor %}
+    {% elif tab_name != 'Summary' and tab_data.body_text %}
+    <h3 style="font-size:14px;color:#334155;margin-top:18px;">{{ tab_name }}</h3>
+    <p style="font-size:12px;white-space:pre-wrap;">{{ tab_data.body_text[:3000] }}</p>
+    {% endif %}
+  {% endfor %}
+  {% else %}
+  <p style="color:#64748b;">No tax record data found for this run.</p>
+  {% endif %}
+
+  <!-- ═══════════════════════════════
+       3. RECORDED TRANSACTIONS
+       ═══════════════════════════════ -->
+  <h2>Recorded Transactions</h2>
+  {% if documents %}
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th><th>Date</th><th>Book / Page</th><th>Instrument #</th><th>Grantor</th><th>Grantee</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr>
+        <td>
+          {% if doc.document_type %}
+            {% set dt = doc.document_type | upper %}
+            {% if dt in ['WD', 'WARRANTY DEED'] %}
+              <span class="badge badge-wd">{{ doc.document_type }}</span>
+            {% elif dt in ['QC', 'QUIT CLAIM', 'DEED', 'SALE'] %}
+              <span class="badge badge-sale">{{ doc.document_type }}</span>
+            {% else %}
+              <span class="badge badge-other">{{ doc.document_type }}</span>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ doc.recording_date or '—' }}</td>
+        <td>{{ doc.book_page or '—' }}</td>
+        <td>{{ doc.instrument_number or '—' }}</td>
+        <td>{{ doc.grantor or '—' }}</td>
+        <td>{{ doc.grantee or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#64748b;">No recorded documents found.</p>
+  {% endif %}
+
+  <!-- ═══════════════════════════════
+       4. CHAIN OF TITLE
+       ═══════════════════════════════ -->
+  <h2>Chain of Title</h2>
+  <p class="meta">Ownership history from Sales Information on the assessor report — newest transfers first.</p>
+
+  <div class="chain-wrap">
+    {% if property and property.owner_name %}
+    <div class="chain-current">
+      <div class="label">Current Owner</div>
+      <div class="owner">{{ property.owner_name }}</div>
+    </div>
+    {% endif %}
+
+    {% if chain_of_title %}
+      {% for entry in chain_of_title %}
+      <div class="chain-entry">
+        <div class="chain-dot"></div>
+        <div class="chain-body">
+          <div class="chain-date">{{ entry.recording_date or entry.date or '—' }}</div>
+          <div class="chain-type">
+            {% if entry.document_type %}
+              {% set dt = entry.document_type | upper %}
+              {% if dt in ['WD', 'WARRANTY DEED'] %}
+                <span class="badge badge-wd">{{ entry.document_type }}</span>
+              {% else %}
+                <span class="badge badge-other">{{ entry.document_type }}</span>
+              {% endif %}
+            {% else %}Transfer{% endif %}
+          </div>
+          {% if entry.grantor or entry.grantee %}
+          <div class="chain-parties">
+            {% if entry.grantor %}From: <strong>{{ entry.grantor }}</strong>{% endif %}
+            {% if entry.grantee %}&nbsp;→&nbsp;To: <strong>{{ entry.grantee }}</strong>{% endif %}
+          </div>
+          {% else %}
+          <div class="chain-parties" style="color:#94a3b8;font-style:italic;">Seller/buyer names not listed on this county sales record</div>
+          {% endif %}
+          <div class="chain-meta">
+            {% if entry.sale_price %}Sale price {{ entry.sale_price }}{% endif %}
+            {% if entry.book_page %}&nbsp;·&nbsp;Book/Page {{ entry.book_page }}{% endif %}
+            {% if entry.instrument_number %}&nbsp;·&nbsp;Instrument # {{ entry.instrument_number }}{% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% elif chain_docs %}
+      {% for doc in chain_docs %}
+      <div class="chain-entry">
+        <div class="chain-dot"></div>
+        <div class="chain-body">
+          <div class="chain-date">{{ doc.recording_date or '—' }}</div>
+          <div class="chain-type">
+            {% if doc.document_type %}
+              <span class="badge badge-wd">{{ doc.document_type }}</span>
+            {% else %}Transfer{% endif %}
+          </div>
+          {% if doc.grantor or doc.grantee %}
+          <div class="chain-parties">
+            {% if doc.grantor %}From: <strong>{{ doc.grantor }}</strong>{% endif %}
+            {% if doc.grantee %}&nbsp;→&nbsp;To: <strong>{{ doc.grantee }}</strong>{% endif %}
+          </div>
+          {% else %}
+          <div class="chain-parties" style="color:#94a3b8;font-style:italic;">Seller/buyer names not listed on this county sales record</div>
+          {% endif %}
+          <div class="chain-meta">
+            {% set ocr = doc.ocr_json or {} %}
+            {% if ocr.sale_price %}Sale price {{ ocr.sale_price }}{% endif %}
+            {% if doc.book_page %}&nbsp;·&nbsp;Book/Page {{ doc.book_page }}{% endif %}
+            {% if doc.instrument_number %}&nbsp;·&nbsp;Instrument # {{ doc.instrument_number }}{% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <p style="color:#64748b;">No chain of title data found in assessor records.</p>
+    {% endif %}
+  </div>
+
+  <!-- ═══════════════════════════════
+       5. PROPERTY REPORT
+       ═══════════════════════════════ -->
+  <h2>Property Report</h2>
+  <div class="summary-card">
+    <div class="col">
+      <div class="s-label">Owner</div>
+      <div class="s-value">{{ (property.owner_name if property else None) or '—' }}</div>
+    </div>
+    <div class="col">
+      <div class="s-label">APN</div>
+      <div class="s-value">{{ (property.apn if property else None) or '—' }}</div>
+    </div>
+    <div class="col">
+      <div class="s-label">Address</div>
+      <div class="s-value">{{ (property.property_address if property else None) or '—' }}</div>
+    </div>
+    <div class="col">
+      <div class="s-label">Assessed Value</div>
+      <div class="s-value">
+        {% if property and property.assessed_value %}
+          ${{ "{:,.0f}".format(property.assessed_value | float) }}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════
+       6. GIS / MAPPING
+       ═══════════════════════════════ -->
+  <h2>GIS / Mapping</h2>
+  <div class="gis-wrap">
+    {% if gis_screenshot_data_uri %}
+    <img src="{{ gis_screenshot_data_uri }}" alt="GIS Parcel Map" />
+    <p class="meta" style="margin-top:8px;">Parcel map captured from county GIS portal</p>
+    {% else %}
+    <p class="gis-none">GIS map screenshot not available for this run.</p>
+    {% endif %}
+  </div>
+
+  <div class="page-footer">
+    Generated: {{ generated_at }} &nbsp;·&nbsp; {{ county|title }} County, {{ state }}
+    &nbsp;·&nbsp; Query: {{ query_type }} = {{ query_value }}
+  </div>
+</body>
+</html>
+
