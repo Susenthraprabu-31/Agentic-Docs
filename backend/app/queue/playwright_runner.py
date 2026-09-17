@@ -8,7 +8,8 @@ from typing import Any, TypeVar
 
 T = TypeVar("T")
 
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="playwright")
+# One worker: Chrome persistent profiles cannot be opened by two browsers at once.
+_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="playwright")
 
 
 def _run_coro_in_new_loop(coro: Coroutine[Any, Any, T]) -> T:

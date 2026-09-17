@@ -91,6 +91,16 @@ class RunLogger:
     async def record_found(self, source: SourceType, **fields: Any) -> None:
         await self.log("record_found", source=source, records_found=1, **fields)
 
+    async def node_started(self, node_name: str, **extra: Any) -> None:
+        await self.log("node_started", message=f"{node_name} started", node=node_name, **extra)
+
+    async def node_completed(self, node_name: str, detail: Optional[str] = None, **extra: Any) -> None:
+        message = detail or f"{node_name} completed"
+        await self.log("node_completed", message=message, node=node_name, **extra)
+
+    async def node_failed(self, node_name: str, error: str, **extra: Any) -> None:
+        await self.log("node_failed", message=error, node=node_name, reason=error, **extra)
+
     async def run_completed(self, report_id: Optional[str] = None, total_records: int = 0) -> None:
         await self.log(
             "run_completed",

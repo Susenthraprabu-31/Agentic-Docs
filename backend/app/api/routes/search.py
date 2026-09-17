@@ -1,29 +1,78 @@
 from fastapi import APIRouter, HTTPException
 
-from app.extraction.schemas import SearchRequest, SearchResponse
+from app.extraction.book_page import format_book_page, parse_book_page
+from app.extraction.schemas import QueryType, SearchRequest, SearchResponse
+from app.pipeline.graph_executor import GraphValidationError, resolve_pipeline_graph
 from app.queue.job_queue import enqueue_run
 from app.db.repositories.runs_repository import RunsRepository
 
 router = APIRouter(prefix="/search", tags=["search"])
 
 
+def _resolve_search_value(request: SearchRequest) -> tuple[str, str | None, str | None]:
+    if request.query_type == QueryType.BOOK_PAGE:
+        parsed = parse_book_page(
+            request.query_value,
+            book_number=request.book_number,
+            page_number=request.page_number,
+        )
+        if not parsed:
+            raise HTTPException(
+                status_code=400,
+                detail="book_page search requires book_number and page_number (or query_value like 1494/2483)",
+            )
+        book, page = parsed
+        return format_book_page(book, page), book, page
+
+    query_value = request.query_value.strip()
+    if not query_value:
+        raise HTTPException(status_code=400, detail="query_value is required for this query_type")
+    return query_value, None, None
+
+
 @router.post("", response_model=SearchResponse)
 async def create_search(request: SearchRequest) -> SearchResponse:
+    if not request.pipeline_graph:
+        raise HTTPException(status_code=400, detail="pipeline_graph is required")
+
+    try:
+        parsed = resolve_pipeline_graph(request.pipeline_graph.model_dump())
+    except GraphValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    query_value, book_number, page_number = _resolve_search_value(request)
+
     repo = RunsRepository()
     run = repo.create_run(
         state=request.state.upper(),
         county=request.county.lower(),
         query_type=request.query_type.value,
-        query_value=request.query_value.strip(),
+        query_value=query_value,
     )
     if not run.get("id"):
         raise HTTPException(status_code=500, detail="Failed to create run")
+
+    pipeline_graph = request.pipeline_graph.model_dump()
+    plan_json = {
+        "pipeline_graph": pipeline_graph,
+        "steps": parsed.step_node_ids,
+        "state": request.state.upper(),
+        "county": request.county.lower(),
+        "query_type": request.query_type.value,
+        "query_value": query_value,
+    }
+    if book_number and page_number:
+        plan_json["book_number"] = book_number
+        plan_json["page_number"] = page_number
+
+    repo.update_run(run["id"], plan_json=plan_json)
 
     await enqueue_run(
         run_id=run["id"],
         state=request.state.upper(),
         county=request.county.lower(),
         query_type=request.query_type,
-        query_value=request.query_value.strip(),
+        query_value=query_value,
+        pipeline_graph=pipeline_graph,
     )
     return SearchResponse(run_id=run["id"])

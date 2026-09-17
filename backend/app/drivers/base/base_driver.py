@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Awaitable, Callable, Optional, TypeVar, Union
@@ -7,8 +8,12 @@ from typing import Awaitable, Callable, Optional, TypeVar, Union
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, Route, async_playwright
 
 from app.config.settings import get_settings
+from app.drivers.browser_stream import BrowserStream
 
 logger = logging.getLogger(__name__)
+
+# Chrome allows only one process per user-data-dir; serialize persistent launches.
+_profile_launch_lock = threading.Lock()
 
 T = TypeVar("T")
 
@@ -16,7 +21,7 @@ StatusCallback = Callable[[str], Union[None, Awaitable[None]]]
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
 )
 DEFAULT_TIMEOUT_MS = 45_000
 NAVIGATION_TIMEOUT_MS = 45_000
@@ -24,8 +29,19 @@ ACTION_DELAY_SEC = 1.5
 MAX_RETRIES = 3
 
 STEALTH_INIT_SCRIPT = """
+try {
+    delete Object.getPrototypeOf(navigator).webdriver;
+} catch (e) {}
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-window.chrome = window.chrome || { runtime: {} };
+if (!window.chrome) {
+    window.chrome = {};
+}
+if (!window.chrome.runtime) {
+    window.chrome.runtime = {
+        connect: function() {},
+        sendMessage: function() {}
+    };
+}
 """
 
 # Block heavy ad/tracker requests — NETR never reaches networkidle because of ads
@@ -71,6 +87,9 @@ class BaseDriver:
         self.screenshot_dir = screenshot_dir or Path("screenshots")
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
         self.status_callback: Optional[StatusCallback] = None
+        self.playwright_notes: Optional[str] = None
+        self.preview_run_id: Optional[str] = None
+        self._browser_stream: Optional[BrowserStream] = None
 
     @property
     def page(self) -> Page:
@@ -98,12 +117,18 @@ class BaseDriver:
             headless = settings.playwright_headless
 
         self._playwright = await async_playwright().start()
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+        ]
+        if headless:
+            launch_args.append("--headless=new")
+
         launch_kwargs: dict = {
             "headless": headless,
-            "slow_mo": 30 if not headless else 0,
-            "args": [
-                "--disable-blink-features=AutomationControlled",
-            ],
+            "slow_mo": 0,
+            "args": launch_args,
+            "ignore_default_args": ["--enable-automation"],
         }
         if settings.playwright_channel:
             launch_kwargs["channel"] = settings.playwright_channel
@@ -115,14 +140,14 @@ class BaseDriver:
             context_kwargs: dict = {
                 "viewport": {"width": 1366, "height": 900},
                 "locale": "en-US",
+                "user_agent": USER_AGENT,
+                "accept_downloads": True,
             }
-            if not settings.playwright_channel:
-                context_kwargs["user_agent"] = USER_AGENT
 
-            self._context = await self._playwright.chromium.launch_persistent_context(
-                str(profile_path.resolve()),
-                **launch_kwargs,
-                **context_kwargs,
+            self._context = await self._launch_persistent_context(
+                profile_path,
+                launch_kwargs,
+                context_kwargs,
             )
             self._browser = None
             self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
@@ -132,6 +157,7 @@ class BaseDriver:
                 "user_agent": USER_AGENT,
                 "viewport": {"width": 1366, "height": 900},
                 "locale": "en-US",
+                "accept_downloads": True,
             }
             self._context = await self._browser.new_context(**context_kwargs)
             self._page = await self._context.new_page()
@@ -139,6 +165,55 @@ class BaseDriver:
         self._context.set_default_timeout(DEFAULT_TIMEOUT_MS)
         await self._apply_stealth()
         await self._setup_request_blocking()
+
+    async def _launch_persistent_context(
+        self,
+        profile_path: Path,
+        launch_kwargs: dict,
+        context_kwargs: dict,
+    ):
+        last_error: Optional[Exception] = None
+        for attempt in range(1, 3):
+            with _profile_launch_lock:
+                try:
+                    return await self._playwright.chromium.launch_persistent_context(
+                        str(profile_path.resolve()),
+                        **launch_kwargs,
+                        **context_kwargs,
+                    )
+                except Exception as exc:
+                    last_error = exc
+                    if "TargetClosedError" not in type(exc).__name__:
+                        raise
+            if attempt < 2:
+                logger.warning(
+                    "Persistent Chrome profile busy (attempt %d/2), retrying in 2s: %s",
+                    attempt,
+                    last_error,
+                )
+                await asyncio.sleep(2)
+        raise last_error or RuntimeError("Failed to launch persistent Chrome context")
+
+    async def start_live_stream(self, run_id: str) -> None:
+        """Begin CDP screencast → WebSocket frames for in-app browser preview."""
+        self.preview_run_id = run_id
+        if self._browser_stream:
+            await self._browser_stream.stop()
+        self._browser_stream = BrowserStream()
+        await self._browser_stream.start(self.page, run_id)
+
+    async def set_active_page(self, new_page: Page) -> None:
+        """Switch active page and transfer live browser screencast to the new page."""
+        self._page = new_page
+        if self.preview_run_id:
+            try:
+                await self.start_live_stream(self.preview_run_id)
+            except Exception as exc:
+                logger.debug("Failed to transfer live stream to new page: %s", exc)
+        try:
+            await self.save_browser_preview()
+        except Exception:
+            pass
 
     async def _apply_stealth(self) -> None:
         try:
@@ -210,12 +285,30 @@ class BaseDriver:
         except Exception:
             return False
 
+    async def is_cloudflare_hard_block(self, page: Optional[Page] = None) -> bool:
+        pg = page or self.page
+        try:
+            content = (await pg.content()).lower()
+            return any(marker in content for marker in CLOUDFLARE_BLOCK_MARKERS)
+        except Exception:
+            return False
+
+    async def click_at_normalized(self, x: float, y: float) -> None:
+        """Click within the page viewport using normalized 0–1 coordinates (Live preview)."""
+        x_clamped = max(0.0, min(1.0, x))
+        y_clamped = max(0.0, min(1.0, y))
+        viewport = self.page.viewport_size or {"width": 1366, "height": 900}
+        px = int(x_clamped * viewport["width"])
+        py = int(y_clamped * viewport["height"])
+        await self.page.mouse.click(px, py)
+        await self.polite_delay(0.3)
+
     async def wait_for_cloudflare_clear(
         self,
         max_wait: int | None = None,
         success_selector: str | None = None,
     ) -> bool:
-        """In headed mode, pause until the user completes Cloudflare verification."""
+        """Pause until Cloudflare clears — user can click in the Live preview panel."""
         if success_selector:
             try:
                 if await self.page.locator(success_selector).is_visible(timeout=2000):
@@ -229,21 +322,26 @@ class BaseDriver:
         settings = get_settings()
         wait_seconds = max_wait or settings.playwright_cloudflare_wait_seconds
 
-        if settings.playwright_headless:
+        if await self.is_cloudflare_hard_block():
             await self._emit_status(
-                "Cloudflare blocked headless browser. Set PLAYWRIGHT_HEADLESS=false and retry."
+                "Cloudflare hard block ('Sorry, you have been blocked'). "
+                "Delete backend/.playwright-profile, restart the backend, or try a different network."
             )
             return False
 
-        if await self.is_cloudflare_challenge():
+        if self.preview_run_id:
             await self._emit_status(
-                "Cloudflare check — click 'Verify you are human' in the browser window. "
-                "Automation will continue automatically after verification."
+                "Cloudflare check — click 'Verify you are human' in the Live preview on the right. "
+                "Automation continues automatically after verification."
             )
+        elif settings.playwright_headless:
+            await self._emit_status(
+                "Cloudflare blocked. Run the pipeline to use the Live preview for verification."
+            )
+            return False
         else:
             await self._emit_status(
-                "Cloudflare verification required — complete the check in the browser window, "
-                "automation will continue automatically..."
+                "Cloudflare verification required — complete the check to continue..."
             )
 
         deadline = time.monotonic() + wait_seconds
@@ -275,6 +373,17 @@ class BaseDriver:
         await self._emit_status("Cloudflare verification timed out.")
         return False
 
+    def _cloudflare_error_message(self) -> str:
+        if self.preview_run_id:
+            return (
+                "Cloudflare blocked access to county portal. "
+                "Click 'Verify you are human' in the Live preview on the right, then Run again."
+            )
+        return (
+            "Cloudflare blocked access to county portal. "
+            "Click Run and complete verification in the Live preview panel on the right."
+        )
+
     async def safe_goto(
         self,
         url: str,
@@ -291,7 +400,7 @@ class BaseDriver:
                         "#ctlBodyPane_ctl02_ctl01_txtParcelID, #ctlBodyPane_ctl01_ctl01_txtAddress"
                     ).count()
                     if not has_form and not await self.wait_for_cloudflare_clear(max_wait=45):
-                        raise RuntimeError("Cloudflare blocked access to county portal")
+                        raise ValueError(self._cloudflare_error_message())
                 elif await self.is_cloudflare_blocked():
                     await self.wait_for_cloudflare_clear(max_wait=45)
 
@@ -306,6 +415,7 @@ class BaseDriver:
                         else:
                             logger.debug("Selector %s not found on %s, continuing", wait_selector, url)
                 await self.polite_delay(1.5)
+                await self.save_browser_preview()
                 return
             except Exception as exc:
                 last_error = exc
@@ -315,12 +425,27 @@ class BaseDriver:
         raise last_error or RuntimeError(f"Failed to navigate to {url}")
 
     async def stop(self) -> None:
+        if self._browser_stream:
+            try:
+                await self._browser_stream.stop()
+            except Exception as exc:
+                logger.debug("Browser stream stop skipped: %s", exc)
+            self._browser_stream = None
         if self._context:
-            await self._context.close()
+            try:
+                await self._context.close()
+            except Exception as exc:
+                logger.debug("Browser context close skipped: %s", exc)
         if self._browser:
-            await self._browser.close()
+            try:
+                await self._browser.close()
+            except Exception as exc:
+                logger.debug("Browser close skipped: %s", exc)
         if self._playwright:
-            await self._playwright.stop()
+            try:
+                await self._playwright.stop()
+            except Exception as exc:
+                logger.debug("Playwright stop skipped: %s", exc)
         self._page = None
         self._context = None
         self._browser = None
@@ -383,6 +508,18 @@ class BaseDriver:
                     await self.polite_delay(0.5)
             except Exception:
                 pass
+
+    async def save_browser_preview(self) -> Optional[str]:
+        """Capture current page for the in-app browser preview panel."""
+        if not self.preview_run_id or not self._page:
+            return None
+        try:
+            path = self.screenshot_dir / f"preview_{self.preview_run_id}.png"
+            await self.page.screenshot(path=str(path), full_page=False)
+            return str(path)
+        except Exception as exc:
+            logger.debug("Browser preview capture failed: %s", exc)
+            return None
 
     async def screenshot_on_failure(self, name: str) -> Optional[str]:
         try:

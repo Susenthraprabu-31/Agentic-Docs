@@ -41,12 +41,23 @@ export default function RunProgress({ events, recordsCount, documentsCount, stat
         {trail.length === 0 && (
           <p className="text-sm text-slate-400 italic">Waiting for research to begin...</p>
         )}
-        {trail.map((e, i) => (
-          <div key={e.id || i} className="flex gap-3 text-sm border-l-2 border-blue-200 pl-3 py-1">
-            <span className="text-xs text-slate-400 shrink-0 w-20 capitalize">{e.source || "—"}</span>
-            <span className="text-slate-700">{e.payload?.message || e.event_type}</span>
-          </div>
-        ))}
+        {trail.map((e, i) => {
+          const isNode = e.event_type.startsWith("node_");
+          const nodeName = e.payload?.node as string | undefined;
+          return (
+            <div
+              key={e.id || i}
+              className={`flex gap-3 text-sm border-l-2 pl-3 py-1 ${
+                isNode ? "border-violet-300 bg-violet-50/50 rounded-r" : "border-blue-200"
+              }`}
+            >
+              <span className="text-xs text-slate-400 shrink-0 w-24 capitalize truncate">
+                {isNode ? nodeName?.replace("Node", "") || "node" : e.source || "—"}
+              </span>
+              <span className="text-slate-700">{e.payload?.message || e.event_type}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

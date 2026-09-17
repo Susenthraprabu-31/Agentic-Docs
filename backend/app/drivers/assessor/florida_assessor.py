@@ -16,6 +16,8 @@ from app.config.florida_portals import (
     is_orange_county_assessor,
     normalize_florida_parcel,
     format_florida_pa_address_for_search,
+    format_miami_dade_address_for_search,
+    MIAMI_DADE_SEARCH_URL,
     normalize_florida_pa_parcel,
     resolve_florida_assessor_url,
 )
@@ -23,9 +25,15 @@ from app.extraction.florida_extractors import (
     FLORIDA_PA_DETAIL_JS,
     FLORIDA_SCRAPE_JS,
     extract_florida_parcel_from_html,
+    extract_valid_miami_dade_folio,
+    is_valid_miami_dade_extraction,
     parcel_record_from_florida_data,
     parcel_record_from_florida_pa_detail,
+    parcel_record_from_miami_dade_detail,
+    MIAMI_DADE_DETAIL_JS,
 )
+from app.drivers.page_search_ai import execute_ai_page_search
+from app.drivers.playwright_instructions import apply_playwright_instructions
 from app.extraction.schemas import ParcelRecord, QueryType
 
 if TYPE_CHECKING:
@@ -79,13 +87,11 @@ async def search_florida_assessor(
         pa_county = get_florida_pa_county_from_url(search_url) or get_florida_pa_county_from_url(assessor_url)
         return await _search_florida_pa(driver, search_url, query_type, query_value, county=pa_county)
 
+    if is_miami_dade_assessor(search_url) or is_miami_dade_assessor(assessor_url):
+        return await _search_miami_dade(driver, search_url, query_type, query_value)
+
     if is_orange_county_assessor(search_url) or is_orange_county_assessor(assessor_url):
         return await _search_orange_county(driver, search_url, query_type, query_value)
-
-    if is_miami_dade_assessor(search_url) or is_miami_dade_assessor(assessor_url):
-        return await _search_florida_spa(
-            driver, search_url, query_type, query_value, county="miami-dade"
-        )
 
     if is_broward_assessor(search_url) or is_broward_assessor(assessor_url):
         return await _search_florida_spa(
@@ -353,6 +359,340 @@ async def _extract_florida_pa_detail(
     return []
 
 
+MIAMI_DADE_TAB_SELECTORS = {
+    QueryType.PARCEL: ['[role="tab"]:has-text("Folio")', 'button:has-text("Folio")', 'a:has-text("Folio")'],
+    QueryType.OWNER: [
+        '[role="tab"]:has-text("Owner")',
+        'button:has-text("Owner Name")',
+        'a:has-text("Owner Name")',
+    ],
+    QueryType.ADDRESS: ['[role="tab"]:has-text("Address")', 'button:has-text("Address")', 'a:has-text("Address")'],
+}
+
+MIAMI_DADE_INPUT_SELECTORS = {
+    QueryType.PARCEL: [
+        'input[placeholder*="Enter Folio" i]',
+        'input[placeholder*="folio" i]',
+        'input[formcontrolname*="folio" i]',
+    ],
+    QueryType.OWNER: [
+        'input[placeholder*="Enter Owner" i]',
+        'input[placeholder*="owner" i]',
+        'input[formcontrolname*="owner" i]',
+    ],
+    QueryType.ADDRESS: [
+        'input[placeholder*="Enter Address" i]',
+        'input[placeholder*="address" i]',
+        'input[formcontrolname*="address" i]',
+    ],
+}
+
+
+async def _search_miami_dade(
+    driver: "GilaAssessorDriver",
+    search_url: str,
+    query_type: QueryType,
+    query_value: str,
+) -> list[ParcelRecord]:
+    target = MIAMI_DADE_SEARCH_URL if is_miami_dade_assessor(search_url) else search_url
+    await driver._emit_status("Opening Miami-Dade Property Appraiser search...")
+    await driver.safe_goto(target, wait_selector="input, app-root, mat-tab-group")
+    await driver.polite_delay(3.0)
+
+    if await driver.is_cloudflare_blocked():
+        cleared = await driver.wait_for_cloudflare_clear(max_wait=120)
+        if not cleared:
+            return []
+
+    try:
+        await driver.page.wait_for_selector(
+            'mat-tab-group, [role="tab"], input[type="text"]',
+            state="visible",
+            timeout=20_000,
+        )
+    except Exception:
+        pass
+
+    search_value = query_value
+    if query_type == QueryType.PARCEL:
+        search_value = normalize_florida_parcel(query_value, county="miami-dade")
+    elif query_type == QueryType.ADDRESS:
+        search_value = format_miami_dade_address_for_search(query_value)
+
+    await driver._emit_status(f"Preparing Miami-Dade {query_type.value} search for: {search_value[:60]}...")
+    if await execute_ai_page_search(driver, query_type, search_value):
+        await driver.polite_delay(3.0)
+        if await _open_miami_dade_result(driver, search_value):
+            await driver.polite_delay(2.5)
+        records = await _extract_miami_dade_detail(
+            driver, fallback_folio=search_value if query_type == QueryType.PARCEL else None
+        )
+        if records:
+            return records
+
+    notes = getattr(driver, "playwright_notes", None) or ""
+    if notes.strip():
+        if await apply_playwright_instructions(driver, notes, query_type, search_value):
+            await driver.polite_delay(3.0)
+            if await _open_miami_dade_result(driver, search_value):
+                await driver.polite_delay(2.5)
+            records = await _extract_miami_dade_detail(
+                driver, fallback_folio=search_value if query_type == QueryType.PARCEL else None
+            )
+            if records:
+                return records
+
+    await _click_miami_dade_search_tab(driver, query_type)
+
+    if query_type == QueryType.PARCEL:
+        await driver._emit_status(f"Searching folio {search_value}...")
+    elif query_type == QueryType.ADDRESS:
+        await driver._emit_status(f"Searching address {search_value}...")
+    elif query_type == QueryType.OWNER:
+        await driver._emit_status(f"Searching owner {search_value}...")
+
+    filled = await _fill_first_visible(driver, MIAMI_DADE_INPUT_SELECTORS.get(query_type, []), search_value)
+    if not filled:
+        filled = await _fill_first_visible(driver, FLORIDA_PARCEL_INPUTS + FLORIDA_OWNER_INPUTS + FLORIDA_ADDRESS_INPUTS, search_value)
+    if not filled and notes.strip():
+        await driver._emit_status("Standard Miami-Dade fill failed — retrying Playwright instructions...")
+        if await apply_playwright_instructions(driver, notes, query_type, search_value):
+            await driver.polite_delay(3.0)
+            if await _open_miami_dade_result(driver, search_value):
+                await driver.polite_delay(2.5)
+            records = await _extract_miami_dade_detail(
+                driver, fallback_folio=search_value if query_type == QueryType.PARCEL else None
+            )
+            if records:
+                return records
+
+    if not filled:
+        await driver._emit_status("Hardcoded selectors failed — retrying with AI page analysis...")
+        if await execute_ai_page_search(driver, query_type, search_value):
+            await driver.polite_delay(3.0)
+            if await _open_miami_dade_result(driver, search_value):
+                await driver.polite_delay(2.5)
+            records = await _extract_miami_dade_detail(
+                driver, fallback_folio=search_value if query_type == QueryType.PARCEL else None
+            )
+            if records:
+                return records
+
+    if not filled:
+        await driver._emit_status("Could not find Miami-Dade search field.")
+        await driver.screenshot_on_failure("miami_dade_no_search_field")
+        return []
+
+    await _click_miami_dade_search_button(driver)
+    await driver.polite_delay(3.0)
+
+    if await _open_miami_dade_result(driver, search_value):
+        await driver.polite_delay(2.5)
+
+    records = await _extract_miami_dade_detail(driver, fallback_folio=search_value if query_type == QueryType.PARCEL else None)
+    if records:
+        return records
+
+    await driver._emit_status("Miami-Dade detail extraction did not return valid parcel fields.")
+    return []
+
+
+async def _click_miami_dade_search_tab(driver: "GilaAssessorDriver", query_type: QueryType) -> None:
+    for sel in MIAMI_DADE_TAB_SELECTORS.get(query_type, []):
+        try:
+            tab = driver.page.locator(sel).first
+            if await tab.count() > 0 and await tab.is_visible(timeout=2_000):
+                await tab.click(force=True)
+                await driver.polite_delay(0.5)
+                return
+        except Exception:
+            continue
+
+
+async def _click_miami_dade_search_button(driver: "GilaAssessorDriver") -> None:
+    for sel in [
+        'button:has-text("Search")',
+        'input[type="submit"]',
+        'button[type="submit"]',
+        'img[alt*="search" i]',
+        '[aria-label*="search" i]',
+    ]:
+        try:
+            btn = driver.page.locator(sel).first
+            if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                await btn.click(force=True)
+                await driver.page.wait_for_load_state("domcontentloaded")
+                return
+        except Exception:
+            continue
+    await _click_florida_search(driver)
+
+
+async def _open_miami_dade_result(driver: "GilaAssessorDriver", query_value: str) -> bool:
+    if await _is_miami_dade_detail_page(driver):
+        return True
+
+    folio_digits = re.sub(r"\D", "", query_value)
+    for sel in [
+        "mat-row",
+        "table tbody tr",
+        ".result-row",
+        ".search-result",
+        "a[href*='folio']",
+        "a[href*='detail']",
+    ]:
+        try:
+            rows = driver.page.locator(sel)
+            count = await rows.count()
+            for i in range(min(count, 10)):
+                row = rows.nth(i)
+                text = (await row.inner_text()).strip()
+                if not text or text.lower() in ("search", "folio", "owner", "address"):
+                    continue
+                if folio_digits and folio_digits not in re.sub(r"\D", "", text):
+                    if query_value.lower() not in text.lower():
+                        continue
+                link = row.locator("a, button, td.pointer, [role='button']").first
+                if await link.count() > 0:
+                    await link.click(force=True)
+                else:
+                    await row.click(force=True)
+                await driver.polite_delay(2.0)
+                return await _is_miami_dade_detail_page(driver)
+        except Exception:
+            continue
+    return await _open_florida_result(driver)
+
+
+async def _is_miami_dade_detail_page(driver: "GilaAssessorDriver") -> bool:
+    url = driver.page.url.lower()
+    if "propertysearch" in url and any(token in url for token in ("detail", "folio", "property")):
+        return True
+    for sel in [
+        "text=Folio",
+        "text=Owner",
+        "text=Site Address",
+        "text=Legal Description",
+        "text=Just Value",
+        "text=Assessed Value",
+    ]:
+        try:
+            if await driver.page.locator(sel).count() > 0:
+                return True
+        except Exception:
+            continue
+    try:
+        body = await driver.page.inner_text("body")
+        if re.search(r"\b\d{2}-\d{4}-\d{3}-\d{4}\b", body) and "owner" in body.lower():
+            return True
+    except Exception:
+        pass
+    return False
+
+
+async def _prepare_miami_dade_detail_page(driver: "GilaAssessorDriver") -> None:
+    """Scroll the detail page so lazy sections load before scraping."""
+    for sel in [
+        "text=PROPERTY INFORMATION",
+        "text=Property Information",
+        "text=Folio",
+        "text=Property Address",
+    ]:
+        try:
+            await driver.page.wait_for_selector(sel, state="visible", timeout=12_000)
+            break
+        except Exception:
+            continue
+
+    try:
+        await driver.page.evaluate(
+            """async () => {
+              const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+              const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+              const steps = Math.max(12, Math.ceil(height / 400));
+              for (let i = 0; i <= steps; i++) {
+                window.scrollTo(0, (height * i) / steps);
+                await delay(500);
+              }
+              window.scrollTo(0, document.body.scrollHeight);
+              await delay(800);
+              window.scrollTo(0, 0);
+              await delay(300);
+            }"""
+        )
+    except Exception:
+        pass
+
+    for sel in [
+        "text=ASSESSMENT INFORMATION",
+        "text=Assessment Information",
+        "text=SALES INFORMATION",
+        "text=Sales Information",
+        "text=EXTRA FEATURES",
+    ]:
+        try:
+            await driver.page.wait_for_selector(sel, state="attached", timeout=8_000)
+            break
+        except Exception:
+            continue
+
+    await driver.polite_delay(2.0)
+
+
+async def _extract_miami_dade_detail(
+    driver: "GilaAssessorDriver",
+    fallback_folio: str | None = None,
+) -> list[ParcelRecord]:
+    if not await _is_miami_dade_detail_page(driver):
+        return []
+
+    await _prepare_miami_dade_detail_page(driver)
+
+    for attempt in range(2):
+        try:
+            data = await driver.page.evaluate(MIAMI_DADE_DETAIL_JS)
+            if data:
+                parcel = parcel_record_from_miami_dade_detail(data, driver.page.url)
+                if not parcel.apn and fallback_folio:
+                    parcel.apn = extract_valid_miami_dade_folio(fallback_folio)
+                if is_valid_miami_dade_extraction(parcel):
+                    await driver._emit_status("Saved Miami-Dade parcel details from Property Appraiser.")
+                    return [parcel]
+        except Exception as exc:
+            logger.debug("Miami-Dade detail scrape failed (attempt %s): %s", attempt + 1, exc)
+
+        if attempt == 0:
+            await driver._emit_status("Retrying Miami-Dade extraction after full-page scroll...")
+            await _prepare_miami_dade_detail_page(driver)
+
+    logger.debug("Miami-Dade detail scrape returned no valid structured fields.")
+    return []
+
+
+async def navigate_miami_dade_property_search(
+    driver: "GilaAssessorDriver",
+    query_type: QueryType,
+    query_value: str,
+    parcel: str | None = None,
+) -> bool:
+    """Open Miami-Dade property search and land on a parcel detail page."""
+    if await _is_miami_dade_detail_page(driver):
+        if parcel:
+            try:
+                body = await driver.page.inner_text("body")
+                if re.sub(r"\D", "", parcel) in re.sub(r"\D", "", body):
+                    return True
+            except Exception:
+                return True
+        else:
+            return True
+
+    search_value = parcel or query_value
+    qt = QueryType.PARCEL if parcel else query_type
+    records = await _search_miami_dade(driver, MIAMI_DADE_SEARCH_URL, qt, search_value)
+    return bool(records) or await _is_miami_dade_detail_page(driver)
+
+
 async def _search_orange_county(
     driver: "GilaAssessorDriver",
     search_url: str,
@@ -464,9 +804,21 @@ async def _fill_first_visible(driver: "GilaAssessorDriver", selectors: list[str]
     for sel in selectors:
         try:
             loc = driver.page.locator(sel).first
-            if await loc.count() > 0 and await loc.is_visible(timeout=2_000):
+            if await loc.count() > 0 and await loc.is_visible(timeout=5_000):
                 await loc.click()
-                await loc.fill(value)
+                await loc.fill("")
+                try:
+                    await loc.press_sequentially(value, delay=25)
+                except Exception:
+                    await loc.fill(value)
+                await loc.evaluate(
+                    """(el, val) => {
+                        el.value = val;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }""",
+                    value,
+                )
                 return True
         except Exception:
             continue

@@ -1,11 +1,19 @@
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from app.db.repositories.documents_repository import DocumentsRepository
 from app.db.repositories.records_repository import RecordsRepository
 from app.db.repositories.runs_repository import RunsRepository
 from app.extraction.schemas import QueryType, RunDetailResponse, RunEvent, RunRecord, RunStatus, SourceStatus, SourceType
+from app.drivers.browser_registry import get_driver
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+SCREENSHOTS_DIR = BACKEND_ROOT / "screenshots"
 
 SOURCE_ORDER = [
     SourceType.NETRONLINE,
@@ -41,6 +49,33 @@ def _build_sources_panel(events: list[dict]) -> list[dict]:
             status_map[src]["status"] = SourceStatus.FAILED.value
             status_map[src]["message"] = payload.get("reason") or payload.get("message")
     return [status_map[s.value] for s in SOURCE_ORDER]
+
+
+@router.get("/{run_id}/preview.png")
+async def get_run_preview(run_id: str) -> FileResponse:
+    """Latest Playwright viewport screenshot for the in-app browser panel."""
+    path = SCREENSHOTS_DIR / f"preview_{run_id}.png"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Preview not available yet")
+    return FileResponse(path, media_type="image/png")
+
+
+class PreviewClickRequest(BaseModel):
+    x: float = Field(ge=0, le=1, description="Normalized horizontal click position")
+    y: float = Field(ge=0, le=1, description="Normalized vertical click position")
+
+
+@router.post("/{run_id}/preview-click")
+async def preview_click(run_id: str, body: PreviewClickRequest) -> dict:
+    """Forward a click from the Live preview panel to the headless Playwright page."""
+    driver = get_driver(run_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="No active browser for this run")
+    try:
+        await driver.click_at_normalized(body.x, body.y)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.get("/{run_id}", response_model=RunDetailResponse)

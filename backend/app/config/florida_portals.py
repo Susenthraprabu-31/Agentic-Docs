@@ -28,8 +28,12 @@ FL_SCHNEIDER_APP_PATTERN = re.compile(r"app=([a-z]+countyfl)", re.I)
 # Orange County Comptroller official records
 ORANGE_RECORDER_HOST = "or.occompt.com"
 
-# Miami-Dade Clerk
+# Miami-Dade Property Appraiser (Angular SPA)
+MIAMI_DADE_SEARCH_URL = "https://apps.miamidadepa.gov/propertysearch/#/"
+
+# Miami-Dade Clerk official records
 MIAMI_DADE_RECORDER_HOST = "miamidadeclerk.gov"
+MIAMI_DADE_RECORDER_SEARCH_URL = "https://onlineservices.miamidadeclerk.gov/officialrecords"
 
 # Broward Clerk (AcclaimWeb)
 BROWARD_RECORDER_HOST = "officialrecords.broward.org"
@@ -76,7 +80,24 @@ def is_orange_county_assessor(url: str) -> bool:
 
 
 def is_miami_dade_assessor(url: str) -> bool:
-    return "miamidade.gov" in url.lower() and "propertysearch" in url.lower()
+    lower = url.lower()
+    return (
+        "miamidadepa.gov" in lower and "propertysearch" in lower
+    ) or (
+        "miamidade.gov" in lower and "propertysearch" in lower
+    )
+
+
+def is_miami_dade_recorder(url: str) -> bool:
+    lower = url.lower()
+    return MIAMI_DADE_RECORDER_HOST in lower or "onlineservices.miamidadeclerk.gov" in lower
+
+
+def is_miami_dade_gis(url: str) -> bool:
+    lower = url.lower()
+    return is_miami_dade_assessor(url) or (
+        "miamidade.gov" in lower and any(token in lower for token in ("gis", "mapping", "map"))
+    )
 
 
 def is_broward_assessor(url: str) -> bool:
@@ -114,6 +135,10 @@ def is_myflorida_county_recorder(url: str) -> bool:
 
 def resolve_florida_recorder_url(recorder_url: str, county: Optional[str] = None) -> str:
     """Normalize NETR recorder links for Florida county clerk portals."""
+    county_slug = (county or "").lower().replace(" ", "-")
+    if county_slug == "miami-dade" or is_miami_dade_recorder(recorder_url):
+        return MIAMI_DADE_RECORDER_SEARCH_URL
+
     if not is_myflorida_county_recorder(recorder_url):
         return recorder_url
 
@@ -121,7 +146,6 @@ def resolve_florida_recorder_url(recorder_url: str, county: Optional[str] = None
     if "/orisearch/" in lower:
         return recorder_url
 
-    county_slug = (county or "").lower().replace(" ", "-")
     county_id = FL_MYFLORIDA_COUNTY_IDS.get(county_slug)
     if county_id:
         return f"https://www.{MYFLORIDA_COUNTY_HOST}/orisearch/{county_id}"
@@ -139,6 +163,10 @@ def resolve_florida_assessor_url(assessor_url: str) -> str:
         return assessor_url
     if is_orange_county_assessor(assessor_url):
         return ORANGE_SEARCH_URL
+    if is_miami_dade_assessor(assessor_url) or (
+        "miamidade.gov" in assessor_url.lower() and "/pa" in assessor_url.lower()
+    ):
+        return MIAMI_DADE_SEARCH_URL
     if is_florida_schneider(assessor_url):
         lower = assessor_url.lower()
         if "pagetype=search" not in lower:
@@ -217,9 +245,119 @@ def format_florida_pa_address_for_search(address: str) -> str:
     return cleaned
 
 
+def format_miami_dade_address_for_search(address: str) -> str:
+    """Normalize address for Miami-Dade PA search (street before first comma)."""
+    return format_florida_pa_address_for_search(address)
+
+
 FLORIDA_TAX_HOST_SUFFIX = ".floridatax.us"
-FL_COUNTY_TAX_HOSTS: dict[str, str] = {
-    "columbia": "columbia.floridatax.us",
+
+# Counties using floridatax.us (small/mid-size FL counties served by TaxSys/GovTech)
+FL_FLORIDATAX_COUNTIES: set[str] = {
+    "columbia",
+    "alachua",
+    "baker",
+    "bay",
+    "bradford",
+    "brevard",
+    "calhoun",
+    "charlotte",
+    "citrus",
+    "clay",
+    "collier",
+    "desoto",
+    "dixie",
+    "flagler",
+    "franklin",
+    "gadsden",
+    "gilchrist",
+    "glades",
+    "gulf",
+    "hamilton",
+    "hardee",
+    "hendry",
+    "hernando",
+    "highlands",
+    "holmes",
+    "indian-river",
+    "jackson",
+    "jefferson",
+    "lafayette",
+    "lake",
+    "leon",
+    "levy",
+    "liberty",
+    "madison",
+    "manatee",
+    "marion",
+    "martin",
+    "monroe",
+    "nassau",
+    "okaloosa",
+    "okeechobee",
+    "orange",
+    "osceola",
+    "pasco",
+    "polk",
+    "putnam",
+    "santa-rosa",
+    "sarasota",
+    "seminole",
+    "st-johns",
+    "st-lucie",
+    "sumter",
+    "suwannee",
+    "taylor",
+    "union",
+    "volusia",
+    "wakulla",
+    "walton",
+    "washington",
+}
+
+FL_COUNTY_TAXES_NET: dict[str, str] = {
+    "miami-dade": "fl-miamidade",
+    "broward": "fl-broward",
+    "palm-beach": "fl-palmbeach",
+    "hillsborough": "fl-hillsborough",
+    "pinellas": "fl-pinellas",
+    "duval": "fl-duval",
+    "lee": "fl-lee",
+    "polk": "fl-polk",
+    "volusia": "fl-volusia",
+    "pasco": "fl-pasco",
+    "seminole": "fl-seminole",
+    "orange": "fl-orange",
+    "osceola": "fl-osceola",
+}
+
+# Counties that use county-taxes.com (GovTech/Tyler EasySmartPay platform)
+# Direct URL format: https://{slug}.county-taxes.com/public/real_estate/parcels/{folio_digits}
+FL_COUNTY_TAXES_COM: dict[str, str] = {
+    "miami-dade": "miamidade",
+    "broward": "broward",
+    "palm-beach": "pbctax",
+    "hillsborough": "hillstax",
+    "pinellas": "pinellas",
+    "duval": "duval",
+    "lee": "leetc",
+    "polk": "polktaxes",
+    "volusia": "volusia",
+    "pasco": "pascotax",
+    "seminole": "seminole",
+    "orange": "orangetax",
+    "osceola": "osceola",
+}
+
+# Counties with fully custom portals (not floridatax.us or county-taxes.com)
+FL_CUSTOM_TAX_URLS: dict[str, str] = {
+    "miami-dade": "https://county-taxes.net/fl-miamidade/property-tax",
+    "broward": "https://county-taxes.net/fl-broward/property-tax",
+    "palm-beach": "https://county-taxes.net/fl-palmbeach/property-tax",
+    "hillsborough": "https://county-taxes.net/fl-hillsborough/property-tax",
+    "pinellas": "https://county-taxes.net/fl-pinellas/property-tax",
+    "duval": "https://county-taxes.net/fl-duval/property-tax",
+    "lee": "https://county-taxes.net/fl-lee/property-tax",
 }
 
 
@@ -234,13 +372,41 @@ def florida_pa_parcel_to_tax_account(parcel: str) -> str:
     return normalized
 
 
+def _folio_digits(parcel: str) -> str:
+    """Strip all non-digit characters from a parcel/folio number."""
+    return re.sub(r"\D", "", parcel.strip())
+
+
 def resolve_florida_tax_url(county: str, parcel: str) -> str:
-    """Build PropertyDetail URL for Florida county tax collector sites."""
+    """Build a direct PropertyDetail URL for the correct FL county tax collector site."""
     county_slug = county.lower().replace(" ", "-")
-    host = FL_COUNTY_TAX_HOSTS.get(county_slug, f"{county_slug}{FLORIDA_TAX_HOST_SUFFIX}")
+
+    # Grant Street Group's county-taxes.net portal (Miami-Dade etc.)
+    net_slug = FL_COUNTY_TAXES_NET.get(county_slug)
+    if net_slug:
+        return f"https://county-taxes.net/{net_slug}/property-tax"
+
+    # Counties on county-taxes.com — build direct parcel detail URL
+    county_taxes_slug = FL_COUNTY_TAXES_COM.get(county_slug)
+    if county_taxes_slug:
+        folio = _folio_digits(parcel) or parcel.strip()
+        return f"https://{county_taxes_slug}.county-taxes.com/public/real_estate/parcels/{folio}"
+
+    # Floridatax.us counties — build PropertyDetail URL with tax account
+    if county_slug in FL_FLORIDATAX_COUNTIES:
+        account = florida_pa_parcel_to_tax_account(parcel)
+        return f"https://{county_slug}.floridatax.us/PropertyDetail?p={account}"
+
+    # Default: try floridatax.us for any unknown FL county
     account = florida_pa_parcel_to_tax_account(parcel)
-    return f"https://{host}/PropertyDetail?p={account}"
+    return f"https://{county_slug}.floridatax.us/PropertyDetail?p={account}"
 
 
-def supports_florida_tax_record(state: str, county: str) -> bool:
-    return state.upper() == "FL" and county.lower().replace(" ", "-") in FL_COUNTY_TAX_HOSTS
+def is_florida_tax_site(url: str) -> bool:
+    """Return True if url is a recognized FL county tax collector portal."""
+    lower = url.lower()
+    return (
+        "floridatax.us" in lower
+        or "county-taxes.com" in lower
+        or "county-taxes.net" in lower
+    )

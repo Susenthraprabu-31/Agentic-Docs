@@ -89,6 +89,12 @@
       </td>
     </tr>
     {% if raw.mailing_address %}<tr><th class="prop-key">Mailing Address</th><td>{{ raw.mailing_address }}</td></tr>{% endif %}
+    {% if raw.subdivision %}<tr><th class="prop-key">Sub-Division</th><td>{{ raw.subdivision }}</td></tr>{% endif %}
+    {% if raw.pa_primary_zone %}<tr><th class="prop-key">PA Primary Zone</th><td>{{ raw.pa_primary_zone }}</td></tr>{% endif %}
+    {% if raw.pa_secondary_zone %}<tr><th class="prop-key">PA Secondary Zone</th><td>{{ raw.pa_secondary_zone }}</td></tr>{% endif %}
+    {% if raw.primary_land_use %}<tr><th class="prop-key">Primary Land Use</th><td>{{ raw.primary_land_use }}</td></tr>{% endif %}
+    {% if raw.full_legal_description %}<tr><th class="prop-key">Full Legal Description</th><td style="font-size:12px;">{{ raw.full_legal_description }}</td></tr>{% endif %}
+    {% if raw.market_value %}<tr><th class="prop-key">Market Value</th><td>{{ raw.market_value }}</td></tr>{% endif %}
     {% if raw.land_value %}<tr><th class="prop-key">Land Value</th><td>${{ "{:,.0f}".format(raw.land_value | float) }}</td></tr>{% endif %}
     {% if raw.building_value %}<tr><th class="prop-key">Building Value</th><td>${{ "{:,.0f}".format(raw.building_value | float) }}</td></tr>{% endif %}
     {% if raw.total_value %}<tr><th class="prop-key">Total Value</th><td>${{ "{:,.0f}".format(raw.total_value | float) }}</td></tr>{% endif %}
@@ -100,6 +106,94 @@
     {% if raw.bedrooms or raw.bathrooms %}<tr><th class="prop-key">Bed / Bath</th><td>{{ raw.bedrooms or '—' }} bd / {{ raw.bathrooms or '—' }} ba</td></tr>{% endif %}
     {% if raw.living_area %}<tr><th class="prop-key">Living Area (sq ft)</th><td>{{ raw.living_area }}</td></tr>{% endif %}
   </table>
+
+  {% if raw.full_legal_description %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Full Legal Description</h3>
+  <p style="font-size:12px;white-space:pre-wrap;">{{ raw.full_legal_description }}</p>
+  {% endif %}
+
+  {% if raw.assessment_information_table and raw.assessment_information_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Assessment Information</h3>
+  <table>
+    <thead><tr>{% for h in raw.assessment_information_table.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in raw.assessment_information_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if raw.benefits_information_table and raw.benefits_information_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Benefits Information</h3>
+  <table>
+    <thead><tr>{% for h in raw.benefits_information_table.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in raw.benefits_information_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if raw.taxable_value_information_table and raw.taxable_value_information_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Taxable Value Information</h3>
+  <table>
+    <thead><tr>{% for h in raw.taxable_value_information_table.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in raw.taxable_value_information_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if raw.sales_information_table and raw.sales_information_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Sales Information</h3>
+  <table>
+    <thead><tr>{% for h in raw.sales_information_table.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in raw.sales_information_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if raw.land_information_table and raw.land_information_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Land Information</h3>
+  <table>
+    <tbody>
+      {% for row in raw.land_information_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if raw.building_information_table and raw.building_information_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Building Information</h3>
+  <table>
+    <tbody>
+      {% for row in raw.building_information_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if raw.extra_features_table and raw.extra_features_table.rows %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Extra Features</h3>
+  <table>
+    <thead><tr>{% for h in raw.extra_features_table.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in raw.extra_features_table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   {% else %}
   <p style="color:#64748b;">No assessor records found.</p>
   {% endif %}
@@ -125,7 +219,81 @@
     </tr>
     {% if tax_record.property_address %}<tr><th class="prop-key">Property Address</th><td>{{ tax_record.property_address }}</td></tr>{% endif %}
     {% if tax.mailing_address %}<tr><th class="prop-key">Mailing Address</th><td>{{ tax.mailing_address }}</td></tr>{% endif %}
+    {% if tax.amount_due_message %}<tr><th class="prop-key">Payment Status</th><td>{{ tax.amount_due_message }}</td></tr>{% endif %}
+    {% if tax.last_payment %}<tr><th class="prop-key">Last Payment</th><td>{{ tax.last_payment }}</td></tr>{% endif %}
+    {% if tax.exemptions_summary %}<tr><th class="prop-key">Exemptions</th><td>{{ tax.exemptions_summary }}</td></tr>{% endif %}
   </table>
+
+  {% if tax.account_history %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">Account History</h3>
+  <table>
+    <thead>
+      <tr><th>Bill</th><th>Amount Due</th><th>Status</th><th>Date</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {% for row in tax.account_history %}
+      <tr>
+        <td>{{ row.bill or '—' }}</td>
+        <td>{{ row.amount_due or '—' }}</td>
+        <td>{{ row.status or '—' }}</td>
+        <td>{{ row.date or '—' }}</td>
+        <td>{{ row.action or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if tax.last_two_bills %}
+  {% for bill in tax.last_two_bills %}
+  <h3 style="font-size:14px;color:#334155;margin-top:18px;">
+    Bill Detail — {{ bill.bill_summary.bill if bill.bill_summary and bill.bill_summary.bill else bill.bill_title or 'Annual Bill' }}
+  </h3>
+  {% if bill.bill_summary %}
+  <table>
+    <tr><th class="prop-key">Bill</th><td>{{ bill.bill_summary.bill or '—' }}</td></tr>
+    <tr><th class="prop-key">Millage Code</th><td>{{ bill.bill_summary.millage_code or '—' }}</td></tr>
+    <tr><th class="prop-key">Amount Due</th><td>{{ bill.bill_summary.amount_due or '—' }}</td></tr>
+    <tr><th class="prop-key">Status</th><td>{{ bill.bill_summary.status or '—' }}</td></tr>
+    {% if bill.combined_taxes %}<tr><th class="prop-key">Combined Taxes</th><td>{{ bill.combined_taxes }}</td></tr>{% endif %}
+  </table>
+  {% endif %}
+  {% if bill.legal_description %}
+  <p class="meta" style="margin-top:10px;">Legal Description</p>
+  <p style="font-size:12px;white-space:pre-wrap;">{{ bill.legal_description }}</p>
+  {% endif %}
+  {% if bill.exemptions %}
+  <p class="meta" style="margin-top:10px;">Bill Exemptions</p>
+  <table>
+    {% for key, val in bill.exemptions.items() %}
+    <tr><th class="prop-key">{{ key }}</th><td>{{ val }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if bill.ad_valorem_taxes and bill.ad_valorem_taxes.rows %}
+  <p class="meta" style="margin-top:10px;">Ad Valorem Taxes</p>
+  <table>
+    <thead><tr>{% for h in bill.ad_valorem_taxes.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in bill.ad_valorem_taxes.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if bill.non_ad_valorem_assessments and bill.non_ad_valorem_assessments.rows %}
+  <p class="meta" style="margin-top:10px;">Non-Ad Valorem Assessments</p>
+  <table>
+    <thead><tr>{% for h in bill.non_ad_valorem_assessments.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in bill.non_ad_valorem_assessments.rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endfor %}
+  {% endif %}
 
   {% if tax.yearly_due_summary %}
   <p class="meta" style="margin-top:14px;">Yearly Due Summary</p>
@@ -206,6 +374,24 @@
       {% endfor %}
     </tbody>
   </table>
+
+  {% for doc in documents %}
+    {% if doc.file_name or doc.image_data_uri %}
+    <div style="margin-top: 24px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h3 style="margin-top: 0; font-size: 15px; color: #1e293b; font-weight: 600;">
+        Official Document Copy: {{ doc.document_type or 'Recorded Document' }} (CFN: {{ doc.instrument_number or '—' }})
+      </h3>
+      <p style="margin: 4px 0 12px 0; font-size: 12px; color: #64748b;">
+        Attached File: <strong>{{ doc.file_name or 'Downloaded Document' }}</strong> &nbsp;·&nbsp; Book/Page: {{ doc.book_page or '—' }} &nbsp;·&nbsp; Recording Date: {{ doc.recording_date or '—' }}
+      </p>
+      {% if doc.image_data_uri %}
+      <div style="text-align: center; margin-top: 10px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #ffffff; padding: 8px;">
+        <img src="{{ doc.image_data_uri }}" alt="Document Image" style="max-width: 100%; height: auto; display: block; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" />
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endfor %}
   {% else %}
   <p style="color:#64748b;">No recorded documents found.</p>
   {% endif %}

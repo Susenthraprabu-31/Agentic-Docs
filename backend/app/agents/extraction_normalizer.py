@@ -4,6 +4,7 @@ from typing import Any, Literal, Union
 
 from app.config.settings import get_settings
 from app.extraction.schemas import ParcelRecord, RecordedDocument
+from app.extraction.florida_extractors import is_garbage_assessor_text
 
 logger = logging.getLogger(__name__)
 
@@ -95,14 +96,24 @@ class ExtractionNormalizer:
                     ai_val = data.get(field)
                     partial_val = getattr(partial, field, None) if isinstance(partial, ParcelRecord) else None
                     field_values[field] = ai_val or partial_val
-                return ParcelRecord(**field_values)
-            return RecordedDocument(**{k: v for k, v in data.items() if k in RecordedDocument.model_fields}, ocr_json=data)
+            doc_values = {k: v for k, v in data.items() if k in RecordedDocument.model_fields}
+            if isinstance(partial, RecordedDocument):
+                for field in ("document_type", "recording_date", "book_page", "instrument_number", "grantor", "grantee", "source_url", "screenshot_path"):
+                    if not doc_values.get(field) and getattr(partial, field, None):
+                        doc_values[field] = getattr(partial, field)
+            return RecordedDocument(**doc_values, ocr_json=data or getattr(partial, "ocr_json", {}))
         except Exception as exc:
             logger.warning("OpenAI normalizer failed, using fallback: %s", exc)
             return self._fallback(source, raw_text, partial)
 
     def _is_complete(self, record: Union[ParcelRecord, RecordedDocument]) -> bool:
         if isinstance(record, ParcelRecord):
+            if is_garbage_assessor_text(record.owner_name):
+                return False
+            if is_garbage_assessor_text(record.property_address):
+                return False
+            if record.property_address and len(record.property_address) > 220:
+                return False
             return bool(record.apn or (record.owner_name and record.property_address))
         return bool(record.document_type or record.instrument_number or record.book_page)
 

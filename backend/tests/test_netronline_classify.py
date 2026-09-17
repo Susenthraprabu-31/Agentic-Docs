@@ -25,7 +25,8 @@ def test_pick_online_url():
 def test_florida_office_names():
     assert _classify_office("Orange County Property Appraiser") == "assessor"
     assert _classify_office("Orange County Comptroller Official Records") == "recorder"
-    assert _classify_office("Broward County Tax Collector") is None
+    assert _classify_office("Broward County Tax Collector") == "treasurer"
+    assert _classify_office("Miami-Dade Tax Collector") == "treasurer"
     assert _classify_office("Broward County GIS Mapping") == "gis"
 
 
@@ -35,6 +36,16 @@ def test_pick_online_url_skips_tax_payment_portal():
         {"text": "Go to Data Online", "href": "https://web.bcpa.net/BcpaClient/"},
     ]
     assert _pick_online_url(links) == "https://web.bcpa.net/BcpaClient/"
+
+
+def test_pick_online_url_allows_county_taxes_for_treasurer():
+    links = [
+        {"text": "Go to Data Online", "href": "https://county-taxes.net/broward/property-tax"},
+        {"text": "Go to Data Online", "href": "https://web.bcpa.net/BcpaClient/"},
+    ]
+    assert _pick_online_url(links, allow_county_taxes=True) == (
+        "https://county-taxes.net/broward/property-tax"
+    )
 
 
 def test_pick_online_url_ignores_netr_map_for_recorder():

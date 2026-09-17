@@ -100,31 +100,55 @@ def tax_record_from_florida_data(
     owner_name: Optional[str] = None,
 ) -> TaxRecord:
     fields = scraped.get("fields") or {}
-    tax_account = _field(scraped, "property tax account", "tax account") or fields.get("property tax account")
+    tax_account = scraped.get("account_number") or _field(scraped, "property tax account", "tax account") or fields.get("property tax account")
     tax_year = _field(scraped, "year", "tax year")
+    
+    last_two = scraped.get("last_two_bills") or []
+    if not tax_year and last_two:
+        first_b = last_two[0]
+        b_summary = first_b.get("bill_summary") or {}
+        b_name = b_summary.get("bill") or first_b.get("bill_title") or ""
+        y_match = re.search(r"20\d{2}", b_name)
+        if y_match:
+            tax_year = y_match.group(0)
+
     bill_number = _field(scraped, "bill number")
-    amount_due = _parse_money(_field(scraped, "this bill", "amount due", "due"))
+    amount_due = scraped.get("amount_due")
+    if amount_due is None:
+        amount_due = _parse_money(_field(scraped, "this bill", "amount due", "due"))
+
+    owner = owner_name or scraped.get("owner") or _field(scraped, "owner name", "owner")
+    prop_address = scraped.get("situs") or _field(scraped, "property address", "situs")
+
+    is_ct = bool(last_two or "county-taxes" in (scraped.get("url") or "") or scraped.get("account_history"))
 
     return TaxRecord(
         apn=apn,
         tax_account=tax_account,
-        owner_name=owner_name or _field(scraped, "owner name", "owner"),
+        owner_name=owner,
         tax_year=tax_year,
         bill_number=bill_number,
         amount_due=amount_due,
-        property_address=_field(scraped, "property address", "situs"),
+        property_address=prop_address,
         mailing_address=_field(scraped, "mailing address"),
         source_url=scraped.get("url"),
         raw_json={
-            "platform": "floridatax.us",
+            "platform": "county-taxes" if is_ct else "floridatax.us",
             "tax_account": tax_account,
             "tax_year": tax_year,
             "bill_number": bill_number,
             "amount_due": amount_due,
+            "amount_due_message": scraped.get("amount_due_message"),
+            "last_payment": scraped.get("last_payment"),
+            "property_address": prop_address,
             "mailing_address": _field(scraped, "mailing address"),
             "header_fields": fields,
+            "account_history": scraped.get("account_history") or [],
+            "last_two_bills": last_two,
+            "exemptions_summary": scraped.get("exemptions_summary"),
             "yearly_due_summary": scraped.get("yearly_due") or [],
             "tabs": scraped.get("tabs") or {},
+            "tables": scraped.get("tables") or [],
             "source_url": scraped.get("url"),
         },
     )

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.run_logger import set_main_event_loop
-from app.api.routes import locations, reports, runs, search
+from app.api.routes import ai_agent, batches, config, locations, pipeline, reports, runs, search
 from app.api.websocket import run_stream
 from app.config.settings import get_settings
 
@@ -38,11 +38,31 @@ app.add_middleware(
     expose_headers=["X-PDF-Storage-Url", "X-PDF-Storage-Path"],
 )
 
+app.include_router(config.router)
+app.include_router(ai_agent.router)
 app.include_router(locations.router)
 app.include_router(search.router)
 app.include_router(runs.router)
+app.include_router(pipeline.router)
 app.include_router(reports.router)
+app.include_router(batches.router)
 app.include_router(run_stream.router)
+
+
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+local_storage_dir = Path("local_storage").resolve()
+local_storage_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/local_storage", StaticFiles(directory=str(local_storage_dir)), name="local_storage")
+
+downloads_dir = Path("downloads").resolve()
+downloads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/downloads", StaticFiles(directory=str(downloads_dir)), name="downloads")
+
+screenshots_dir = Path("screenshots").resolve()
+screenshots_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/screenshots", StaticFiles(directory=str(screenshots_dir)), name="screenshots")
 
 
 @app.get("/health")

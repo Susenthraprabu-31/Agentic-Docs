@@ -1,0 +1,386 @@
+"""Use GPT to analyze a loaded page and perform property search actions."""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+from typing import TYPE_CHECKING, Any, Optional
+
+from app.config.settings import get_settings
+from app.extraction.schemas import QueryType
+
+if TYPE_CHECKING:
+    from app.drivers.base.base_driver import BaseDriver
+
+logger = logging.getLogger(__name__)
+
+PAGE_SNAPSHOT_JS = """
+() => {
+  const out = [];
+  const seen = new Set();
+
+  function esc(s) {
+    return (s || '').replace(/\\\\/g, '\\\\').replace(/"/g, '\\\\"').trim();
+  }
+
+  function selectorFor(el) {
+    if (!el || el.offsetParent === null && getComputedStyle(el).display === 'none') return null;
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.opacity === '0') return null;
+
+    if (el.id && !/^\\d/.test(el.id)) return `#${CSS.escape(el.id)}`;
+
+    const role = el.getAttribute('role');
+    const text = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 60);
+    if (role === 'tab' && text) return `[role="tab"]:has-text("${esc(text)}")`;
+
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      const type = (el.type || 'text').toLowerCase();
+      if (type === 'hidden' || type === 'checkbox' || type === 'radio') return null;
+      const ph = el.getAttribute('placeholder');
+      if (ph) return `${el.tagName.toLowerCase()}[placeholder="${esc(ph)}"]`;
+      const name = el.getAttribute('name');
+      if (name) return `${el.tagName.toLowerCase()}[name="${esc(name)}"]`;
+      const fc = el.getAttribute('formcontrolname');
+      if (fc) return `input[formcontrolname="${esc(fc)}"]`;
+      const aria = el.getAttribute('aria-label');
+      if (aria) return `${el.tagName.toLowerCase()}[aria-label="${esc(aria)}"]`;
+    }
+
+    if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'SPAN') && text) {
+      const lower = text.toLowerCase();
+      if (lower.length <= 40 && /search|address|owner|folio|parcel|submit|go|find/i.test(lower)) {
+        return `${el.tagName.toLowerCase()}:has-text("${esc(text)}")`;
+      }
+    }
+
+    const aria = el.getAttribute('aria-label');
+    if (aria && /search/i.test(aria)) {
+      return `[aria-label="${esc(aria)}"]`;
+    }
+    return null;
+  }
+
+  function push(el, kind) {
+    const sel = selectorFor(el);
+    if (!sel || seen.has(sel)) return;
+    seen.add(sel);
+    const text = (el.innerText || el.textContent || el.value || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+    const placeholder = el.getAttribute('placeholder') || '';
+    const name = el.getAttribute('name') || '';
+    const role = el.getAttribute('role') || '';
+    out.push({
+      kind,
+      selector: sel,
+      tag: el.tagName.toLowerCase(),
+      text,
+      placeholder,
+      name,
+      role,
+      type: el.type || '',
+    });
+  }
+
+  document.querySelectorAll('[role="tab"], mat-tab, .mat-tab-label, button, a, input, textarea, select, label, [aria-label]').forEach((el) => {
+    try {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      if (rect.bottom < 0 || rect.top > innerHeight * 2) return;
+      let kind = 'control';
+      const role = el.getAttribute('role');
+      const tag = el.tagName;
+      if (role === 'tab' || tag === 'MAT-TAB') kind = 'tab';
+      else if (tag === 'INPUT' && (el.type || '').toLowerCase() === 'radio') kind = 'radio';
+      else if (tag === 'INPUT' || tag === 'TEXTAREA') kind = 'input';
+      else if (/search/i.test(el.innerText || '') || /search/i.test(el.getAttribute('aria-label') || '')) kind = 'search_button';
+      else if (tag === 'BUTTON' || tag === 'A') kind = 'button';
+      else if (tag === 'LABEL') kind = 'label';
+      push(el, kind);
+    } catch (_) {}
+  });
+
+  return {
+    url: location.href,
+    title: document.title,
+    elements: out.slice(0, 100),
+  };
+}
+"""
+
+SYSTEM_PROMPT_ASSESSOR = """You analyze property appraiser / assessor websites and return Playwright CSS selectors to run a search.
+
+Given:
+- query_type: address | owner | parcel (parcel may be labeled folio, APN, TMK, PIN, strap, etc.)
+- query_value: the value to search for
+- page snapshot: visible tabs, inputs, and buttons with suggested selectors
+
+Return ONLY valid JSON:
+{
+  "tab_selector": "selector to click the correct search tab, or null if not needed",
+  "radio_selector": "selector for radio option if needed, or null",
+  "input_selector": "selector for the text field to fill",
+  "submit_selector": "selector for search/submit button, or null to press Enter",
+  "use_enter_key": false,
+  "confidence": "high|medium|low",
+  "reasoning": "one short sentence"
+}
+
+Rules:
+- Match query_type to the correct tab/field (address -> address field, parcel -> folio/parcel field, owner -> owner name field).
+- Prefer selectors from the snapshot exactly as given.
+- Use tab_selector when the site has separate tabs for Address, Owner, Folio/Parcel.
+- When user_instructions say to click a menu or nav link first (e.g. "Search Records and Tax Details"), set tab_selector to that link/button from the snapshot before filling a field.
+- If the page is a landing page with no search input yet, set input_selector to null and tab_selector to the nav link that opens search.
+- submit_selector can be a magnifying glass button or img with search alt text.
+- Never invent selectors not based on snapshot elements."""
+
+SYSTEM_PROMPT_RECORDER = """You analyze county clerk / official records / recorder websites and return Playwright CSS selectors to run a search.
+
+Given:
+- query_type: address | owner | parcel
+- query_value: the value to search for
+- optional user_instructions: extra hints from the user
+- page snapshot: visible inputs, radio buttons, tabs, and buttons with suggested selectors
+
+Return ONLY valid JSON:
+{
+  "tab_selector": "selector to open the correct search tab/section, or null",
+  "radio_selector": "selector for Grantor/Grantee/All radio if needed, or null",
+  "input_selector": "selector for the main search text field",
+  "submit_selector": "selector for the Search button, or null to press Enter",
+  "use_enter_key": false,
+  "confidence": "high|medium|low",
+  "reasoning": "one short sentence"
+}
+
+Rules:
+- owner query_type: use grantor, grantee, party, or name search field. Only select Grantor/Grantee radio when user_instructions explicitly mention grantor or grantee. If user_instructions mention "all name" or "search by all", select All (#Both).
+- parcel query_type: use folio, instrument, document number, book/page, or parcel field if visible.
+- address query_type: use address or legal description field if visible.
+- For name searches on clerk sites, the value may need "Last, First" format — use query_value as given unless user_instructions say otherwise.
+- Brevard/AcclaimWeb and similar sites: party name field is `#SearchOnName` or `input[name="SearchOnName"]`. Grantor radio is `#Direct`, search button is `#btnSearch`. Accept disclaimer with `#btnButton` first if shown.
+- Prefer selectors from the snapshot exactly as given.
+- Never invent selectors not based on snapshot elements."""
+
+SYSTEM_PROMPT = SYSTEM_PROMPT_ASSESSOR
+
+
+class PageSearchAI:
+    def __init__(self) -> None:
+        self.settings = get_settings()
+        self._client: Any = None
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.settings.openai_api_key)
+
+    def _get_client(self) -> Any:
+        if not self.settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is not set in backend .env")
+        if self._client is None:
+            from openai import OpenAI
+
+            self._client = OpenAI(api_key=self.settings.openai_api_key)
+        return self._client
+
+    async def extract_snapshot(self, driver: "BaseDriver") -> dict[str, Any]:
+        try:
+            return await driver.page.evaluate(PAGE_SNAPSHOT_JS)
+        except Exception as exc:
+            logger.warning("Page snapshot failed: %s", exc)
+            return {"url": driver.page.url, "title": "", "elements": []}
+
+    async def plan_search(
+        self,
+        snapshot: dict[str, Any],
+        query_type: QueryType,
+        query_value: str,
+        *,
+        model: Optional[str] = None,
+        portal_type: str = "assessor",
+        user_instructions: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        if not self.is_configured:
+            return None
+
+        client = self._get_client()
+        model_name = model or getattr(self.settings, "openai_browser_model", None) or "gpt-4o-mini"
+        system_prompt = SYSTEM_PROMPT_RECORDER if portal_type == "recorder" else SYSTEM_PROMPT_ASSESSOR
+
+        user_payload: dict[str, Any] = {
+            "query_type": query_type.value,
+            "query_value": query_value,
+            "page": snapshot,
+        }
+        if user_instructions:
+            user_payload["user_instructions"] = user_instructions
+
+        try:
+            response = await asyncio.to_thread(
+                client.chat.completions.create,
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": json.dumps(user_payload, ensure_ascii=False),
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=400,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content or "{}"
+            plan = json.loads(raw)
+            logger.info(
+                "AI page search plan: model=%s confidence=%s reasoning=%s",
+                model_name,
+                plan.get("confidence"),
+                plan.get("reasoning"),
+            )
+            return plan
+        except Exception as exc:
+            logger.warning("AI page search planning failed: %s", exc)
+            return None
+
+    async def execute_plan(self, driver: "BaseDriver", plan: dict[str, Any], query_value: str) -> bool:
+        tab_sel = plan.get("tab_selector")
+        radio_sel = plan.get("radio_selector")
+        input_sel = plan.get("input_selector")
+        submit_sel = plan.get("submit_selector")
+        use_enter = bool(plan.get("use_enter_key"))
+
+        acted = False
+
+        if tab_sel and str(tab_sel).strip().lower() not in ("null", "none", ""):
+            if await _click_selector(driver, str(tab_sel).strip()):
+                acted = True
+                await driver.polite_delay(1.2)
+
+        if not input_sel or not str(input_sel).strip() or str(input_sel).strip().lower() in ("null", "none"):
+            return acted
+
+        if radio_sel and str(radio_sel).strip().lower() not in ("null", "none", ""):
+            if await _click_selector(driver, str(radio_sel).strip()):
+                acted = True
+                await driver.polite_delay(0.5)
+
+        if await _fill_selector(driver, str(input_sel).strip(), query_value):
+            acted = True
+        else:
+            return acted
+
+        if submit_sel and str(submit_sel).strip().lower() not in ("null", "none", ""):
+            if await _click_selector(driver, str(submit_sel).strip()):
+                await driver.polite_delay(2.0)
+                return True
+
+        if use_enter:
+            try:
+                await driver.page.keyboard.press("Enter")
+                await driver.polite_delay(2.0)
+                return True
+            except Exception:
+                pass
+
+        # Default: try common search buttons after fill
+        for sel in [
+            'button:has-text("Search")',
+            'input[type="submit"]',
+            '[aria-label*="search" i]',
+            'img[alt*="search" i]',
+        ]:
+            if await _click_selector(driver, sel):
+                await driver.polite_delay(2.0)
+                return True
+
+        try:
+            await driver.page.keyboard.press("Enter")
+            await driver.polite_delay(2.0)
+            return acted
+        except Exception:
+            return acted
+
+
+async def _click_selector(driver: "BaseDriver", selector: str) -> bool:
+    try:
+        loc = driver.page.locator(selector).first
+        if await loc.count() > 0 and await loc.is_visible(timeout=5_000):
+            await loc.click(force=True)
+            return True
+    except Exception as exc:
+        logger.debug("AI click failed %s: %s", selector, exc)
+    return False
+
+
+async def _fill_selector(driver: "BaseDriver", selector: str, value: str) -> bool:
+    if not value:
+        return False
+    try:
+        loc = driver.page.locator(selector).first
+        if await loc.count() > 0 and await loc.is_visible(timeout=5_000):
+            await loc.click()
+            await loc.fill("")
+            try:
+                await loc.press_sequentially(value, delay=20)
+            except Exception:
+                await loc.fill(value)
+            await loc.evaluate(
+                """(el, val) => {
+                    el.value = val;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                value,
+            )
+            return True
+    except Exception as exc:
+        logger.debug("AI fill failed %s: %s", selector, exc)
+    return False
+
+
+async def execute_ai_page_search(
+    driver: "BaseDriver",
+    query_type: QueryType,
+    query_value: str,
+    *,
+    portal_type: str = "assessor",
+    user_instructions: Optional[str] = None,
+) -> bool:
+    """
+    Analyze the current page with GPT and perform search actions.
+    Returns True if the search field was filled and submit was attempted.
+    """
+    ai = PageSearchAI()
+    if not ai.is_configured:
+        await driver._emit_status("OpenAI key not configured — skipping AI page analysis.")
+        return False
+
+    portal_label = "recorder" if portal_type == "recorder" else query_type.value
+    await driver._emit_status(f"Analyzing page with AI ({portal_label} search)...")
+    snapshot = await ai.extract_snapshot(driver)
+    if not snapshot.get("elements"):
+        await driver._emit_status("AI could not read interactive elements on this page.")
+        return False
+
+    plan = await ai.plan_search(
+        snapshot,
+        query_type,
+        query_value,
+        portal_type=portal_type,
+        user_instructions=user_instructions,
+    )
+    if not plan:
+        await driver._emit_status("AI could not plan search actions for this page.")
+        return False
+
+    reasoning = plan.get("reasoning") or "planned search actions"
+    await driver._emit_status(f"AI: {reasoning}")
+
+    success = await ai.execute_plan(driver, plan, query_value)
+    if success:
+        await driver._emit_status("AI completed search form fill and submit.")
+    else:
+        await driver._emit_status("AI planned actions but could not fill the search field.")
+    return success

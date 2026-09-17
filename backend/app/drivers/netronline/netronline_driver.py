@@ -105,8 +105,10 @@ def _pick_online_url(links: list[dict[str, str]], allow_map: bool = False) -> Op
 
 
 class NetronlineDriver(BaseDriver):
-    async def resolve_county_sources(self, state: str, county: str) -> CountySources:
-        county_url = f"{NETR_BASE}/state/{state.upper()}/county/{county.lower()}"
+    async def resolve_county_sources(
+        self, state: str, county: str, start_url: Optional[str] = None
+    ) -> CountySources:
+        county_url = start_url or f"{NETR_BASE}/state/{state.upper()}/county/{county.lower()}"
         await self.safe_goto(
             county_url,
             wait_selector='a:has-text("Go to Data Online"), table',

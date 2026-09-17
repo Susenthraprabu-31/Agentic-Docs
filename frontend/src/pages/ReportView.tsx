@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import ChainOfTitle from "../components/ChainOfTitle";
+import ChainOfTitle, { mergeChainEntries } from "../components/ChainOfTitle";
 import DocumentsList from "../components/DocumentsList";
+import PropertyDetails from "../components/PropertyDetails";
 import ReportPreview from "../components/ReportPreview";
 import TaxRecords from "../components/TaxRecords";
 import { getReportByRun, ReportData } from "../api/client";
@@ -20,9 +21,20 @@ export default function ReportView() {
       .finally(() => setLoading(false));
   }, [runId]);
 
-  const documents = (report?.report_json?.documents || []) as Record<string, string>[];
-  const property = report?.report_json?.property as Record<string, unknown> | undefined;
-  const taxRecord = report?.report_json?.tax_record as Record<string, unknown> | undefined;
+  const documents = (report?.report_json?.documents || []) as Record<string, any>[];
+  const property = report?.report_json?.property;
+  const taxRecord = report?.report_json?.tax_record;
+  const chainEntries = mergeChainEntries(
+    documents,
+    (property?.chain_of_title as Record<string, string>[]) || []
+  );
+  const currentOwner = property?.owner_name ? String(property.owner_name) : undefined;
+  const state = report?.report_json?.state;
+  const county = report?.report_json?.county;
+  const queryType = report?.report_json?.query_type;
+  const queryValue = report?.report_json?.query_value;
+
+  const firstDoc = documents[0];
 
   return (
     <div className="space-y-6">
@@ -37,19 +49,39 @@ export default function ReportView() {
       {report && (
         <>
           <ReportPreview report={report} />
-          {property && (
+
+          {property ? (
+            <PropertyDetails property={property as Record<string, unknown>} />
+          ) : (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="font-semibold mb-3">Property Summary</h3>
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-slate-500">Owner</dt><dd className="font-medium">{String(property.owner_name || "—")}</dd></div>
-                <div><dt className="text-slate-500">APN</dt><dd className="font-medium">{String(property.apn || "—")}</dd></div>
-                <div className="col-span-2"><dt className="text-slate-500">Legal Description</dt><dd className="font-medium">{String(property.legal_desc || "—")}</dd></div>
-              </dl>
+              <h3 className="text-base font-semibold text-slate-800 mb-1">Search & Recording Overview</h3>
+              <p className="text-xs text-slate-500 mb-4">Official public records search details</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="text-xs text-slate-500 uppercase tracking-wide">Location</div>
+                  <div className="font-semibold text-slate-900 mt-0.5">
+                    {county ? `${county.charAt(0).toUpperCase() + county.slice(1)} County` : "—"}, {state || "FL"}
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="text-xs text-slate-500 uppercase tracking-wide">Query ({queryType || "book_page"})</div>
+                  <div className="font-semibold text-slate-900 mt-0.5">{queryValue || "—"}</div>
+                </div>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="text-xs text-slate-500 uppercase tracking-wide">Document Type</div>
+                  <div className="font-semibold text-slate-900 mt-0.5">{firstDoc?.document_type || "Recorded Document"}</div>
+                </div>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="text-xs text-slate-500 uppercase tracking-wide">Grantee (Buyer/Owner)</div>
+                  <div className="font-semibold text-slate-900 mt-0.5">{firstDoc?.grantee || currentOwner || "—"}</div>
+                </div>
+              </div>
             </div>
           )}
+
           <TaxRecords taxRecord={taxRecord as Parameters<typeof TaxRecords>[0]["taxRecord"]} />
-          <DocumentsList documents={documents} />
-          <ChainOfTitle documents={documents} />
+          <DocumentsList documents={documents} runId={runId} />
+          <ChainOfTitle entries={chainEntries} currentOwner={currentOwner || firstDoc?.grantee} />
         </>
       )}
     </div>

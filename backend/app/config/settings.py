@@ -9,10 +9,11 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     openai_api_key: str = ""
+    openai_browser_model: str = "gpt-4o-mini"
     mistral_api_key: str = ""
     port: int = 8000
     environment: str = "development"
-    playwright_headless: bool = False
+    playwright_headless: bool = True
     playwright_channel: str = "chrome"
     playwright_user_data_dir: str = ".playwright-profile"
     playwright_cloudflare_wait_seconds: int = 180
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
     @property
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
+
+    @property
+    def openai_configured(self) -> bool:
+        return bool(self.openai_api_key)
 
 
 @lru_cache

@@ -29,17 +29,26 @@ def _embed_image_as_data_uri(image_path: str | None) -> str | None:
     candidates = [
         Path(image_path),
         BACKEND_ROOT / image_path,
-        BACKEND_ROOT / "screenshots" / Path(image_path).name,
         Path.cwd() / image_path,
+        BACKEND_ROOT / "local_storage" / Path(image_path).name,
+        BACKEND_ROOT / "local_storage" / Path(image_path).stem / Path(image_path).name,
+        BACKEND_ROOT / "downloads" / Path(image_path).name,
+        BACKEND_ROOT / "downloads" / Path(image_path).stem / Path(image_path).name,
+        BACKEND_ROOT / "screenshots" / Path(image_path).name,
+        BACKEND_ROOT / "screenshots" / Path(image_path).stem / Path(image_path).name,
         Path.cwd() / "screenshots" / Path(image_path).name,
+        Path.cwd() / "local_storage" / Path(image_path).name,
     ]
     for candidate in candidates:
-        resolved = candidate.resolve()
-        if resolved.is_file():
-            mime = "image/png" if resolved.suffix.lower() == ".png" else "image/jpeg"
-            encoded = base64.b64encode(resolved.read_bytes()).decode("utf-8")
-            return f"data:{mime};base64,{encoded}"
-    logger.warning("GIS screenshot not found for PDF embed: %s", image_path)
+        try:
+            resolved = candidate.resolve()
+            if resolved.is_file() and resolved.stat().st_size > 0:
+                mime = "image/png" if resolved.suffix.lower() == ".png" else "image/jpeg"
+                encoded = base64.b64encode(resolved.read_bytes()).decode("utf-8")
+                return f"data:{mime};base64,{encoded}"
+        except Exception:
+            pass
+    logger.warning("Image not found for PDF embed: %s", image_path)
     return None
 
 
@@ -116,6 +125,30 @@ class ReportBuilder:
             d for d in documents
             if (d.get("ocr_json") or {}).get("source") == "assessor_sales"
         ]
+
+        # Enrich documents with image data URIs, folder info, and file names for report embedding
+        for d in documents:
+            sp = d.get("screenshot_path")
+            ocr = d.get("ocr_json") or {}
+            dl_path = ocr.get("download_path") or sp
+            folder_name = ocr.get("folder_name")
+            if folder_name:
+                d["folder_name"] = folder_name
+
+            if dl_path:
+                d["download_path"] = str(dl_path)
+                d["file_name"] = Path(dl_path).name
+
+            img_candidate = ocr.get("image_path")
+            if not img_candidate and sp:
+                img_candidate = Path(sp).with_suffix(".png") if str(sp).lower().endswith(".pdf") else Path(sp)
+            if not img_candidate and folder_name:
+                img_candidate = Path("local_storage") / folder_name / f"{folder_name}.png"
+
+            if img_candidate:
+                data_uri = _embed_image_as_data_uri(str(img_candidate))
+                if data_uri:
+                    d["image_data_uri"] = data_uri
 
         report_json: dict[str, Any] = {
             "run_id": run_id,

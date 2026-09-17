@@ -2,8 +2,10 @@
 
 from app.config.florida_portals import (
     ORANGE_SEARCH_URL,
+    MIAMI_DADE_SEARCH_URL,
     is_florida_pa_assessor,
     is_florida_schneider,
+    is_miami_dade_assessor,
     is_orange_county_assessor,
     resolve_florida_assessor_url,
 )
@@ -21,6 +23,8 @@ ASSESSOR_SEARCH_URLS: dict[str, str] = {
     "honolulucountyhi": HONOLULU_SEARCH_URL,
     "ocpaweb.ocpafl.org": ORANGE_SEARCH_URL,
     "ocpafl.org": ORANGE_SEARCH_URL,
+    "miamidadepa.gov": MIAMI_DADE_SEARCH_URL,
+    "miamidade.gov": MIAMI_DADE_SEARCH_URL,
 }
 
 
@@ -33,6 +37,8 @@ def resolve_assessor_search_url(assessor_url: str) -> str:
         return resolve_florida_assessor_url(assessor_url)
     if is_orange_county_assessor(assessor_url):
         return ORANGE_SEARCH_URL
+    if is_miami_dade_assessor(assessor_url):
+        return MIAMI_DADE_SEARCH_URL
     if is_florida_schneider(assessor_url):
         return resolve_florida_assessor_url(assessor_url)
     if "schneidercorp.com" in lower and "pagetype=search" in lower:

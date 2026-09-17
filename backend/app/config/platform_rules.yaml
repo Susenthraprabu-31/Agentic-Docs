@@ -1,0 +1,102 @@
+# Platform detection rules — url fragment → platform name.
+# Order matters: more specific fragments must come before generic ones.
+
+assessor:
+  - fragment: ocpafl.org
+    platform: orange_fl
+  - fragment: ocpaweb.ocpafl.org
+    platform: orange_fl
+  - fragment: miamidadepa.gov
+    platform: miami_dade
+  - fragment: miamidade.gov/pa
+    platform: miami_dade
+  - fragment: bcpa.net
+    platform: broward
+  - fragment: hcpafl.org
+    platform: hillsborough
+  - fragment: leepa.org
+    platform: lee_fl
+  - fragment: pcpao.org
+    platform: pinellas_fl
+  - fragment: pbcgov.org
+    platform: palm_beach_fl
+  - fragment: coj.net
+    platform: duval_fl
+  - fragment: .floridapa.com
+    platform: florida_pa
+  - fragment: honolulucountyhi
+    platform: schneider
+  - fragment: qpublic.net/hi/honolulu
+    platform: schneider
+  - fragment: schneidercorp.com
+    platform: schneider
+  - fragment: qpublic.net
+    platform: schneider
+  - fragment: tylerhost.net
+    platform: tyler
+  - fragment: govtech.com
+    platform: tyler
+  - fragment: spatialest.com
+    platform: spatialest
+  - fragment: bsasoftware.com
+    platform: bsa
+  - fragment: aumentum.com
+    platform: aumentum
+
+recorder:
+  - fragment: onlineservices.miamidadeclerk.gov
+    platform: miami_dade_clerk
+  - fragment: or.occompt.com
+    platform: orange_fl_clerk
+  - fragment: officialrecords.broward.org
+    platform: accuweb
+  - fragment: hillsclerk.com
+    platform: hillsborough_clerk
+  - fragment: myfloridacounty.com
+    platform: myflorida
+  - fragment: fidlar.com
+    platform: fidlar
+  - fragment: landrecords.net
+    platform: fidlar
+  - fragment: tylerhost.net
+    platform: tyler
+  - fragment: isite.tylerhost.net
+    platform: tyler
+  - fragment: granicus.com
+    platform: granicus
+  - fragment: governmentwindow.com
+    platform: granicus
+  - fragment: civilclerks.com
+    platform: civil_clerks
+  - fragment: accuweb
+    platform: accuweb
+  - fragment: officialmedia
+    platform: official_media
+
+tax:
+  - fragment: .floridatax.us
+    platform: florida_tax
+  - fragment: county-taxes.net
+    platform: county_taxes
+  - fragment: govtech.com/tax
+    platform: govtech_tax
+
+assessor_search_overrides:
+  ocpaweb.ocpafl.org: https://ocpaweb.ocpafl.org/parcelsearch
+  ocpafl.org: https://ocpaweb.ocpafl.org/parcelsearch
+  miamidadepa.gov: https://apps.miamidadepa.gov/propertysearch/#/
+  miamidade.gov/pa: https://apps.miamidadepa.gov/propertysearch/#/
+  qpublic.net/hi/honolulu: https://qpublic.schneidercorp.com/Application.aspx?App=HonoluluCountyHI&PageType=Search
+  honolulucountyhi: https://qpublic.schneidercorp.com/Application.aspx?App=HonoluluCountyHI&PageType=Search
+
+recorder_search_overrides:
+  miamidadeclerk.gov: https://onlineservices.miamidadeclerk.gov/officialrecords
+  onlineservices.miamidadeclerk.gov: https://onlineservices.miamidadeclerk.gov/officialrecords
+
+# County slug → tax host override (default: {county}.floridatax.us)
+tax_host_overrides:
+  columbia: columbia.floridatax.us
+
+# Platforms that use floridatax.us when assessor is florida_pa
+tax_assessor_platforms:
+  - florida_pa

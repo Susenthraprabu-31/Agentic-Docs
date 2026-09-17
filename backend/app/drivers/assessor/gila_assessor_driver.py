@@ -9,6 +9,8 @@ from app.config.assessor_portals import (
     resolve_assessor_search_url,
 )
 from app.drivers.assessor.florida_assessor import search_florida_assessor
+from app.drivers.page_search_ai import execute_ai_page_search
+from app.drivers.playwright_instructions import apply_playwright_instructions
 from app.drivers.base.base_driver import BaseDriver
 from app.extraction.html_extractors import extract_parcel_from_html
 from app.extraction.schneider_extractors import (
@@ -55,6 +57,37 @@ class GilaAssessorDriver(BaseDriver):
 
         await self.safe_goto(search_url, wait_selector="table, form, input")
         await self.dismiss_netronline_modals()
+
+        notes = (self.playwright_notes or "").strip()
+
+        async def _collect_results() -> list[ParcelRecord]:
+            await self.polite_delay(2.5)
+            html = await self.page.content()
+            parcel = extract_parcel_from_html(html)
+            if parcel.apn or parcel.owner_name or parcel.property_address:
+                return [parcel]
+            results = await self._parse_result_links()
+            return results or []
+
+        # User instructions first — e.g. "click Search Records and Tax Details" before AI search
+        if notes:
+            if await apply_playwright_instructions(self, notes, query_type, query_value):
+                found = await _collect_results()
+                if found:
+                    return found
+
+        if await execute_ai_page_search(
+            self, query_type, query_value, user_instructions=notes or None
+        ):
+            found = await _collect_results()
+            if found:
+                return found
+
+        if notes:
+            if await apply_playwright_instructions(self, notes, query_type, query_value):
+                found = await _collect_results()
+                if found:
+                    return found
 
         if "schneidercorp.com" in search_url or "qpublic.net" in search_url:
             return await self._search_qpublic(search_url, query_type, query_value)

@@ -5,3 +5,17 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+/* React Flow dark canvas */
+.react-flow__node {
+  cursor: default;
+}
+
+.react-flow__edge-path {
+  stroke: #14b8a6;
+  stroke-width: 2;
+}
+
+.react-flow__attribution {
+  display: none;
+}

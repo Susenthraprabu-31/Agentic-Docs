@@ -7,6 +7,8 @@ from playwright.async_api import Frame, Locator
 from app.config.florida_portals import (
     format_florida_pa_address_for_search,
     is_florida_pa_assessor,
+    is_miami_dade_gis,
+    normalize_florida_parcel,
     normalize_florida_pa_parcel,
     resolve_florida_assessor_url,
 )
@@ -15,7 +17,9 @@ from app.drivers.assessor.florida_assessor import (
     _dismiss_florida_pa_disclaimer,
     _dismiss_florida_pa_disclaimer_in_frame,
     _fill_florida_pa_input,
+    _is_miami_dade_detail_page,
     _open_florida_pa_detail,
+    navigate_miami_dade_property_search,
     _wait_for_florida_pa_frame,
 )
 from app.drivers.base.base_driver import BaseDriver
@@ -44,6 +48,9 @@ class GilaGisDriver(BaseDriver):
     ) -> Optional[str]:
         if "floridapa.com" in gis_url.lower() or is_florida_pa_assessor(gis_url):
             return await self._capture_florida_pa_map(gis_url, parcel, query_type, query_value)
+
+        if is_miami_dade_gis(gis_url):
+            return await self._capture_miami_dade_map(gis_url, parcel, query_type, query_value)
 
         await self.page.goto(gis_url, wait_until="domcontentloaded")
         await self.polite_delay(2.0)
@@ -86,6 +93,56 @@ class GilaGisDriver(BaseDriver):
 
         await self._emit_status("Could not capture parcel map image.")
         return None
+
+    async def _capture_miami_dade_map(
+        self,
+        gis_url: str,
+        parcel: Optional[str],
+        query_type: Optional[QueryType],
+        query_value: Optional[str],
+    ) -> Optional[str]:
+        folio = normalize_florida_parcel(parcel, county="miami-dade") if parcel else None
+        safe_name = (folio or "overview").replace("/", "-")
+        path = self.screenshot_dir / f"gis_map_{safe_name}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not await navigate_miami_dade_property_search(
+            self,
+            query_type or QueryType.PARCEL,
+            query_value or folio or "",
+            parcel=folio,
+        ):
+            await self._emit_status("Could not open Miami-Dade property detail for map capture.")
+            return None
+
+        await self._emit_status("Waiting for Miami-Dade aerial map to render...")
+        await self.page.wait_for_timeout(8_000)
+
+        map_locator = await self._find_best_map_locator(self.page.main_frame)
+        if map_locator:
+            try:
+                await map_locator.screenshot(path=str(path.resolve()), timeout=30_000)
+                await self._emit_status("Captured aerial map from Miami-Dade Property Appraiser.")
+                return str(path.resolve())
+            except Exception as exc:
+                logger.warning("Miami-Dade map element screenshot failed: %s", exc)
+
+        clip = await self._find_map_clip_box(self.page.main_frame)
+        if clip:
+            try:
+                await self.page.screenshot(path=str(path.resolve()), clip=clip, timeout=30_000)
+                await self._emit_status("Captured aerial map from Miami-Dade Property Appraiser.")
+                return str(path.resolve())
+            except Exception as exc:
+                logger.warning("Miami-Dade clipped map screenshot failed: %s", exc)
+
+        try:
+            await self.page.screenshot(path=str(path.resolve()), full_page=True, timeout=30_000)
+            await self._emit_status("Captured Miami-Dade property search page.")
+            return str(path.resolve())
+        except Exception as exc:
+            logger.warning("Miami-Dade full-page map screenshot failed: %s", exc)
+            return None
 
     async def _navigate_to_florida_pa_detail(
         self,

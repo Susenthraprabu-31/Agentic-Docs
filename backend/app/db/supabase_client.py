@@ -25,6 +25,8 @@ class InMemoryStore:
         self.records: list[dict[str, Any]] = []
         self.documents: list[dict[str, Any]] = []
         self.reports: dict[str, dict[str, Any]] = {}
+        self.batches: dict[str, dict[str, Any]] = {}
+        self.batch_orders: list[dict[str, Any]] = []
 
 
 _memory = InMemoryStore()

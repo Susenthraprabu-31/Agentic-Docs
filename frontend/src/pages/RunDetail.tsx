@@ -5,6 +5,7 @@ import PropertyDetails from "../components/PropertyDetails";
 import DocumentsList from "../components/DocumentsList";
 import TaxRecords from "../components/TaxRecords";
 import ReportPreview from "../components/ReportPreview";
+import PipelineNodes from "../components/PipelineNodes";
 import RunProgress from "../components/RunProgress";
 import SourcesPanel from "../components/SourcesPanel";
 import { getReportByRun, ReportData } from "../api/client";
@@ -65,6 +66,13 @@ export default function RunDetail() {
           </Link>
         )}
       </div>
+
+      <PipelineNodes
+        events={events}
+        sources={runDetail?.sources || []}
+        runStatus={runDetail?.run.status}
+        live={connected}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <RunProgress

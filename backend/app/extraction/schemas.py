@@ -10,6 +10,7 @@ class QueryType(str, Enum):
     OWNER = "owner"
     PARCEL = "parcel"
     ADDRESS = "address"
+    BOOK_PAGE = "book_page"
 
 
 class RunStatus(str, Enum):
@@ -36,11 +37,50 @@ class SourceStatus(str, Enum):
     FAILED = "failed"
 
 
+class NodeOverride(BaseModel):
+    """Per-node inputs from the pipeline editor UI."""
+
+    node_id: str = Field(description="Node key, e.g. assessor, recorder, gis, ai_agent")
+    url: Optional[str] = None
+    playwright_notes: Optional[str] = None
+    enabled: bool = True
+    # OpenAI Agent node fields (API key always from backend .env)
+    agent_name: Optional[str] = None
+    instructions: Optional[str] = None
+    user_prompt: Optional[str] = None
+    model: Optional[str] = "gpt-4o"
+    agent_type: Optional[str] = "orchestrator"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 1000
+
+
+class PipelineGraphNode(BaseModel):
+    id: str
+    node_id: str
+    type: str = "pipelineNode"
+    enabled: bool = True
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineGraphEdge(BaseModel):
+    source: str
+    target: str
+
+
+class PipelineGraph(BaseModel):
+    nodes: list[PipelineGraphNode] = Field(default_factory=list)
+    edges: list[PipelineGraphEdge] = Field(default_factory=list)
+
+
 class SearchRequest(BaseModel):
     state: str = "AZ"
     county: str = "gila"
     query_type: QueryType
-    query_value: str = Field(min_length=1)
+    query_value: str = Field(default="")
+    book_number: Optional[str] = None
+    page_number: Optional[str] = None
+    pipeline_graph: Optional[PipelineGraph] = None
+    node_overrides: list[NodeOverride] = Field(default_factory=list)
 
 
 class SearchResponse(BaseModel):
@@ -146,3 +186,22 @@ class SourceProgress(BaseModel):
     status: SourceStatus = SourceStatus.PENDING
     records_found: int = 0
     message: Optional[str] = None
+
+
+class GenerateInstructionsRequest(BaseModel):
+    node_id: str = Field(description="assessor, recorder, gis, tax, or netr")
+    state: str = "AZ"
+    county: str = "gila"
+    query_type: QueryType = QueryType.OWNER
+    url: Optional[str] = None
+    query_value: Optional[str] = ""
+    playwright_notes: Optional[str] = None
+
+
+class GenerateInstructionsResponse(BaseModel):
+    instructions: str
+    layout_type: str
+    confidence: str
+    reasoning: str
+    resolved_url: str
+
