@@ -1,0 +1,241 @@
+{
+  "id": "ba694f36-1286-49d6-a8b7-2905b326cf2e",
+  "name": "Full flow Workflow",
+  "description": "",
+  "nodes": [
+    {
+      "id": "input",
+      "data": {
+        "label": "Input",
+        "state": "FL",
+        "county": "miami-dade",
+        "nodeId": "input",
+        "address": "2125 SW 93 CT",
+        "enabled": true,
+        "queryType": "address",
+        "bookNumber": "30189",
+        "pageNumber": "4575",
+        "queryValue": "2125 SW 93 CT",
+        "parcelNumber": "30-4009-096-0060",
+        "executionStatus": "done"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 0
+      },
+      "selected": false
+    },
+    {
+      "id": "netr",
+      "data": {
+        "url": "",
+        "label": "NETR Resolver",
+        "nodeId": "netr",
+        "enabled": true,
+        "playwrightNotes": "Auto-scrape publicrecords.netronline.com for portal links. Leave URL empty to use NETR."
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 200
+      }
+    },
+    {
+      "id": "platform",
+      "data": {
+        "label": "Platform Detector",
+        "nodeId": "platform",
+        "enabled": true,
+        "playwrightNotes": "Maps portal URLs to platform drivers (Schneider, FloridaPA, etc.)"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 400
+      }
+    },
+    {
+      "id": "assessor",
+      "data": {
+        "url": "",
+        "label": "Assessor",
+        "nodeId": "assessor",
+        "enabled": true,
+        "playwrightNotes": "e.g. Click parcel search tab, fill owner field, wait for results table"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 600
+      }
+    },
+    {
+      "id": "recorder",
+      "data": {
+        "url": "",
+        "label": "Recorder",
+        "nodeId": "recorder",
+        "enabled": true,
+        "playwrightNotes": "e.g. Search by grantor name, expand first result row"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 800
+      }
+    },
+    {
+      "id": "tax",
+      "data": {
+        "url": "",
+        "label": "Tax",
+        "nodeId": "tax",
+        "enabled": true,
+        "playwrightNotes": "e.g. Open PropertyDetail page, wait for tax bill table"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 281.56869831031,
+        "y": 1058.8171520720962
+      },
+      "selected": false
+    },
+    {
+      "id": "normalizer",
+      "data": {
+        "label": "Normalizer",
+        "nodeId": "normalizer",
+        "enabled": true,
+        "playwrightNotes": "Merge & deduplicate records by APN"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 300.1292534664172,
+        "y": 1266.4149542683224
+      },
+      "selected": false
+    },
+    {
+      "id": "report",
+      "data": {
+        "label": "Report",
+        "nodeId": "report",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 309.27891413297044,
+        "y": 1477.3945470681863
+      },
+      "selected": true
+    },
+    {
+      "id": "output",
+      "data": {
+        "label": "Output",
+        "nodeId": "output",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 1800
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-netr",
+      "source": "input",
+      "target": "netr",
+      "animated": true
+    },
+    {
+      "id": "e-netr-platform",
+      "source": "netr",
+      "target": "platform",
+      "animated": true
+    },
+    {
+      "id": "e-platform-assessor",
+      "source": "platform",
+      "target": "assessor",
+      "animated": true
+    },
+    {
+      "id": "e-assessor-recorder",
+      "source": "assessor",
+      "target": "recorder",
+      "animated": true
+    },
+    {
+      "id": "e-tax-normalizer",
+      "source": "tax",
+      "target": "normalizer",
+      "animated": true
+    },
+    {
+      "id": "e-normalizer-report",
+      "source": "normalizer",
+      "target": "report",
+      "animated": true
+    },
+    {
+      "id": "e-report-output",
+      "source": "report",
+      "target": "output",
+      "animated": true
+    },
+    {
+      "id": "xy-edge__recorder-tax",
+      "source": "recorder",
+      "target": "tax",
+      "animated": true
+    }
+  ],
+  "metadata": {
+    "step_count": 9
+  },
+  "created_at": "2026-09-17T11:23:48.710613+00:00",
+  "updated_at": "2026-09-17T14:57:16.604685+00:00"
+}

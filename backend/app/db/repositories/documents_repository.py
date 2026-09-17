@@ -55,34 +55,26 @@ class DocumentsRepository:
 
 
     def list_by_run(self, run_id: str) -> list[dict[str, Any]]:
-
-        mem_docs = [d for d in get_memory_store().documents if d["run_id"] == run_id]
-
-
+        mem_docs = [d for d in get_memory_store().documents if d.get("run_id") == run_id]
 
         client = get_supabase()
-
         if client:
-
             result = supabase_call(
-
                 lambda: client.table("documents").select("*").eq("run_id", run_id).execute(),
-
                 label="list_documents",
-
             )
-
             if result and result.data:
-
-                by_id = {d["id"]: d for d in result.data}
-
+                by_id = {d["id"]: dict(d) for d in result.data}
                 for doc in mem_docs:
-
-                    by_id[doc["id"]] = doc
-
+                    doc_id = doc.get("id")
+                    if doc_id not in by_id:
+                        by_id[doc_id] = doc
+                    else:
+                        existing = by_id[doc_id]
+                        for k, v in doc.items():
+                            if v and not existing.get(k):
+                                existing[k] = v
                 return list(by_id.values())
-
-
 
         return mem_docs
 

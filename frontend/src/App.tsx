@@ -1,60 +1,68 @@
-import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import Home from "./pages/Home";
 import RunDetail from "./pages/RunDetail";
 import ReportView from "./pages/ReportView";
 import BatchDashboard from "./pages/BatchDashboard";
 import BatchDetailView from "./pages/BatchDetailView";
+import { ThemeProvider } from "./context/ThemeContext";
+import ThemeToggle from "./components/common/ThemeToggle";
 
+/** Thin wrapper — the pipeline editor is full-screen and owns its own layout.
+ *  Non-editor pages still get a simple header nav. */
 function Layout() {
   const location = useLocation();
   const isEditor = location.pathname === "/";
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#0a0e14]">
-      <header className="bg-[#0c1017] border-b border-teal-900/40 px-6 py-2.5 shrink-0">
-        <div className={`${isEditor ? "w-full" : "max-w-6xl mx-auto"} flex items-center justify-between`}>
-          <div className="flex items-center gap-6">
-            <Link to="/" className="font-bold text-teal-300 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-teal-400" />
-              Docs
-            </Link>
+  if (isEditor) {
+    // Full-screen — PipelineEditor handles all chrome
+    return (
+      <Routes>
+        <Route path="/" element={<Home />} />
+      </Routes>
+    );
+  }
 
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0d1117] text-slate-900 dark:text-zinc-100 transition-colors">
+      {/* Minimal header for non-editor pages */}
+      <header className="bg-white dark:bg-[#0d1117] border-b border-slate-200 dark:border-white/[0.06] px-6 py-3 shrink-0">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <a href="/" className="font-bold text-violet-600 dark:text-violet-400 flex items-center gap-2 text-sm">
+              <span className="w-6 h-6 rounded-md bg-violet-600 flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+              Docs
+            </a>
             <nav className="flex items-center gap-1 text-xs">
-              <NavLink
-                to="/"
-                className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                    isActive
-                      ? "bg-teal-950 text-teal-300 border border-teal-800"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
-                  }`
-                }
+              <a
+                href="/"
+                className="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/40 transition-colors font-medium"
               >
                 Pipeline Canvas
-              </NavLink>
-              <NavLink
-                to="/batches"
-                className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
-                    isActive
-                      ? "bg-teal-950 text-teal-300 border border-teal-800"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
-                  }`
-                }
+              </a>
+              <a
+                href="/batches"
+                className="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/40 transition-colors font-medium flex items-center gap-1.5"
               >
-                <span>Batch Orders</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-900/60 text-teal-300">New</span>
-              </NavLink>
+                Batch Orders
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 font-bold">
+                  New
+                </span>
+              </a>
             </nav>
           </div>
 
-          <span className="text-xs text-zinc-600 hidden sm:inline">Node Pipeline & Batch Automation</span>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
-      <main className={isEditor ? "flex-1 min-h-0" : "max-w-6xl mx-auto px-6 py-8 w-full"}>
+      <main className="max-w-6xl mx-auto px-6 py-8 w-full">
         <Routes>
-          <Route path="/" element={<Home />} />
           <Route path="/batches" element={<BatchDashboard />} />
           <Route path="/batches/:batchId" element={<BatchDetailView />} />
           <Route path="/runs/:runId" element={<RunDetail />} />
@@ -67,8 +75,10 @@ function Layout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Layout />
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <Layout />
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }

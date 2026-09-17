@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 from app.db.repositories.documents_repository import DocumentsRepository
 from app.db.repositories.records_repository import RecordsRepository
 from app.db.repositories.runs_repository import RunsRepository
-from app.db.supabase_client import get_memory_store, get_supabase, supabase_call
+from app.db.report_storage import (
+    enrich_report_storage,
+    merge_storage_into_report_json,
+    persist_report_storage,
+)
+from app.db.supabase_client import get_memory_store, get_supabase
 from app.report.pdf_exporter import DEFAULT_REPORTS_DIR, PdfExporter
 from app.storage.report_pdf_storage import ReportPdfStorage
 
@@ -267,41 +272,46 @@ class ReportBuilder:
         if not upload:
             return report
 
-        report = {
+        report_json = merge_storage_into_report_json(
+            report.get("report_json"),
+            upload.path,
+            upload.url,
+        )
+        report = enrich_report_storage({
             **report,
+            "report_json": report_json,
             "storage_path": upload.path,
             "storage_url": upload.url,
-        }
+        })
 
         mem = get_memory_store()
         mem.reports[run_id] = report
 
         client = get_supabase()
         if client:
-            try:
-                supabase_call(
-                    lambda: client.table("reports")
-                    .update({"storage_path": upload.path, "storage_url": upload.url})
-                    .eq("id", report["id"])
-                    .execute(),
-                    label="report_storage_update",
-                )
-            except Exception as exc:
-                logger.warning("Supabase report storage update failed: %s", exc)
+            if not persist_report_storage(
+                client,
+                report_id=report["id"],
+                storage_path=upload.path,
+                storage_url=upload.url,
+                report_json=report_json,
+            ):
+                logger.warning("Supabase report storage update failed for run %s", run_id)
 
         return report
 
     def get_report_by_run(self, run_id: str) -> Optional[dict[str, Any]]:
         mem_report = get_memory_store().reports.get(run_id)
         if mem_report:
-            return mem_report
+            return enrich_report_storage(mem_report)
         client = get_supabase()
         if client:
             try:
                 result = client.table("reports").select("*").eq("run_id", run_id).execute()
                 if result.data:
-                    get_memory_store().reports[run_id] = result.data[0]
-                    return result.data[0]
+                    report = enrich_report_storage(result.data[0])
+                    get_memory_store().reports[run_id] = report
+                    return report
             except Exception as exc:
                 logger.warning("Supabase report fetch failed: %s", exc)
         return None
@@ -309,14 +319,14 @@ class ReportBuilder:
     def get_report(self, report_id: str) -> Optional[dict[str, Any]]:
         for report in get_memory_store().reports.values():
             if report.get("id") == report_id:
-                return report
+                return enrich_report_storage(report)
 
         client = get_supabase()
         if client:
             try:
                 result = client.table("reports").select("*").eq("id", report_id).execute()
                 if result.data:
-                    report = result.data[0]
+                    report = enrich_report_storage(result.data[0])
                     get_memory_store().reports[report["run_id"]] = report
                     return report
             except Exception as exc:

@@ -49,10 +49,10 @@ export default function RunDetail() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link to="/" className="text-sm text-blue-600 hover:underline">← New Search</Link>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">Research Run</h1>
+          <Link to="/" className="text-sm font-semibold text-violet-600 dark:text-violet-400 hover:underline">← New Search</Link>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100 mt-1">Research Run</h1>
           {runDetail && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-zinc-400">
               {runDetail.run.query_type}: {runDetail.run.query_value}
             </p>
           )}
@@ -60,7 +60,7 @@ export default function RunDetail() {
         {runDetail?.run.status === "completed" && (
           <Link
             to={`/reports/run/${runId}`}
-            className="text-sm bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700"
+            className="text-sm bg-violet-600 hover:bg-violet-700 text-white font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
           >
             View Full Report
           </Link>
@@ -86,7 +86,7 @@ export default function RunDetail() {
       </div>
 
       {runDetail?.run.status === "completed" && (
-        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
+        <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/40 rounded-xl px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
           <strong>What the numbers mean:</strong> NETR "records" = county portal links found.
           Parcels = assessor property data. Chain of Title / Recorded Documents include Sales Information
           transfers from the assessor report (date, instrument #, grantor/grantee when listed).

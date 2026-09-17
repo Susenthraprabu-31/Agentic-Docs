@@ -44,9 +44,7 @@ class InputNode(BaseNode):
                     f"(expected one of {sorted(_VALID_QUERY_TYPES)})"
                 )
 
-            ctx.query_value = ctx.query_value.strip()
-            if not ctx.query_value:
-                raise ValueError("query_value cannot be empty")
+            ctx.query_value = (ctx.query_value or "").strip()
 
             self._runs_repo.update_run(
                 ctx.run_id,

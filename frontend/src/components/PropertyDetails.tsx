@@ -85,23 +85,23 @@ function SectionTable({ table, title }: { table: { headers: string[]; rows: stri
 
   return (
     <div>
-      <h4 className="text-sm font-semibold text-slate-700 mb-2">{title}</h4>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
-          <thead className="bg-slate-100">
+      <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">{title}</h4>
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-white/[0.08]">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-white/[0.08]">
             <tr>
               {headers.map((header, idx) => (
-                <th key={`${header}-${idx}`} className="px-3 py-2 text-left text-slate-700 font-semibold whitespace-nowrap">
+                <th key={`${header}-${idx}`} className="px-3 py-2 text-left text-slate-800 dark:text-zinc-200 font-semibold whitespace-nowrap">
                   {header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05] bg-white dark:bg-[#161b22]">
             {table.rows.map((row, rowIdx) => (
-              <tr key={rowIdx} className="border-t border-slate-100 even:bg-slate-50/60">
+              <tr key={rowIdx} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 even:bg-slate-50/40 dark:even:bg-zinc-900/20">
                 {Array.from({ length: colCount }).map((_, colIdx) => (
-                  <td key={colIdx} className="px-3 py-2 whitespace-nowrap">
+                  <td key={colIdx} className="px-3 py-2 whitespace-nowrap text-slate-800 dark:text-zinc-200">
                     {row[colIdx] ?? ""}
                   </td>
                 ))}
@@ -126,23 +126,23 @@ function DataTable({ rows, title }: { rows: Record<string, unknown>[]; title: st
 
   return (
     <div>
-      <h4 className="text-sm font-semibold text-slate-700 mb-2">{title}</h4>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
-          <thead className="bg-slate-50">
+      <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">{title}</h4>
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-white/[0.08]">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-white/[0.08]">
             <tr>
               {headers.map((header) => (
-                <th key={header} className="px-3 py-2 text-left text-slate-600 font-medium whitespace-nowrap">
+                <th key={header} className="px-3 py-2 text-left text-slate-800 dark:text-zinc-200 font-semibold whitespace-nowrap">
                   {formatLabel(header)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05] bg-white dark:bg-[#161b22]">
             {rows.map((row, idx) => (
-              <tr key={idx} className="border-t border-slate-100">
+              <tr key={idx} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 even:bg-slate-50/40 dark:even:bg-zinc-900/20">
                 {headers.map((header) => (
-                  <td key={header} className="px-3 py-2 whitespace-nowrap">
+                  <td key={header} className="px-3 py-2 whitespace-nowrap text-slate-800 dark:text-zinc-200">
                     {formatScalar(row[header])}
                   </td>
                 ))}
@@ -162,12 +162,12 @@ function KeyValueBlock({ data, title }: { data: Record<string, unknown>; title: 
   if (!entries.length) return null;
   return (
     <div>
-      <h4 className="text-sm font-semibold text-slate-700 mb-2">{title}</h4>
+      <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">{title}</h4>
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
         {entries.map(([key, value]) => (
-          <div key={key} className="border border-slate-100 rounded-lg px-3 py-2">
-            <dt className="text-slate-500 text-xs">{formatLabel(key)}</dt>
-            <dd className="font-medium break-words">{formatScalar(value)}</dd>
+          <div key={key} className="border border-slate-200 dark:border-white/[0.06] bg-slate-50/70 dark:bg-zinc-900/40 rounded-lg px-3 py-2">
+            <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">{formatLabel(key)}</dt>
+            <dd className="font-bold text-slate-900 dark:text-zinc-100 break-words mt-0.5">{formatScalar(value)}</dd>
           </div>
         ))}
       </dl>
@@ -244,25 +244,25 @@ export default function PropertyDetails({ property }: Props) {
   );
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+    <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 space-y-6 transition-colors">
       <div className="flex items-start justify-between gap-4">
-        <h3 className="text-base font-semibold text-slate-800">Property Details</h3>
+        <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">Property Details</h3>
         {sourceUrl && (
           <a
             href={sourceUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-sm text-blue-600 hover:underline shrink-0"
+            className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline shrink-0"
           >
             View on Assessor Site
           </a>
         )}
       </div>
 
-      <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/[0.06]">
         <div>
-          <dt className="text-slate-500">Owner</dt>
-          <dd className="font-medium">
+          <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">Owner</dt>
+          <dd className="font-bold text-slate-900 dark:text-zinc-100 mt-1 text-sm">
             {ownerRows.length
               ? ownerRows
                   .map((row) => String((row as Record<string, string>)["Owner Name"] || ""))
@@ -272,20 +272,22 @@ export default function PropertyDetails({ property }: Props) {
           </dd>
         </div>
         <div>
-          <dt className="text-slate-500">APN / Parcel</dt>
-          <dd className="font-medium">{String(property.apn || "—")}</dd>
+          <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">APN / Parcel</dt>
+          <dd className="font-bold text-slate-900 dark:text-zinc-100 mt-1 font-mono text-sm">{String(property.apn || "—")}</dd>
         </div>
         <div className="md:col-span-2">
-          <dt className="text-slate-500">Address</dt>
-          <dd className="font-medium">{address}</dd>
+          <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">Address</dt>
+          <dd className="font-bold text-slate-900 dark:text-zinc-100 mt-1 text-sm">{address}</dd>
         </div>
         <div className="md:col-span-2">
-          <dt className="text-slate-500">Full Legal Description</dt>
-          <dd className="font-medium whitespace-pre-wrap">{legalDesc}</dd>
+          <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">Full Legal Description</dt>
+          <dd className="font-mono text-xs text-slate-800 dark:text-zinc-200 whitespace-pre-wrap mt-1.5 p-3 rounded-lg bg-white dark:bg-[#161b22] border border-slate-200 dark:border-white/[0.08] leading-relaxed shadow-sm">
+            {legalDesc}
+          </dd>
         </div>
         <div>
-          <dt className="text-slate-500">Assessed Value</dt>
-          <dd className="font-medium">
+          <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">Assessed Value</dt>
+          <dd className="font-bold text-slate-900 dark:text-zinc-100 mt-1 text-sm">
             {property.assessed_value ? `$${property.assessed_value}` : "—"}
           </dd>
         </div>
@@ -293,12 +295,12 @@ export default function PropertyDetails({ property }: Props) {
 
       {parcelFields.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">All Assessor Fields</h4>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">All Assessor Fields</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
             {parcelFields.map(([key, value]) => (
-              <div key={key} className="border border-slate-100 rounded-lg px-3 py-2">
-                <dt className="text-slate-500 text-xs">{formatLabel(key)}</dt>
-                <dd className="font-medium break-words">{formatScalar(value)}</dd>
+              <div key={key} className="border border-slate-200 dark:border-white/[0.06] bg-slate-50/70 dark:bg-zinc-900/40 rounded-lg px-3 py-2">
+                <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">{formatLabel(key)}</dt>
+                <dd className="font-bold text-slate-900 dark:text-zinc-100 break-words mt-0.5">{formatScalar(value)}</dd>
               </div>
             ))}
           </dl>
@@ -307,12 +309,12 @@ export default function PropertyDetails({ property }: Props) {
 
       {detailFields.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Additional Fields</h4>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">Additional Fields</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
             {detailFields.map(([key, value]) => (
-              <div key={key} className="border border-slate-100 rounded-lg px-3 py-2">
-                <dt className="text-slate-500 text-xs">{formatLabel(key)}</dt>
-                <dd className="font-medium break-words">{formatScalar(value)}</dd>
+              <div key={key} className="border border-slate-200 dark:border-white/[0.06] bg-slate-50/70 dark:bg-zinc-900/40 rounded-lg px-3 py-2">
+                <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">{formatLabel(key)}</dt>
+                <dd className="font-bold text-slate-900 dark:text-zinc-100 break-words mt-0.5">{formatScalar(value)}</dd>
               </div>
             ))}
           </dl>
@@ -358,8 +360,8 @@ export default function PropertyDetails({ property }: Props) {
 
       {additionalInfo && Boolean(additionalInfo.body_text) && (
         <div>
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Additional Information</h4>
-          <p className="text-sm whitespace-pre-wrap break-words">{String(additionalInfo.body_text).slice(0, 4000)}</p>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">Additional Information</h4>
+          <p className="text-sm whitespace-pre-wrap break-words text-slate-800 dark:text-zinc-200">{String(additionalInfo.body_text).slice(0, 4000)}</p>
         </div>
       )}
 
@@ -369,12 +371,12 @@ export default function PropertyDetails({ property }: Props) {
 
       {assessmentFields.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Assessment Fields</h4>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">Assessment Fields</h4>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
             {assessmentFields.map(([key, value]) => (
-              <div key={key} className="border border-slate-100 rounded-lg px-3 py-2">
-                <dt className="text-slate-500 text-xs">{formatLabel(key)}</dt>
-                <dd className="font-medium break-words">{formatScalar(value)}</dd>
+              <div key={key} className="border border-slate-200 dark:border-white/[0.06] bg-slate-50/70 dark:bg-zinc-900/40 rounded-lg px-3 py-2">
+                <dt className="text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">{formatLabel(key)}</dt>
+                <dd className="font-bold text-slate-900 dark:text-zinc-100 break-words mt-0.5">{formatScalar(value)}</dd>
               </div>
             ))}
           </dl>
@@ -383,23 +385,23 @@ export default function PropertyDetails({ property }: Props) {
 
       {assessmentRows.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Assessment History</h4>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
-              <thead className="bg-slate-50">
+          <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mb-2">Assessment History</h4>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-white/[0.08]">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-white/[0.08]">
                 <tr>
                   {Object.keys(assessmentRows[0] as Record<string, string>).map((header) => (
-                    <th key={header} className="px-3 py-2 text-left text-slate-600 font-medium">
+                    <th key={header} className="px-3 py-2 text-left text-slate-800 dark:text-zinc-200 font-semibold whitespace-nowrap">
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05] bg-white dark:bg-[#161b22]">
                 {assessmentRows.map((row, idx) => (
-                  <tr key={idx} className="border-t border-slate-100">
+                  <tr key={idx} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 even:bg-slate-50/40 dark:even:bg-zinc-900/20">
                     {Object.values(row as Record<string, string>).map((cell, cellIdx) => (
-                      <td key={cellIdx} className="px-3 py-2">{String(cell)}</td>
+                      <td key={cellIdx} className="px-3 py-2 whitespace-nowrap text-slate-800 dark:text-zinc-200">{String(cell)}</td>
                     ))}
                   </tr>
                 ))}

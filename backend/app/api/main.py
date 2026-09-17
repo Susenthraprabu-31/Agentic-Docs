@@ -6,9 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.run_logger import set_main_event_loop
-from app.api.routes import ai_agent, batches, config, locations, pipeline, reports, runs, search
+from app.api.routes import ai_agent, batches, config, locations, pipeline, reports, runs, search, workflows
 from app.api.websocket import run_stream
 from app.config.settings import get_settings
+from app.db.report_storage import reports_table_has_storage_columns
+from app.db.supabase_client import get_supabase
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -19,6 +21,9 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     set_main_event_loop(asyncio.get_running_loop())
+    client = get_supabase()
+    if client:
+        reports_table_has_storage_columns(client)
     yield
 
 
@@ -47,6 +52,7 @@ app.include_router(pipeline.router)
 app.include_router(reports.router)
 app.include_router(batches.router)
 app.include_router(run_stream.router)
+app.include_router(workflows.router)
 
 
 from pathlib import Path

@@ -13,8 +13,8 @@ export default function ReportPreview({ report, loading }: Props) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <p className="text-sm text-slate-400">Generating report...</p>
+      <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6">
+        <p className="text-sm text-slate-500 dark:text-zinc-400">Generating report...</p>
       </div>
     );
   }
@@ -39,31 +39,31 @@ export default function ReportPreview({ report, loading }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+    <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 space-y-4 transition-colors">
       <div className="flex items-center justify-between gap-4">
-        <h3 className="text-base font-semibold text-slate-800">Property Report</h3>
+        <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">Property Report</h3>
         <button
           type="button"
           onClick={handleDownload}
           disabled={downloading}
-          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
         >
           {downloading ? "Preparing PDF..." : "Download PDF"}
         </button>
       </div>
 
       {downloadError && (
-        <p className="text-sm text-red-600">{downloadError}</p>
+        <p className="text-sm text-red-600 dark:text-red-400">{downloadError}</p>
       )}
 
       {(storageUrl || report.storage_url) && (
-        <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+        <p className="text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-lg px-3 py-2">
           PDF saved to Supabase storage.{" "}
           <a
             href={storageUrl || report.storage_url}
             target="_blank"
             rel="noreferrer"
-            className="underline font-medium"
+            className="underline font-semibold"
           >
             Open stored copy
           </a>
@@ -71,15 +71,27 @@ export default function ReportPreview({ report, loading }: Props) {
       )}
 
       {property && (
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-slate-500">Owner:</span> <span className="font-medium">{String(property.owner_name || "—")}</span></div>
-          <div><span className="text-slate-500">APN:</span> <span className="font-medium">{String(property.apn || "—")}</span></div>
-          <div className="col-span-2"><span className="text-slate-500">Address:</span> <span className="font-medium">{String(property.property_address || "—")}</span></div>
-          <div><span className="text-slate-500">Assessed Value:</span> <span className="font-medium">{property.assessed_value ? `$${property.assessed_value}` : "—"}</span></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/[0.06]">
+          <div>
+            <span className="text-slate-500 dark:text-zinc-400 font-medium">Owner:</span>{" "}
+            <span className="font-semibold text-slate-900 dark:text-zinc-100">{String(property.owner_name || "—")}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 dark:text-zinc-400 font-medium">APN:</span>{" "}
+            <span className="font-semibold text-slate-900 dark:text-zinc-100 font-mono">{String(property.apn || "—")}</span>
+          </div>
+          <div className="sm:col-span-2">
+            <span className="text-slate-500 dark:text-zinc-400 font-medium">Address:</span>{" "}
+            <span className="font-semibold text-slate-900 dark:text-zinc-100">{String(property.property_address || "—")}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 dark:text-zinc-400 font-medium">Assessed Value:</span>{" "}
+            <span className="font-semibold text-slate-900 dark:text-zinc-100">{property.assessed_value ? `$${property.assessed_value}` : "—"}</span>
+          </div>
         </div>
       )}
 
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-slate-500 dark:text-zinc-400">
         Generated: {report.report_json?.generated_at || "—"}
       </p>
     </div>

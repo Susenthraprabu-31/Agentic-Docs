@@ -14,41 +14,42 @@ from app.db.supabase_client import get_memory_store, get_supabase, supabase_call
 
 class RecordsRepository:
 
+    ALLOWED_COLUMNS = {
+        "id", "run_id", "source", "apn", "owner_name", "legal_desc",
+        "assessed_value", "property_address", "raw_json", "created_at",
+    }
+
     def insert(self, run_id: str, record: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(record)
+        # Harmonize legal_desc / legal_description
+        legal_val = payload.get("legal_desc") or payload.get("legal_description")
 
         row = {
-
             "id": str(uuid.uuid4()),
-
             "run_id": run_id,
-
             "created_at": datetime.now(timezone.utc).isoformat(),
-
-            **record,
-
+            **payload,
         }
+        if legal_val:
+            row["legal_desc"] = legal_val
+            row["legal_description"] = legal_val
 
         mem = get_memory_store()
-
         mem.records.append(row)
 
-
-
         client = get_supabase()
-
         if client:
-
+            # Only send valid DB columns to Supabase
+            db_row = {k: v for k, v in row.items() if k in self.ALLOWED_COLUMNS}
             result = supabase_call(
-
-                lambda: client.table("records").insert(row).execute(),
-
+                lambda: client.table("records").insert(db_row).execute(),
                 label="insert_record",
-
             )
-
             if result and result.data:
-
-                return result.data[0]
+                res = dict(result.data[0])
+                if "legal_desc" in res and "legal_description" not in res:
+                    res["legal_description"] = res["legal_desc"]
+                return res
 
         return row
 
@@ -73,13 +74,14 @@ class RecordsRepository:
             )
 
             if result and result.data:
-
-                by_id = {r["id"]: r for r in result.data}
-
+                by_id = {}
+                for r in result.data:
+                    item = dict(r)
+                    if "legal_desc" in item and "legal_description" not in item:
+                        item["legal_description"] = item["legal_desc"]
+                    by_id[item["id"]] = item
                 for record in mem_records:
-
                     by_id[record["id"]] = record
-
                 return list(by_id.values())
 
 

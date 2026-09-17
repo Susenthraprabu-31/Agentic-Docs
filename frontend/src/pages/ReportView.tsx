@@ -39,8 +39,8 @@ export default function ReportView() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to={`/runs/${runId}`} className="text-sm text-blue-600 hover:underline">← Back to Run</Link>
-        <h1 className="text-2xl font-bold text-slate-900 mt-1">Property Report</h1>
+        <Link to={`/runs/${runId}`} className="text-sm text-violet-600 dark:text-violet-400 hover:underline">← Back to Run</Link>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100 mt-1">Property Report</h1>
       </div>
 
       {loading && <p className="text-slate-400">Loading report...</p>}
@@ -53,27 +53,27 @@ export default function ReportView() {
           {property ? (
             <PropertyDetails property={property as Record<string, unknown>} />
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="text-base font-semibold text-slate-800 mb-1">Search & Recording Overview</h3>
-              <p className="text-xs text-slate-500 mb-4">Official public records search details</p>
+            <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-zinc-100 mb-1">Search & Recording Overview</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">Official public records search details</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">Location</div>
-                  <div className="font-semibold text-slate-900 mt-0.5">
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-100 dark:border-white/[0.05]">
+                  <div className="text-xs text-slate-500 dark:text-zinc-400 uppercase tracking-wide">Location</div>
+                  <div className="font-semibold text-slate-900 dark:text-zinc-200 mt-0.5">
                     {county ? `${county.charAt(0).toUpperCase() + county.slice(1)} County` : "—"}, {state || "FL"}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">Query ({queryType || "book_page"})</div>
-                  <div className="font-semibold text-slate-900 mt-0.5">{queryValue || "—"}</div>
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-100 dark:border-white/[0.05]">
+                  <div className="text-xs text-slate-500 dark:text-zinc-400 uppercase tracking-wide">Query ({queryType || "book_page"})</div>
+                  <div className="font-semibold text-slate-900 dark:text-zinc-200 mt-0.5">{queryValue || "—"}</div>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">Document Type</div>
-                  <div className="font-semibold text-slate-900 mt-0.5">{firstDoc?.document_type || "Recorded Document"}</div>
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-100 dark:border-white/[0.05]">
+                  <div className="text-xs text-slate-500 dark:text-zinc-400 uppercase tracking-wide">Document Type</div>
+                  <div className="font-semibold text-slate-900 dark:text-zinc-200 mt-0.5">{firstDoc?.document_type || "Recorded Document"}</div>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">Grantee (Buyer/Owner)</div>
-                  <div className="font-semibold text-slate-900 mt-0.5">{firstDoc?.grantee || currentOwner || "—"}</div>
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-100 dark:border-white/[0.05]">
+                  <div className="text-xs text-slate-500 dark:text-zinc-400 uppercase tracking-wide">Grantee (Buyer/Owner)</div>
+                  <div className="font-semibold text-slate-900 dark:text-zinc-200 mt-0.5">{firstDoc?.grantee || currentOwner || "—"}</div>
                 </div>
               </div>
             </div>

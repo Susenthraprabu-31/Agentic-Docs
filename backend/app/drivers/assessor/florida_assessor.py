@@ -233,10 +233,18 @@ async def _dismiss_florida_pa_disclaimer_in_frame(frame) -> bool:
 async def _wait_for_florida_pa_frame(driver: "GilaAssessorDriver", url_part: str, timeout_ms: int = 20_000):
     elapsed = 0
     while elapsed < timeout_ms:
-        for frame in driver.page.frames:
-            if url_part in frame.url:
-                return frame
-        await driver.page.wait_for_timeout(300)
+        try:
+            if driver.page.is_closed():
+                return None
+            for frame in driver.page.frames:
+                if url_part in frame.url:
+                    return frame
+            await driver.page.wait_for_timeout(300)
+        except Exception as exc:
+            if "closed" in str(exc).lower():
+                return None
+            logger.debug("Florida PA frame wait interrupted: %s", exc)
+            return None
         elapsed += 300
     return None
 
@@ -396,8 +404,12 @@ async def _search_miami_dade(
 ) -> list[ParcelRecord]:
     target = MIAMI_DADE_SEARCH_URL if is_miami_dade_assessor(search_url) else search_url
     await driver._emit_status("Opening Miami-Dade Property Appraiser search...")
-    await driver.safe_goto(target, wait_selector="input, app-root, mat-tab-group")
-    await driver.polite_delay(3.0)
+    await driver.safe_goto(
+        target,
+        wait_selector="mat-tab-group, [role='tab'], input[type='text'], app-root",
+        timeout=60_000,
+    )
+    await driver.polite_delay(1.5)
 
     if await driver.is_cloudflare_blocked():
         cleared = await driver.wait_for_cloudflare_clear(max_wait=120)

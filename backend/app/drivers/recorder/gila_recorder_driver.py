@@ -8,7 +8,7 @@ from app.config.florida_portals import (
     normalize_florida_parcel,
 )
 from app.drivers.base.base_driver import BaseDriver
-from app.drivers.page_search_ai import execute_ai_page_search
+from app.drivers.page_search_ai import execute_ai_recorder_search
 from app.drivers.playwright_instructions import (
     apply_playwright_instructions,
     apply_playwright_post_search,
@@ -77,15 +77,29 @@ class GilaRecorderDriver(BaseDriver):
         query_value: str,
         book_number: str | None = None,
         page_number: str | None = None,
+        available_values: dict[str, str] | None = None,
     ) -> list[RecordedDocument]:
         await self._emit_status("Opening county recorder portal...")
+        recorder_wait_selector = None
+        if is_miami_dade_recorder(recorder_url):
+            recorder_wait_selector = (
+                "#bookType, #recordingBookNumber, input[type='text'], form, button"
+            )
         try:
-            await self.safe_goto(recorder_url, timeout=90_000)
+            await self.safe_goto(
+                recorder_url,
+                wait_selector=recorder_wait_selector,
+                timeout=60_000,
+            )
         except Exception as exc:
             if _is_retriable_navigation_error(exc):
                 await self._emit_status("Recorder portal slow to load, retrying...")
-                await self.polite_delay(3.0)
-                await self.safe_goto(recorder_url, timeout=90_000)
+                await self.polite_delay(2.0)
+                await self.safe_goto(
+                    recorder_url,
+                    wait_selector=recorder_wait_selector,
+                    timeout=60_000,
+                )
             else:
                 raise
 
@@ -103,7 +117,8 @@ class GilaRecorderDriver(BaseDriver):
             if is_myflorida_county_recorder(recorder_url) or is_myflorida_county_recorder(self.page.url):
                 await self._open_myfloridacounty_search()
             elif is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
-                await self._open_miami_dade_recorder_search()
+                prefer_book_page = bool(book_number and page_number)
+                await self._open_miami_dade_recorder_search(prefer_book_page=prefer_book_page)
             elif not is_acclaimweb_recorder(recorder_url) and not is_acclaimweb_recorder(self.page.url):
                 await self._open_florida_recorder_search()
             await self.polite_delay(1.5)
@@ -129,20 +144,25 @@ class GilaRecorderDriver(BaseDriver):
             pass
 
         book_page = parse_book_page(query_value, book_number, page_number)
-        if query_type == QueryType.BOOK_PAGE and book_page:
-            bnum, pnum = book_page
-            if is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
-                doc = await miami_dade_book_page_search_and_download(self, bnum, pnum)
-                await self.save_browser_preview()
-                if doc:
-                    return [doc]
-                return []
-
         notes = (self.playwright_notes or "").strip()
         search_value = _format_recorder_search_value(query_type, query_value, self.page.url)
-        book_page = parse_book_page(query_value, book_number, page_number)
         searched = False
         acclaimweb = is_acclaimweb_recorder(recorder_url) or is_acclaimweb_recorder(self.page.url)
+        values = {
+            k: str(v).strip()
+            for k, v in (available_values or {}).items()
+            if v and str(v).strip()
+        }
+        if book_page:
+            values.setdefault("book", book_page[0])
+            values.setdefault("page", book_page[1])
+        if query_type == QueryType.OWNER:
+            values.setdefault("owner", search_value)
+        elif query_type == QueryType.PARCEL:
+            values.setdefault("parcel", search_value)
+        elif query_type == QueryType.ADDRESS:
+            values.setdefault("address", search_value)
+        values.setdefault("query_value", search_value)
 
         if query_type == QueryType.BOOK_PAGE:
             if not book_page:
@@ -150,9 +170,41 @@ class GilaRecorderDriver(BaseDriver):
                 return []
             book_number, page_number = book_page
             search_value = format_book_page_label(book_number, page_number)
-        elif not query_value.strip():
-            await self._emit_status("Recorder search skipped — no name or parcel in Input node.")
+        elif not query_value.strip() and not (values.get("book") and values.get("page")):
+            await self._emit_status("Recorder search skipped — no name, parcel, or book/page in Input node.")
             return []
+
+        ai_ok, search_kind = await execute_ai_recorder_search(
+            self,
+            query_type,
+            search_value,
+            available_values=values,
+            user_instructions=notes or None,
+        )
+        if search_kind == "book_page" and values.get("book") and values.get("page"):
+            book_number, page_number = values["book"], values["page"]
+            query_type = QueryType.BOOK_PAGE
+            search_value = format_book_page_label(book_number, page_number)
+            if is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
+                await self._emit_status(
+                    f"GPT-4o detected Book/Page search — using book {book_number}, page {page_number}."
+                )
+                doc = await miami_dade_book_page_search_and_download(self, book_number, page_number)
+                await self.save_browser_preview()
+                if doc:
+                    return [doc]
+            searched = ai_ok
+        elif ai_ok:
+            searched = True
+
+        if not searched and query_type == QueryType.BOOK_PAGE and book_page:
+            bnum, pnum = book_page
+            if is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
+                doc = await miami_dade_book_page_search_and_download(self, bnum, pnum)
+                await self.save_browser_preview()
+                if doc:
+                    return [doc]
+                return []
 
         if notes and query_type != QueryType.BOOK_PAGE:
             await self._emit_status(f"Recorder instructions: {notes[:100]}...")
@@ -175,16 +227,6 @@ class GilaRecorderDriver(BaseDriver):
             searched = await search_acclaimweb_party_name(
                 self, query_type, format_acclaimweb_party_name(query_value), notes=""
             )
-
-        if not searched:
-            if query_type != QueryType.BOOK_PAGE and await execute_ai_page_search(
-                self,
-                query_type,
-                search_value,
-                portal_type="recorder",
-                user_instructions=notes or None,
-            ):
-                searched = await self._recorder_search_applied(search_value, acclaimweb)
 
         if not searched:
             await self._emit_status(f"Running recorder search ({query_type.value})...")
@@ -267,10 +309,10 @@ class GilaRecorderDriver(BaseDriver):
             except Exception:
                 continue
 
-    async def _open_miami_dade_recorder_search(self) -> None:
+    async def _open_miami_dade_recorder_search(self, prefer_book_page: bool = False) -> None:
         """Wait for Miami-Dade Clerk official records search UI."""
         await self._click_disclaimer()
-        if await self._open_miami_dade_book_page_search():
+        if prefer_book_page and await self._open_miami_dade_book_page_search():
             return
         for sel in [
             'input[name*="folio" i]',
@@ -302,8 +344,14 @@ class GilaRecorderDriver(BaseDriver):
                 link = self.page.locator(sel).first
                 if await link.count() > 0 and await link.is_visible(timeout=3_000):
                     await link.click(force=True)
-                    await self.page.wait_for_load_state("domcontentloaded")
-                    await self.polite_delay(1.0)
+                    try:
+                        await self.page.wait_for_selector(
+                            "#bookType, #recordingBookNumber, input[type='text']",
+                            state="attached",
+                            timeout=10_000,
+                        )
+                    except Exception:
+                        await self.polite_delay(1.0)
                     break
             except Exception:
                 continue
@@ -422,6 +470,39 @@ class GilaRecorderDriver(BaseDriver):
             except Exception:
                 continue
 
+    async def _book_page_fields_visible(self) -> bool:
+        book_selectors = [
+            '#recordingBookNumber',
+            'input[placeholder="BOOK" i]',
+            'input[placeholder*="book" i]',
+            'input[name*="book" i]',
+            'input[id*="book" i]',
+        ]
+        page_selectors = [
+            '#recordingPageNumber',
+            'input[placeholder="PAGE" i]',
+            'input[placeholder*="page" i]',
+            'input[name*="page" i]',
+            'input[id*="page" i]',
+        ]
+        book_ok = False
+        page_ok = False
+        for sel in book_selectors:
+            try:
+                if await self.page.locator(sel).first.is_visible(timeout=400):
+                    book_ok = True
+                    break
+            except Exception:
+                continue
+        for sel in page_selectors:
+            try:
+                if await self.page.locator(sel).first.is_visible(timeout=400):
+                    page_ok = True
+                    break
+            except Exception:
+                continue
+        return book_ok and page_ok
+
     async def _try_search(
         self,
         query_type: QueryType,
@@ -430,6 +511,10 @@ class GilaRecorderDriver(BaseDriver):
         book_number: str | None = None,
         page_number: str | None = None,
     ) -> None:
+        parsed = parse_book_page(query_value, book_number, page_number)
+        if parsed and await self._book_page_fields_visible():
+            if await self._search_book_page(parsed[0], parsed[1]):
+                return
         if query_type == QueryType.BOOK_PAGE:
             parsed = parse_book_page(query_value, book_number, page_number)
             if parsed and await self._search_book_page(parsed[0], parsed[1]):

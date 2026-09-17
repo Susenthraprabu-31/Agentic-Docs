@@ -6,6 +6,26 @@ from typing import Any
 
 BROWSER_NODE_IDS = frozenset({"netr", "assessor", "recorder", "gis", "tax"})
 
+# Tie-break parallel-ready nodes in a stable, user-friendly order.
+NODE_EXECUTION_PRIORITY: dict[str, int] = {
+    "input": 0,
+    "netr": 10,
+    "platform": 20,
+    "assessor": 30,
+    "recorder": 40,
+    "gis": 50,
+    "tax": 60,
+    "ai_agent": 65,
+    "normalizer": 70,
+    "report": 80,
+    "output": 90,
+}
+
+
+def _node_sort_key(canvas_id: str, node_map: dict[str, dict[str, Any]]) -> tuple[int, str]:
+    node_id = str(node_map.get(canvas_id, {}).get("node_id") or "")
+    return (NODE_EXECUTION_PRIORITY.get(node_id, 100), canvas_id)
+
 
 @dataclass
 class ParsedPipelineGraph:
@@ -65,7 +85,10 @@ def resolve_pipeline_graph(graph: dict[str, Any] | None) -> ParsedPipelineGraph:
             in_degree[tgt] += 1
 
     order: list[str] = []
-    kahn = sorted(nid for nid in reachable if in_degree[nid] == 0)
+    kahn = sorted(
+        (nid for nid in reachable if in_degree[nid] == 0),
+        key=lambda cid: _node_sort_key(cid, node_map),
+    )
     visited: set[str] = set()
 
     while kahn:
@@ -78,7 +101,7 @@ def resolve_pipeline_graph(graph: dict[str, Any] | None) -> ParsedPipelineGraph:
             in_degree[nxt] -= 1
             if in_degree[nxt] == 0:
                 kahn.append(nxt)
-        kahn.sort()
+        kahn.sort(key=lambda cid: _node_sort_key(cid, node_map))
 
     if len(order) != len(reachable):
         raise GraphValidationError("Cycle detected in pipeline graph")

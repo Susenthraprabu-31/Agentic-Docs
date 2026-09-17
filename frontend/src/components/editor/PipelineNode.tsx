@@ -1,328 +1,264 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback } from "react";
 import { Handle, Position, NodeProps, useReactFlow } from "@xyflow/react";
-import {
-  CountyOption,
-  downloadOfficialDocument,
-  downloadReportPdf,
-  generatePlaywrightInstructions,
-  getCountiesForState,
-  QueryType,
-} from "../../api/client";
 import { PipelineNodeData } from "../../lib/defaultPipeline";
-import { US_STATES } from "../../data/states";
-import DeleteNodeButton from "./DeleteNodeButton";
-import { stopFlowPointer, usePatchNodeData } from "./usePatchNodeData";
+import { useTheme } from "../../context/ThemeContext";
 
 type Props = NodeProps & { data: PipelineNodeData };
 
-const URL_NODES = new Set(["netr", "assessor", "recorder", "gis", "tax"]);
-const NOTES_NODES = new Set(["netr", "assessor", "recorder", "gis", "tax", "platform", "normalizer"]);
-const AI_INSTRUCTION_NODES = new Set(["netr", "assessor", "recorder", "gis", "tax"]);
+/** Icon + color config per node type */
+const NODE_STYLE: Record<
+  string,
+  { bg: string; border: string; iconBg: string; icon: React.ReactNode }
+> = {
+  input: {
+    bg: "#1a1f2e", border: "#6366f155", iconBg: "#6366f1",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+  },
+  netr: {
+    bg: "#1a1f2e", border: "#3b82f655", iconBg: "#3b82f6",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9" /></svg>,
+  },
+  platform: {
+    bg: "#1a1f2e", border: "#06b6d455", iconBg: "#06b6d4",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" /></svg>,
+  },
+  assessor: {
+    bg: "#1a1f2e", border: "#14b8a655", iconBg: "#14b8a6",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+  },
+  recorder: {
+    bg: "#1a1f2e", border: "#8b5cf655", iconBg: "#8b5cf6",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+  },
+  gis: {
+    bg: "#1a1f2e", border: "#22c55e55", iconBg: "#22c55e",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>,
+  },
+  tax: {
+    bg: "#1a1f2e", border: "#f9731655", iconBg: "#f97316",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>,
+  },
+  normalizer: {
+    bg: "#1a1f2e", border: "#a855f755", iconBg: "#a855f7",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>,
+  },
+  report: {
+    bg: "#1a1f2e", border: "#ef444455", iconBg: "#ef4444",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>,
+  },
+  output: {
+    bg: "#1a1f2e", border: "#10b98155", iconBg: "#10b981",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+  },
+  ai_agent: {
+    bg: "#1e1a2e", border: "#7c3aed55", iconBg: "#7c3aed",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>,
+  },
+};
 
-const fieldClass =
-  "nodrag nopan w-full rounded-md bg-zinc-950 border border-teal-900/50 px-2 py-1.5 text-zinc-100 focus:border-teal-600 outline-none";
+const DEFAULT_STYLE = {
+  bg: "#1a1f2e", border: "#374151", iconBg: "#374151",
+  icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>,
+};
 
-function PipelineNodeComponent({ id, data }: Props) {
-  const patch = usePatchNodeData(id);
-  const { getNodes } = useReactFlow();
-  const [counties, setCounties] = useState<CountyOption[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [layoutType, setLayoutType] = useState<string | null>(null);
+const NODE_SUBTITLES: Record<string, string> = {
+  input: "Provide search parameters",
+  netr: "Discover portal URLs",
+  platform: "Map URLs to platform drivers",
+  assessor: "Fetch property details",
+  recorder: "Search official records",
+  gis: "Map screenshot capture",
+  tax: "Tax collector lookup",
+  normalizer: "Merge & deduplicate records",
+  report: "Generate final output",
+  output: "Finalize run results",
+  ai_agent: "LLM orchestrator",
+};
 
-  const isInput = data.nodeId === "input";
+// Non-deletable core nodes
+const PROTECTED_NODES = new Set(["input"]);
+
+function PipelineNodeComponent({ id, data, selected }: Props) {
+  const { isDark } = useTheme();
+  const { setNodes, setEdges } = useReactFlow();
+  const style = NODE_STYLE[data.nodeId] || DEFAULT_STYLE;
+  const subtitle = NODE_SUBTITLES[data.nodeId] || data.nodeId;
   const isReport = data.nodeId === "report";
-  const showUrl = URL_NODES.has(data.nodeId);
-  const showNotes = NOTES_NODES.has(data.nodeId);
-  const showAiGenerate = AI_INSTRUCTION_NODES.has(data.nodeId);
-  const canDisable = !["input", "platform", "normalizer", "report", "output"].includes(data.nodeId);
+  const canDelete = !PROTECTED_NODES.has(data.nodeId);
 
-  const inputNode = getNodes().find((n) => n.data.nodeId === "input");
-  const inputState = (inputNode?.data.state as string) || "AZ";
-  const inputCounty = (inputNode?.data.county as string) || "";
-  const inputQueryType = (inputNode?.data.queryType as QueryType) || "owner";
-  const inputQueryValue = (inputNode?.data.queryValue as string) || "";
-  const inputBookNumber = (inputNode?.data.bookNumber as string) || "";
-  const inputPageNumber = (inputNode?.data.pageNumber as string) || "";
-  const canGenerateAi = Boolean(
-    inputCounty.trim() &&
-      (inputQueryType === "book_page"
-        ? inputBookNumber.trim() && inputPageNumber.trim()
-        : inputQueryValue.trim())
+  const handleDelete = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setNodes((nds) => nds.filter((n) => n.id !== id));
+      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+    },
+    [id, setNodes, setEdges]
   );
 
-  async function handleGenerateInstructions() {
-    if (!canGenerateAi) return;
-    setGenerating(true);
-    setGenerateError(null);
-    setLayoutType(null);
-    try {
-      const result = await generatePlaywrightInstructions({
-        node_id: data.nodeId,
-        state: inputState.toUpperCase(),
-        county: inputCounty.toLowerCase(),
-        query_type: inputQueryType,
-        url: data.url?.trim() || undefined,
-        query_value:
-          inputQueryType === "book_page"
-            ? `${inputBookNumber.trim()}/${inputPageNumber.trim()}`
-            : inputQueryValue.trim(),
-        playwright_notes: data.playwrightNotes?.trim() || undefined,
-      });
-      patch({
-        playwrightNotes: result.instructions,
-        ...(showUrl && !data.url?.trim() && result.resolved_url ? { url: result.resolved_url } : {}),
-      });
-      setLayoutType(result.layout_type);
-    } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : "Generation failed");
-    } finally {
-      setGenerating(false);
-    }
+  const executionStatus =
+    (data.executionStatus as "pending" | "running" | "done" | "failed" | "skipped") ||
+    (isReport && data.reportStatus === "ready"
+      ? "done"
+      : isReport && data.reportStatus === "generating"
+      ? "running"
+      : "pending");
+
+  let statusEmoji = "⏳";
+  let statusBadgeClass = isDark
+    ? "bg-zinc-800/80 border-white/[0.08] text-zinc-400"
+    : "bg-slate-100 border-slate-300 text-slate-500 shadow-sm";
+  let statusLabel = "Pending";
+
+  if (executionStatus === "done") {
+    statusEmoji = "✅";
+    statusBadgeClass = isDark
+      ? "bg-emerald-950/60 border-emerald-500/50 text-emerald-400 shadow-sm shadow-emerald-950/40"
+      : "bg-emerald-50 border-emerald-400 text-emerald-600 shadow-sm";
+    statusLabel = "Completed";
+  } else if (executionStatus === "running") {
+    statusEmoji = "⚡";
+    statusBadgeClass = isDark
+      ? "bg-amber-950/80 border-amber-400/60 text-amber-300 ring-2 ring-amber-400/30 animate-pulse"
+      : "bg-amber-50 border-amber-400 text-amber-600 ring-2 ring-amber-400/40 shadow-sm animate-pulse";
+    statusLabel = "Currently Working...";
+  } else if (executionStatus === "failed") {
+    statusEmoji = "❌";
+    statusBadgeClass = isDark
+      ? "bg-red-950/60 border-red-500/50 text-red-400"
+      : "bg-red-50 border-red-400 text-red-600 shadow-sm";
+    statusLabel = "Failed";
+  } else if (executionStatus === "skipped") {
+    statusEmoji = "⏭️";
+    statusBadgeClass = isDark
+      ? "bg-zinc-800/60 border-zinc-600/40 text-zinc-400"
+      : "bg-slate-100 border-slate-300 text-slate-500";
+    statusLabel = "Skipped";
   }
 
-  useEffect(() => {
-    if (!isInput || !data.state) return;
-    let cancelled = false;
-    getCountiesForState(data.state)
-      .then((list) => {
-        if (cancelled) return;
-        setCounties(list);
-        const current = data.county || "";
-        if (!list.some((c) => c.slug === current)) {
-          patch({ county: list[0]?.slug ?? "" });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCounties([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isInput, data.state, patch]);
+  const nodeBg = isDark
+    ? selected ? "#1e2235" : style.bg
+    : selected ? "#f5f3ff" : "#ffffff";
+
+  let nodeBorder = isDark
+    ? selected ? "#6366f1aa" : style.border
+    : selected ? "#8b5cf6" : "#cbd5e1";
+
+  if (executionStatus === "running") {
+    nodeBorder = "#8b5cf6";
+  } else if (executionStatus === "done") {
+    nodeBorder = isDark ? "#10b981aa" : "#10b981";
+  } else if (executionStatus === "failed") {
+    nodeBorder = "#ef4444";
+  }
 
   return (
-    <div className="pipeline-node-card w-[280px] rounded-xl border border-teal-800/60 bg-[#141c24] shadow-xl shadow-black/40 text-zinc-100">
-      <Handle type="target" position={Position.Top} className="!bg-teal-400 !w-2 !h-2" />
+    <div
+      className={`pipeline-node-card relative rounded-xl transition-all duration-200 group ${
+        executionStatus === "running"
+          ? "ring-2 ring-violet-500 shadow-xl shadow-violet-500/25 animate-pulse"
+          : executionStatus === "done"
+          ? isDark
+            ? "shadow-md shadow-emerald-950/30"
+            : "shadow-md shadow-emerald-500/10"
+          : selected
+          ? isDark
+            ? "shadow-lg shadow-violet-900/40 ring-1 ring-violet-500/50"
+            : "shadow-lg shadow-violet-500/25 ring-2 ring-violet-500/70"
+          : isDark
+          ? "shadow-md shadow-black/30 hover:shadow-lg hover:shadow-black/50"
+          : "shadow-md shadow-slate-300/60 hover:shadow-lg border border-slate-300"
+      }`}
+      style={{
+        width: 240,
+        background: nodeBg,
+        borderColor: nodeBorder,
+        borderWidth: executionStatus === "running" ? 2 : 1,
+        borderStyle: "solid",
+      }}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!w-2.5 !h-2.5 !border-2"
+        style={{
+          background: style.iconBg,
+          borderColor: isDark ? "#0d1117" : "#ffffff",
+        }}
+      />
 
-      <div className="px-3 py-2 border-b border-teal-900/40 flex items-center justify-between gap-2">
-        <span className="font-semibold text-sm text-teal-100 truncate">{data.label}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          {canDisable && (
-            <label className="flex items-center gap-1.5 text-[10px] text-zinc-500 cursor-pointer nodrag nopan">
-              <input
-                type="checkbox"
-                checked={data.enabled !== false}
-                onChange={(e) => patch({ enabled: e.target.checked })}
-                onPointerDown={stopFlowPointer}
-                className="rounded"
-              />
-              Enabled
-            </label>
+      <div className="px-3.5 py-3 flex items-center gap-3">
+        {/* Icon */}
+        <div
+          className="w-9 h-9 rounded-lg shrink-0 flex items-center justify-center shadow-md"
+          style={{ background: style.iconBg }}
+        >
+          {style.icon}
+        </div>
+
+        {/* Labels */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-[13px] font-bold leading-tight truncate ${isDark ? "text-zinc-100" : "text-slate-950"}`}>
+            {data.label as string}
+          </p>
+          <p className={`text-[11px] font-medium leading-snug truncate mt-0.5 ${isDark ? "text-zinc-400" : "text-slate-600"}`}>
+            {subtitle}
+          </p>
+        </div>
+
+        {/* Right end: Delete button (on hover) + Status Emoji Badge */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {canDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className={`opacity-0 group-hover:opacity-100 nodrag nopan w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                isDark
+                  ? "text-zinc-500 hover:text-red-400 hover:bg-red-900/30"
+                  : "text-slate-400 hover:text-red-600 hover:bg-red-50"
+              }`}
+              title="Delete node"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           )}
-          <DeleteNodeButton nodeId={id} />
+
+          {/* Status Emoji Badge */}
+          <div
+            className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-semibold border transition-all select-none ${statusBadgeClass}`}
+            title={`Status: ${statusLabel}`}
+          >
+            {statusEmoji}
+          </div>
         </div>
       </div>
 
-      <div className="p-3 space-y-3 text-xs nodrag nopan" onPointerDown={stopFlowPointer}>
-        {isInput && (
-          <>
-            <div>
-              <label className="block text-zinc-500 mb-1">State</label>
-              <select
-                value={data.state || "AZ"}
-                onChange={(e) => patch({ state: e.target.value })}
-                className={fieldClass}
-              >
-                {US_STATES.map((s) => (
-                  <option key={s.code} value={s.code}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-zinc-500 mb-1">County</label>
-              <select
-                value={data.county || ""}
-                onChange={(e) => patch({ county: e.target.value })}
-                className={fieldClass}
-              >
-                {counties.map((c) => (
-                  <option key={c.slug} value={c.slug}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-zinc-500 mb-1">Search by</label>
-              <div className="flex gap-2 flex-wrap">
-                {(["owner", "parcel", "address", "book_page"] as QueryType[]).map((t) => (
-                  <label key={t} className="flex items-center gap-1 cursor-pointer capitalize">
-                    <input
-                      type="radio"
-                      checked={data.queryType === t}
-                      onChange={() => patch({ queryType: t })}
-                    />
-                    {t === "book_page" ? "Book/Page" : t}
-                  </label>
-                ))}
-              </div>
-            </div>
-            {data.queryType === "book_page" ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-zinc-500 mb-1">Book number</label>
-                  <input
-                    value={data.bookNumber || ""}
-                    onChange={(e) => patch({ bookNumber: e.target.value })}
-                    placeholder="e.g. 1494"
-                    className={fieldClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-500 mb-1">Page number</label>
-                  <input
-                    value={data.pageNumber || ""}
-                    onChange={(e) => patch({ pageNumber: e.target.value })}
-                    placeholder="e.g. 2483"
-                    className={fieldClass}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-zinc-500 mb-1">Search value</label>
-                <input
-                  value={data.queryValue || ""}
-                  onChange={(e) => patch({ queryValue: e.target.value })}
-                  placeholder="Owner name, parcel, or address"
-                  className={fieldClass}
-                />
-              </div>
-            )}
-          </>
-        )}
+      {/* Report quick-actions */}
+      {isReport && data.reportStatus === "ready" && data.reportId && (
+        <div className="px-3.5 pb-3">
+          <a
+            href={`/reports/run/${data.reportRunId || ""}`}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-full text-center px-2 py-1.5 rounded-lg text-[10px] font-semibold text-white transition-colors"
+            style={{ background: style.iconBg }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            View Report
+          </a>
+        </div>
+      )}
 
-        {showUrl && (
-          <div>
-            <label className="block text-zinc-500 mb-1">URL</label>
-            <input
-              value={data.url ?? ""}
-              onChange={(e) => patch({ url: e.target.value })}
-              placeholder="https://... (leave empty for auto)"
-              className={fieldClass}
-            />
-          </div>
-        )}
-
-        {showNotes && (
-          <div>
-            {showAiGenerate && (
-              <div className="mb-2 space-y-1.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    disabled={generating || !canGenerateAi}
-                    title={
-                      canGenerateAi
-                        ? "Resolve county URL, run search, then write Playwright instructions"
-                        : "Set state, county, and search value in the Input node first"
-                    }
-                    onClick={handleGenerateInstructions}
-                    className="px-2.5 py-1 rounded-md bg-violet-700 hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[10px] font-semibold uppercase tracking-wide"
-                  >
-                    {generating ? "Searching…" : "Generate with AI"}
-                  </button>
-                  {layoutType && (
-                    <span className="text-[10px] text-zinc-500 capitalize">
-                      layout: {layoutType.replace(/_/g, " ")}
-                    </span>
-                  )}
-                </div>
-                {generateError && (
-                  <p className="text-[10px] text-red-400 leading-snug">{generateError}</p>
-                )}
-                <p className="text-[10px] text-zinc-600 leading-snug">
-                  Resolves URL from Input county, runs search, then writes Playwright steps.
-                </p>
-              </div>
-            )}
-            <label className="block text-zinc-500 mb-1">Playwright instructions</label>
-            <textarea
-              value={data.playwrightNotes ?? ""}
-              onChange={(e) => patch({ playwrightNotes: e.target.value })}
-              placeholder='Click "Generate with AI" to analyze the county site, or write steps manually'
-              rows={3}
-              className={`${fieldClass} resize-y min-h-[60px] placeholder:text-zinc-600`}
-            />
-          </div>
-        )}
-
-        {isReport && (
-          <div className="space-y-2">
-            <p className="text-zinc-500">Generates a PDF from collected property records.</p>
-            {data.reportStatus === "generating" && (
-              <p className="text-teal-400 flex items-center gap-2">
-                <span className="inline-block w-3 h-3 border border-teal-400 border-t-transparent rounded-full animate-spin" />
-                Generating report...
-              </p>
-            )}
-            {data.reportStatus === "ready" && data.reportId && (
-              <div className="flex flex-col gap-2">
-                <a
-                  href={`/reports/run/${data.reportRunId || ""}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full text-center px-3 py-1.5 rounded-md bg-teal-700 hover:bg-teal-600 text-white text-xs font-medium"
-                >
-                  View Report
-                </a>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!data.reportId || !data.reportRunId) return;
-                    try {
-                      await downloadReportPdf(String(data.reportId), String(data.reportRunId));
-                    } catch (err) {
-                      alert(err instanceof Error ? err.message : "Download failed");
-                    }
-                  }}
-                  className="w-full px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-teal-800 text-teal-200 text-xs font-medium"
-                >
-                  Download Report
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!data.reportRunId) return;
-                    try {
-                      await downloadOfficialDocument(String(data.reportRunId));
-                    } catch (err) {
-                      alert(err instanceof Error ? err.message : "Document download failed");
-                    }
-                  }}
-                  className="w-full px-3 py-1.5 rounded-md bg-teal-900/60 hover:bg-teal-900 border border-teal-600 text-teal-200 text-xs font-medium flex items-center justify-center gap-1.5"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download Official Document
-                </button>
-              </div>
-            )}
-            {data.reportStatus === "failed" && (
-              <p className="text-red-400">Report generation failed. Check the run log.</p>
-            )}
-            {(!data.reportStatus || data.reportStatus === "idle") && (
-              <p className="text-zinc-600 italic">Run the pipeline to generate a report</p>
-            )}
-          </div>
-        )}
-
-        {!isInput && !showUrl && !showNotes && !isReport && (
-          <p className="text-zinc-600 italic">Auto — no manual inputs</p>
-        )}
-      </div>
-
-      <Handle type="source" position={Position.Bottom} className="!bg-teal-400 !w-2 !h-2" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!w-2.5 !h-2.5 !border-2"
+        style={{
+          background: style.iconBg,
+          borderColor: isDark ? "#0d1117" : "#ffffff",
+        }}
+      />
     </div>
   );
 }

@@ -38,3 +38,36 @@ async def test_page_search_ai_execute_plan_fills_and_clicks():
     ):
         success = await ai.execute_plan(driver, plan, "532 N MARION AVE")
     assert success is True
+
+
+@pytest.mark.asyncio
+async def test_page_search_ai_execute_plan_fills_book_and_page():
+    driver = MagicMock()
+    driver.polite_delay = AsyncMock()
+
+    ai = PageSearchAI()
+    plan = {
+        "search_kind": "book_page",
+        "fills": [
+            {"selector": "#recordingBookNumber", "value_key": "book"},
+            {"selector": "#recordingPageNumber", "value_key": "page"},
+        ],
+        "submit_selector": 'button:has-text("SEARCH")',
+        "use_enter_key": False,
+    }
+
+    fill = AsyncMock(return_value=True)
+    click = AsyncMock(return_value=True)
+    with patch("app.drivers.page_search_ai._click_selector", new=click), patch(
+        "app.drivers.page_search_ai._fill_selector", new=fill
+    ):
+        success = await ai.execute_plan(
+            driver,
+            plan,
+            "30-4009-096-0060",
+            values={"book": "30189", "page": "4575", "parcel": "30-4009-096-0060"},
+        )
+    assert success is True
+    assert fill.await_count == 2
+    fill.assert_any_await(driver, "#recordingBookNumber", "30189")
+    fill.assert_any_await(driver, "#recordingPageNumber", "4575")

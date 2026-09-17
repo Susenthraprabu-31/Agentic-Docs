@@ -77,6 +77,9 @@ class SearchRequest(BaseModel):
     county: str = "gila"
     query_type: QueryType
     query_value: str = Field(default="")
+    address: Optional[str] = None
+    owner_name: Optional[str] = None
+    parcel_number: Optional[str] = None
     book_number: Optional[str] = None
     page_number: Optional[str] = None
     pipeline_graph: Optional[PipelineGraph] = None
@@ -99,10 +102,17 @@ class ParcelRecord(BaseModel):
     apn: Optional[str] = None
     owner_name: Optional[str] = None
     legal_desc: Optional[str] = None
+    legal_description: Optional[str] = None
     assessed_value: Optional[float] = None
     property_address: Optional[str] = None
     source: str = "assessor"
     raw_json: dict[str, Any] = Field(default_factory=dict)
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.legal_desc and not self.legal_description:
+            self.legal_description = self.legal_desc
+        elif self.legal_description and not self.legal_desc:
+            self.legal_desc = self.legal_description
 
 
 class RecordedDocument(BaseModel):

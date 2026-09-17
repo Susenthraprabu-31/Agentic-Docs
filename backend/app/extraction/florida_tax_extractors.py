@@ -145,6 +145,7 @@ def tax_record_from_florida_data(
             "header_fields": fields,
             "account_history": scraped.get("account_history") or [],
             "last_two_bills": last_two,
+            "downloaded_bills": scraped.get("downloaded_bills") or [],
             "exemptions_summary": scraped.get("exemptions_summary"),
             "yearly_due_summary": scraped.get("yearly_due") or [],
             "tabs": scraped.get("tabs") or {},

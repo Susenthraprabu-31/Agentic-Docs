@@ -29,6 +29,11 @@ export default defineConfig({
       "/config": API_TARGET,
       "/ai-agent": API_TARGET,
       "/health": API_TARGET,
+      "/batches": spaAwareApiProxy(),
+      "/workflows": API_TARGET,
+      "/local_storage": API_TARGET,
+      "/downloads": API_TARGET,
+      "/screenshots": API_TARGET,
     },
   },
 });

@@ -1,6 +1,7 @@
 from app.config.assessor_portals import resolve_assessor_search_url
 from app.config.florida_portals import (
     ORANGE_SEARCH_URL,
+    resolve_florida_county_sources,
     is_broward_assessor,
     is_florida_pa_assessor,
     is_florida_schneider,
@@ -44,6 +45,14 @@ def test_resolve_miami_dade_urls():
         "https://www.miamidadeclerk.gov/clerk/home.page",
         "miami-dade",
     ) == MIAMI_DADE_RECORDER_SEARCH_URL
+
+
+def test_resolve_florida_county_sources_miami_dade():
+    sources = resolve_florida_county_sources("miami-dade", "30-4009-096-0060")
+    assert sources.assessor_url == MIAMI_DADE_SEARCH_URL
+    assert sources.recorder_url == MIAMI_DADE_RECORDER_SEARCH_URL
+    assert sources.gis_url == MIAMI_DADE_SEARCH_URL
+    assert "county-taxes.net" in (sources.treasurer_url or "")
 
 
 def test_broward_detection():

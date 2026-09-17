@@ -50,7 +50,7 @@ PAGE_SNAPSHOT_JS = """
 
     if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'SPAN') && text) {
       const lower = text.toLowerCase();
-      if (lower.length <= 40 && /search|address|owner|folio|parcel|submit|go|find/i.test(lower)) {
+      if (lower.length <= 40 && /search|address|owner|folio|parcel|submit|go|find|book|page|reset/i.test(lower)) {
         return `${el.tagName.toLowerCase()}:has-text("${esc(text)}")`;
       }
     }
@@ -135,33 +135,36 @@ Rules:
 - submit_selector can be a magnifying glass button or img with search alt text.
 - Never invent selectors not based on snapshot elements."""
 
-SYSTEM_PROMPT_RECORDER = """You analyze county clerk / official records / recorder websites and return Playwright CSS selectors to run a search.
+SYSTEM_PROMPT_RECORDER = """You analyze county clerk / official records / recorder websites and decide which fields the loaded page is asking for.
 
 Given:
-- query_type: address | owner | parcel
-- query_value: the value to search for
-- optional user_instructions: extra hints from the user
-- page snapshot: visible inputs, radio buttons, tabs, and buttons with suggested selectors
+- available_values: book, page, owner, parcel, address, query_value (some may be empty)
+- query_type: address | owner | parcel | book_page  (hint only — trust the visible form more)
+- page snapshot: visible nav links, inputs, radios, and buttons with selectors
 
 Return ONLY valid JSON:
 {
-  "tab_selector": "selector to open the correct search tab/section, or null",
+  "search_kind": "book_page|owner|parcel|address|instrument",
+  "tab_selector": "selector to open the matching search menu/tab, or null",
   "radio_selector": "selector for Grantor/Grantee/All radio if needed, or null",
-  "input_selector": "selector for the main search text field",
-  "submit_selector": "selector for the Search button, or null to press Enter",
+  "fills": [
+    {"selector": "css selector from snapshot", "value_key": "book|page|owner|parcel|address|query_value"}
+  ],
+  "input_selector": "legacy single-field selector, or null when fills is used",
+  "submit_selector": "Search button selector, or null to press Enter",
   "use_enter_key": false,
   "confidence": "high|medium|low",
   "reasoning": "one short sentence"
 }
 
 Rules:
-- owner query_type: use grantor, grantee, party, or name search field. Only select Grantor/Grantee radio when user_instructions explicitly mention grantor or grantee. If user_instructions mention "all name" or "search by all", select All (#Both).
-- parcel query_type: use folio, instrument, document number, book/page, or parcel field if visible.
-- address query_type: use address or legal description field if visible.
-- For name searches on clerk sites, the value may need "Last, First" format — use query_value as given unless user_instructions say otherwise.
-- Brevard/AcclaimWeb and similar sites: party name field is `#SearchOnName` or `input[name="SearchOnName"]`. Grantor radio is `#Direct`, search button is `#btnSearch`. Accept disclaimer with `#btnButton` first if shown.
+- Match the VISIBLE form, not query_type. If the heading or labels say Recording Book/Page, BOOK, PAGE — search_kind MUST be book_page.
+- For book_page: fill the book field with available_values.book and the page field with available_values.page. NEVER put parcel, folio, or address into a book or page input.
+- If the form asks for folio/parcel/APN, use parcel. If it asks for name/grantor/grantee/party, use owner.
+- If Book/Page fields are visible and book+page values are provided, prefer book_page even when query_type is address or parcel.
 - Prefer selectors from the snapshot exactly as given.
-- Never invent selectors not based on snapshot elements."""
+- Never invent selectors not based on snapshot elements.
+- Do not submit until the correct fields are identified."""
 
 SYSTEM_PROMPT = SYSTEM_PROMPT_ASSESSOR
 
@@ -200,12 +203,16 @@ class PageSearchAI:
         model: Optional[str] = None,
         portal_type: str = "assessor",
         user_instructions: Optional[str] = None,
+        available_values: Optional[dict[str, str]] = None,
     ) -> Optional[dict[str, Any]]:
         if not self.is_configured:
             return None
 
         client = self._get_client()
-        model_name = model or getattr(self.settings, "openai_browser_model", None) or "gpt-4o-mini"
+        default_model = "gpt-4o" if portal_type == "recorder" else "gpt-4o-mini"
+        model_name = model or (
+            "gpt-4o" if portal_type == "recorder" else getattr(self.settings, "openai_browser_model", None) or default_model
+        )
         system_prompt = SYSTEM_PROMPT_RECORDER if portal_type == "recorder" else SYSTEM_PROMPT_ASSESSOR
 
         user_payload: dict[str, Any] = {
@@ -215,6 +222,8 @@ class PageSearchAI:
         }
         if user_instructions:
             user_payload["user_instructions"] = user_instructions
+        if available_values:
+            user_payload["available_values"] = {k: v for k, v in available_values.items() if v}
 
         try:
             response = await asyncio.to_thread(
@@ -228,7 +237,7 @@ class PageSearchAI:
                     },
                 ],
                 temperature=0.1,
-                max_tokens=400,
+                max_tokens=600,
                 response_format={"type": "json_object"},
             )
             raw = response.choices[0].message.content or "{}"
@@ -244,12 +253,20 @@ class PageSearchAI:
             logger.warning("AI page search planning failed: %s", exc)
             return None
 
-    async def execute_plan(self, driver: "BaseDriver", plan: dict[str, Any], query_value: str) -> bool:
+    async def execute_plan(
+        self,
+        driver: "BaseDriver",
+        plan: dict[str, Any],
+        query_value: str,
+        values: Optional[dict[str, str]] = None,
+    ) -> bool:
         tab_sel = plan.get("tab_selector")
         radio_sel = plan.get("radio_selector")
         input_sel = plan.get("input_selector")
         submit_sel = plan.get("submit_selector")
         use_enter = bool(plan.get("use_enter_key"))
+        value_map = {k: v for k, v in (values or {}).items() if v}
+        value_map.setdefault("query_value", query_value)
 
         acted = False
 
@@ -258,18 +275,30 @@ class PageSearchAI:
                 acted = True
                 await driver.polite_delay(1.2)
 
-        if not input_sel or not str(input_sel).strip() or str(input_sel).strip().lower() in ("null", "none"):
-            return acted
-
         if radio_sel and str(radio_sel).strip().lower() not in ("null", "none", ""):
             if await _click_selector(driver, str(radio_sel).strip()):
                 acted = True
                 await driver.polite_delay(0.5)
 
-        if await _fill_selector(driver, str(input_sel).strip(), query_value):
-            acted = True
-        else:
-            return acted
+        fills = plan.get("fills") if isinstance(plan.get("fills"), list) else []
+        filled_any = False
+        for item in fills:
+            if not isinstance(item, dict):
+                continue
+            selector = str(item.get("selector") or "").strip()
+            key = str(item.get("value_key") or "query_value").strip()
+            val = value_map.get(key)
+            if selector and val and await _fill_selector(driver, selector, val):
+                filled_any = True
+                acted = True
+
+        if not filled_any:
+            if not input_sel or not str(input_sel).strip() or str(input_sel).strip().lower() in ("null", "none"):
+                return acted
+            if await _fill_selector(driver, str(input_sel).strip(), query_value):
+                acted = True
+            else:
+                return acted
 
         if submit_sel and str(submit_sel).strip().lower() not in ("null", "none", ""):
             if await _click_selector(driver, str(submit_sel).strip()):
@@ -384,3 +413,64 @@ async def execute_ai_page_search(
     else:
         await driver._emit_status("AI planned actions but could not fill the search field.")
     return success
+
+
+async def execute_ai_recorder_search(
+    driver: "BaseDriver",
+    query_type: QueryType,
+    query_value: str,
+    available_values: Optional[dict[str, str]] = None,
+    *,
+    user_instructions: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """Analyze a recorder/clerk page with GPT-4o and fill the fields the site is asking for.
+
+    Returns (success, search_kind).
+    """
+    ai = PageSearchAI()
+    if not ai.is_configured:
+        await driver._emit_status("OpenAI key not configured — skipping AI recorder page analysis.")
+        return False, None
+
+    values = {k: str(v).strip() for k, v in (available_values or {}).items() if v and str(v).strip()}
+    values.setdefault("query_value", query_value)
+
+    await driver._emit_status("Analyzing recorder page with GPT-4o to choose the correct search fields...")
+    snapshot = await ai.extract_snapshot(driver)
+    if not snapshot.get("elements"):
+        await driver._emit_status("AI could not read interactive elements on this recorder page.")
+        return False, None
+
+    plan = await ai.plan_search(
+        snapshot,
+        query_type,
+        query_value,
+        model="gpt-4o",
+        portal_type="recorder",
+        user_instructions=user_instructions,
+        available_values=values,
+    )
+    if not plan:
+        await driver._emit_status("GPT-4o could not plan recorder search actions for this page.")
+        return False, None
+
+    search_kind = str(plan.get("search_kind") or "").strip().lower() or None
+    reasoning = plan.get("reasoning") or "planned recorder search"
+    await driver._emit_status(f"GPT-4o: {reasoning}")
+
+    fill_value = query_value
+    if search_kind == "book_page" and values.get("book") and values.get("page"):
+        fill_value = f"{values['book']} / {values['page']}"
+    elif search_kind == "owner" and values.get("owner"):
+        fill_value = values["owner"]
+    elif search_kind == "parcel" and values.get("parcel"):
+        fill_value = values["parcel"]
+    elif search_kind == "address" and values.get("address"):
+        fill_value = values["address"]
+
+    success = await ai.execute_plan(driver, plan, fill_value, values=values)
+    if success:
+        await driver._emit_status("GPT-4o filled the recorder fields the page is asking for.")
+    else:
+        await driver._emit_status("GPT-4o planned recorder actions but could not fill the form.")
+    return success, search_kind

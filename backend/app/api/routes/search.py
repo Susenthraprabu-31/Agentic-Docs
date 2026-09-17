@@ -10,23 +10,21 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 
 def _resolve_search_value(request: SearchRequest) -> tuple[str, str | None, str | None]:
+    query_value = (request.query_value or "").strip()
+    book = request.book_number
+    page = request.page_number
+
     if request.query_type == QueryType.BOOK_PAGE:
         parsed = parse_book_page(
-            request.query_value,
-            book_number=request.book_number,
-            page_number=request.page_number,
+            query_value,
+            book_number=book,
+            page_number=page,
         )
-        if not parsed:
-            raise HTTPException(
-                status_code=400,
-                detail="book_page search requires book_number and page_number (or query_value like 1494/2483)",
-            )
-        book, page = parsed
-        return format_book_page(book, page), book, page
+        if parsed:
+            book, page = parsed
+            return format_book_page(book, page), book, page
+        return query_value, book, page
 
-    query_value = request.query_value.strip()
-    if not query_value:
-        raise HTTPException(status_code=400, detail="query_value is required for this query_type")
     return query_value, None, None
 
 
@@ -64,6 +62,12 @@ async def create_search(request: SearchRequest) -> SearchResponse:
     if book_number and page_number:
         plan_json["book_number"] = book_number
         plan_json["page_number"] = page_number
+    if request.address:
+        plan_json["address"] = request.address
+    if request.owner_name:
+        plan_json["owner_name"] = request.owner_name
+    if request.parcel_number:
+        plan_json["parcel_number"] = request.parcel_number
 
     repo.update_run(run["id"], plan_json=plan_json)
 

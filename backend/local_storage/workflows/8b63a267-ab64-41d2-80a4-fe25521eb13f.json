@@ -1,0 +1,190 @@
+{
+  "id": "8b63a267-ab64-41d2-80a4-fe25521eb13f",
+  "name": "Tax Workflow",
+  "description": "",
+  "nodes": [
+    {
+      "id": "input",
+      "data": {
+        "label": "Input",
+        "state": "FL",
+        "county": "miami-dade",
+        "nodeId": "input",
+        "enabled": true,
+        "queryType": "parcel",
+        "queryValue": "30-4009-096-0060",
+        "parcelNumber": "30-4009-096-0060",
+        "executionStatus": "pending"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 0
+      },
+      "selected": true
+    },
+    {
+      "id": "netr",
+      "data": {
+        "url": "",
+        "label": "NETR Resolver",
+        "nodeId": "netr",
+        "enabled": true,
+        "playwrightNotes": "Auto-scrape publicrecords.netronline.com for portal links. Leave URL empty to use NETR."
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 200
+      }
+    },
+    {
+      "id": "platform",
+      "data": {
+        "label": "Platform Detector",
+        "nodeId": "platform",
+        "enabled": true,
+        "playwrightNotes": "Maps portal URLs to platform drivers (Schneider, FloridaPA, etc.)"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 280,
+        "y": 400
+      }
+    },
+    {
+      "id": "tax",
+      "data": {
+        "url": "",
+        "label": "Tax",
+        "nodeId": "tax",
+        "enabled": true,
+        "playwrightNotes": "e.g. Open PropertyDetail page, wait for tax bill table"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 293.48140393888053,
+        "y": 576.5992612562777
+      },
+      "selected": false
+    },
+    {
+      "id": "normalizer",
+      "data": {
+        "label": "Normalizer",
+        "nodeId": "normalizer",
+        "enabled": true,
+        "playwrightNotes": "Merge & deduplicate records by APN"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 290.271346462935,
+        "y": 768.9442940802819
+      },
+      "selected": false
+    },
+    {
+      "id": "report",
+      "data": {
+        "label": "Report",
+        "nodeId": "report",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 334.19004255625237,
+        "y": 933.3603660617816
+      },
+      "selected": false
+    },
+    {
+      "id": "output",
+      "data": {
+        "label": "Output",
+        "nodeId": "output",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 61
+      },
+      "position": {
+        "x": 365.8998757201408,
+        "y": 1101.9406997340047
+      },
+      "selected": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-netr",
+      "source": "input",
+      "target": "netr",
+      "animated": true
+    },
+    {
+      "id": "e-netr-platform",
+      "source": "netr",
+      "target": "platform",
+      "animated": true
+    },
+    {
+      "id": "e-tax-normalizer",
+      "source": "tax",
+      "target": "normalizer",
+      "animated": true
+    },
+    {
+      "id": "e-normalizer-report",
+      "source": "normalizer",
+      "target": "report",
+      "animated": true
+    },
+    {
+      "id": "e-report-output",
+      "source": "report",
+      "target": "output",
+      "animated": true
+    },
+    {
+      "id": "xy-edge__platform-tax",
+      "source": "platform",
+      "target": "tax",
+      "animated": true
+    }
+  ],
+  "metadata": {
+    "step_count": 7
+  },
+  "created_at": "2026-09-17T11:17:36.437218+00:00",
+  "updated_at": "2026-09-17T11:19:35.529715+00:00"
+}

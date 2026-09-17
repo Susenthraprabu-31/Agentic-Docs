@@ -13,7 +13,12 @@ from app.agents.run_logger import RunLogger
 from app.db.repositories.documents_repository import DocumentsRepository
 from app.db.repositories.records_repository import RecordsRepository
 from app.db.repositories.runs_repository import RunsRepository
-from app.config.florida_portals import resolve_florida_recorder_url, resolve_florida_tax_url, MIAMI_DADE_SEARCH_URL
+from app.config.florida_portals import (
+    MIAMI_DADE_SEARCH_URL,
+    resolve_florida_county_sources,
+    resolve_florida_recorder_url,
+    resolve_florida_tax_url,
+)
 from app.drivers.assessor.gila_assessor_driver import GilaAssessorDriver
 from app.drivers.base.base_driver import BaseDriver
 from app.drivers.gis.gila_gis_driver import GilaGisDriver
@@ -27,6 +32,7 @@ from app.extraction.book_page import format_book_page_label, parse_book_page
 from app.extraction.schemas import CountySources, QueryType, RunStatus, SourceType
 from app.agents.ai_agent_coordinator import wait_for_pending
 from app.pipeline.graph_executor import ParsedPipelineGraph, requires_browser, resolve_pipeline_graph
+from app.report.pdf_exporter import is_valid_pdf
 from app.report.report_builder import ReportBuilder
 
 logger = logging.getLogger(__name__)
@@ -66,6 +72,7 @@ class RunContext:
     query_type: QueryType
     query_value: str
     total_records: int = 0
+    address: Optional[str] = None
     parcel: Optional[str] = None
     owner_name: Optional[str] = None
     book_number: Optional[str] = None
@@ -89,7 +96,7 @@ def _resolve_search_params_from_graph(
     query_type: QueryType,
     query_value: str,
 ) -> tuple[str, str, QueryType, str]:
-    """Prefer Input node canvas data over top-level API fields."""
+    """Prefer Input node canvas data over top-level API fields, and intelligently detect query type based on provided inputs."""
     for canvas_id in parsed.order:
         node = parsed.node_map.get(canvas_id, {})
         if node.get("node_id") != "input":
@@ -99,26 +106,55 @@ def _resolve_search_params_from_graph(
             state = str(data["state"]).strip().upper()
         if data.get("county"):
             county = str(data["county"]).strip().lower()
-        if data.get("query_type"):
+
+        owner_val = _data_str(data, "ownerName", "owner_name")
+        address_val = _data_str(data, "address", "property_address")
+        parcel_val = _data_str(data, "parcelNumber", "parcel_number")
+        book_val = _data_str(data, "bookNumber", "book_number") or None
+        page_val = _data_str(data, "pageNumber", "page_number") or None
+
+        raw_qtype = _data_str(data, "query_type", "queryType").lower()
+        node_qtype: Optional[QueryType] = None
+        if raw_qtype:
             try:
-                query_type = QueryType(str(data["query_type"]).strip().lower())
+                node_qtype = QueryType(raw_qtype)
             except ValueError:
                 pass
-        if data.get("query_value"):
-            query_value = str(data["query_value"]).strip()
-        if data.get("book_number"):
-            book_number = str(data["book_number"]).strip()
-        else:
-            book_number = None
-        if data.get("page_number"):
-            page_number = str(data["page_number"]).strip()
-        else:
-            page_number = None
+
+        raw_qval = _data_str(data, "query_value", "queryValue")
+
+        # Based strictly on what input is provided:
+        # If address is present and owner_name is not present, the user searched by address!
+        if address_val and not owner_val and not parcel_val and not (book_val or page_val):
+            query_type = QueryType.ADDRESS
+            query_value = address_val
+        elif parcel_val and not owner_val and not address_val and not (book_val or page_val):
+            query_type = QueryType.PARCEL
+            query_value = parcel_val
+        elif (book_val or page_val) and not owner_val and not address_val and not parcel_val:
+            query_type = QueryType.BOOK_PAGE
+            query_value = format_book_page_label(book_val, page_val) if (book_val and page_val) else (book_val or page_val or "")
+        elif owner_val and not address_val and not parcel_val and not (book_val or page_val):
+            query_type = QueryType.OWNER
+            query_value = owner_val
+        elif node_qtype:
+            query_type = node_qtype
+            if query_type == QueryType.ADDRESS and address_val:
+                query_value = address_val
+            elif query_type == QueryType.OWNER and owner_val:
+                query_value = owner_val
+            elif query_type == QueryType.PARCEL and parcel_val:
+                query_value = parcel_val
+            elif raw_qval:
+                query_value = raw_qval
+        elif raw_qval:
+            query_value = raw_qval
+
         if query_type == QueryType.BOOK_PAGE:
-            book_page_parts = parse_book_page(query_value, book_number, page_number)
+            book_page_parts = parse_book_page(query_value, book_val, page_val)
             if book_page_parts:
-                book_number, page_number = book_page_parts
-                query_value = format_book_page_label(book_number, page_number)
+                b_num, p_num = book_page_parts
+                query_value = format_book_page_label(b_num, p_num)
         break
     return state, county, query_type, query_value
 
@@ -128,17 +164,59 @@ def _apply_input_data_to_ctx(data: dict[str, Any], ctx: RunContext) -> None:
         ctx.state = str(data["state"]).strip().upper()
     if data.get("county"):
         ctx.county = str(data["county"]).strip().lower()
-    if data.get("query_type"):
+
+    owner_val = _data_str(data, "ownerName", "owner_name")
+    address_val = _data_str(data, "address", "property_address")
+    parcel_val = _data_str(data, "parcelNumber", "parcel_number")
+    book_val = _data_str(data, "bookNumber", "book_number") or None
+    page_val = _data_str(data, "pageNumber", "page_number") or None
+
+    if address_val:
+        ctx.address = address_val
+    if owner_val:
+        ctx.owner_name = owner_val
+    if parcel_val:
+        ctx.parcel = parcel_val
+    if book_val:
+        ctx.book_number = book_val
+    if page_val:
+        ctx.page_number = page_val
+
+    raw_qtype = _data_str(data, "query_type", "queryType").lower()
+    node_qtype: Optional[QueryType] = None
+    if raw_qtype:
         try:
-            ctx.query_type = QueryType(str(data["query_type"]).strip().lower())
+            node_qtype = QueryType(raw_qtype)
         except ValueError:
             pass
-    if data.get("query_value"):
-        ctx.query_value = str(data["query_value"]).strip()
-    if data.get("book_number"):
-        ctx.book_number = str(data["book_number"]).strip()
-    if data.get("page_number"):
-        ctx.page_number = str(data["page_number"]).strip()
+
+    raw_qval = _data_str(data, "query_value", "queryValue")
+
+    if address_val and not owner_val and not parcel_val and not (book_val or page_val):
+        ctx.query_type = QueryType.ADDRESS
+        ctx.query_value = address_val
+    elif parcel_val and not owner_val and not address_val and not (book_val or page_val):
+        ctx.query_type = QueryType.PARCEL
+        ctx.query_value = parcel_val
+    elif (book_val or page_val) and not owner_val and not address_val and not parcel_val:
+        ctx.query_type = QueryType.BOOK_PAGE
+        ctx.query_value = format_book_page_label(book_val, page_val) if (book_val and page_val) else (book_val or page_val or "")
+    elif owner_val and not address_val and not parcel_val and not (book_val or page_val):
+        ctx.query_type = QueryType.OWNER
+        ctx.query_value = owner_val
+    elif node_qtype:
+        ctx.query_type = node_qtype
+        if ctx.query_type == QueryType.ADDRESS and address_val:
+            ctx.query_value = address_val
+        elif ctx.query_type == QueryType.OWNER and owner_val:
+            ctx.query_value = owner_val
+        elif ctx.query_type == QueryType.PARCEL and parcel_val:
+            ctx.query_value = parcel_val
+        elif raw_qval:
+            ctx.query_value = raw_qval
+    elif raw_qval:
+        ctx.query_value = raw_qval
+
     if ctx.query_type == QueryType.BOOK_PAGE:
         book_page_parts = parse_book_page(ctx.query_value, ctx.book_number, ctx.page_number)
         if book_page_parts:
@@ -146,6 +224,10 @@ def _apply_input_data_to_ctx(data: dict[str, Any], ctx: RunContext) -> None:
             ctx.query_value = format_book_page_label(ctx.book_number, ctx.page_number)
     elif ctx.query_type == QueryType.PARCEL and ctx.query_value:
         ctx.parcel = ctx.query_value
+    elif ctx.query_type == QueryType.ADDRESS and ctx.query_value:
+        ctx.address = ctx.query_value
+    elif ctx.query_type == QueryType.OWNER and ctx.query_value:
+        ctx.owner_name = ctx.query_value
 
 
 class Orchestrator:
@@ -212,7 +294,9 @@ class Orchestrator:
                 county=county,
                 query_type=query_type,
                 query_value=query_value,
+                address=query_value if query_type == QueryType.ADDRESS else None,
                 parcel=query_value if query_type == QueryType.PARCEL else None,
+                owner_name=query_value if query_type == QueryType.OWNER else None,
             )
             if query_type == QueryType.BOOK_PAGE:
                 book_page_parts = parse_book_page(query_value)
@@ -228,6 +312,13 @@ class Orchestrator:
                     await self._log_node_skipped(node_id, "Node disabled")
                     continue
 
+                event_name = NODE_EVENT_NAMES.get(node_id, node_id)
+                await self.run_logger.log(
+                    "pipeline_step",
+                    node=event_name,
+                    message=f"Running {event_name}",
+                    step_node_id=node_id,
+                )
                 await self._dispatch_node(node_id, data, ctx, driver, resolver, canvas_id=canvas_id)
 
             self.sources = ctx.sources
@@ -271,6 +362,44 @@ class Orchestrator:
         if assessor_record:
             ctx.parcel = assessor_record.get("apn")
             ctx.owner_name = assessor_record.get("owner_name")
+
+    def _parcel_for_sources(self, ctx: RunContext) -> str:
+        if ctx.parcel:
+            return ctx.parcel
+        if ctx.query_type == QueryType.PARCEL and ctx.query_value:
+            return ctx.query_value
+        return ""
+
+    def _ensure_ctx_sources(self, ctx: RunContext) -> None:
+        if ctx.sources:
+            return
+        if ctx.state.upper() == "FL":
+            ctx.sources = resolve_florida_county_sources(ctx.county, self._parcel_for_sources(ctx))
+
+    def _resolve_portal_url(
+        self,
+        ctx: RunContext,
+        data: dict[str, Any],
+        source_attr: str,
+    ) -> str:
+        self._ensure_ctx_sources(ctx)
+        explicit = _data_str(data, "url")
+        if explicit:
+            return explicit
+        if ctx.sources:
+            url = getattr(ctx.sources, source_attr, None)
+            if url:
+                return str(url)
+        if ctx.state.upper() == "FL":
+            fallback = resolve_florida_county_sources(ctx.county, self._parcel_for_sources(ctx))
+            url = getattr(fallback, source_attr, None)
+            if url:
+                if ctx.sources:
+                    setattr(ctx.sources, source_attr, url)
+                else:
+                    ctx.sources = fallback
+                return str(url)
+        return ""
 
     async def _dispatch_node(
         self,
@@ -317,6 +446,9 @@ class Orchestrator:
             county=ctx.county,
             query_type=ctx.query_type.value,
             query_value=ctx.query_value,
+            address=ctx.address,
+            owner_name=ctx.owner_name,
+            parcel=ctx.parcel,
         )
 
     async def _node_netr(
@@ -380,22 +512,38 @@ class Orchestrator:
         resolver: Optional[CountyResolver],
     ) -> None:
         if not driver:
+            await self.run_logger.node_started("AssessorNode")
             await self.run_logger.source_skipped(SourceType.ASSESSOR, "Browser not started")
+            await self.run_logger.node_completed("AssessorNode", detail="Skipped — browser not started")
             return
-        url = _data_str(data, "url") or (ctx.sources.assessor_url if ctx.sources else "")
+        url = self._resolve_portal_url(ctx, data, "assessor_url")
         if not url:
+            await self.run_logger.node_started("AssessorNode")
             await self.run_logger.source_skipped(SourceType.ASSESSOR, "No assessor URL — connect NETR or set URL on node")
+            await self.run_logger.node_completed("AssessorNode", detail="Skipped — no assessor URL")
             return
         if ctx.query_type == QueryType.BOOK_PAGE:
+            await self.run_logger.node_started("AssessorNode")
             await self.run_logger.source_skipped(
                 SourceType.ASSESSOR, "Book/page search applies to Recorder node only"
             )
+            await self.run_logger.node_completed("AssessorNode", detail="Skipped — book/page search")
             return
         notes = _data_str(data, "playwright_notes") or None
         if notes:
             driver.playwright_notes = notes
+
+        search_qt = ctx.query_type
+        search_qv = ctx.query_value
+        if search_qt == QueryType.ADDRESS and ctx.address:
+            search_qv = ctx.address
+        elif search_qt == QueryType.OWNER and ctx.owner_name:
+            search_qv = ctx.owner_name
+        elif search_qt == QueryType.PARCEL and ctx.parcel:
+            search_qv = ctx.parcel
+
         ctx.total_records += await self._search_assessor(
-            driver, url, ctx.query_type, ctx.query_value, ctx.state, ctx.county, playwright_notes=notes
+            driver, url, search_qt, search_qv, ctx.state, ctx.county, playwright_notes=notes
         )
         self._refresh_parcel(ctx)
 
@@ -407,11 +555,17 @@ class Orchestrator:
         resolver: Optional[CountyResolver],
     ) -> None:
         if not driver:
+            await self.run_logger.node_started("RecorderNode")
             await self.run_logger.source_skipped(SourceType.RECORDER, "Browser not started")
+            await self.run_logger.node_completed("RecorderNode", detail="Skipped — browser not started")
             return
-        url = _data_str(data, "url") or (ctx.sources.recorder_url if ctx.sources else "")
+        url = self._resolve_portal_url(ctx, data, "recorder_url")
+        if ctx.state.upper() == "FL" and url:
+            url = resolve_florida_recorder_url(url, ctx.county)
         if not url:
+            await self.run_logger.node_started("RecorderNode")
             await self.run_logger.source_skipped(SourceType.RECORDER, "No recorder URL — connect NETR or set URL on node")
+            await self.run_logger.node_completed("RecorderNode", detail="Skipped — no recorder URL")
             return
         if ctx.query_type == QueryType.BOOK_PAGE:
             book_page_parts = parse_book_page(ctx.query_value, ctx.book_number, ctx.page_number)
@@ -421,19 +575,69 @@ class Orchestrator:
                 )
                 return
             ctx.book_number, ctx.page_number = book_page_parts
+
+        recorder_qt = ctx.query_type
+        recorder_qv = ctx.query_value
+        self._refresh_parcel(ctx)
+
+        if ctx.book_number and ctx.page_number:
+            recorder_qt = QueryType.BOOK_PAGE
+            recorder_qv = format_book_page_label(ctx.book_number, ctx.page_number)
+            await self.run_logger.log(
+                "node_step",
+                node="RecorderNode",
+                message=f"Using book {ctx.book_number} / page {ctx.page_number} from Input for recorder search",
+            )
+        elif recorder_qt == QueryType.ADDRESS:
+            # County recorders search by owner/party name, parcel, or book/page — not street address.
+            if ctx.owner_name:
+                recorder_qt = QueryType.OWNER
+                recorder_qv = ctx.owner_name
+                await self.run_logger.log(
+                    "node_step",
+                    node="RecorderNode",
+                    message=f"Using owner '{ctx.owner_name}' (resolved from assessor address search) for recorder records search",
+                )
+            elif ctx.parcel:
+                recorder_qt = QueryType.PARCEL
+                recorder_qv = ctx.parcel
+                await self.run_logger.log(
+                    "node_step",
+                    node="RecorderNode",
+                    message=f"Using parcel '{ctx.parcel}' (resolved from assessor address search) for recorder records search",
+                )
+            else:
+                await self.run_logger.node_started("RecorderNode")
+                await self.run_logger.source_skipped(
+                    SourceType.RECORDER,
+                    "Address input search requires owner name, parcel, or book/page for recorder lookup",
+                )
+                await self.run_logger.node_completed(
+                    "RecorderNode", detail="Skipped — no owner, parcel, or book/page resolved"
+                )
+                return
+
         notes = _data_str(data, "playwright_notes") or None
         if notes:
             driver.playwright_notes = notes
         ctx.total_records += await self._search_recorder(
             driver,
             url,
-            ctx.query_type,
-            ctx.query_value,
+            recorder_qt,
+            recorder_qv,
             ctx.state,
             ctx.county,
             playwright_notes=notes,
             book_number=ctx.book_number,
             page_number=ctx.page_number,
+            available_values={
+                "book": ctx.book_number or "",
+                "page": ctx.page_number or "",
+                "owner": ctx.owner_name or "",
+                "parcel": ctx.parcel or "",
+                "address": ctx.address or "",
+                "query_value": recorder_qv or ctx.query_value or "",
+            },
         )
 
     async def _node_gis(
@@ -652,24 +856,45 @@ class Orchestrator:
             count = 0
             for parcel in parcels:
                 html_snippet = json.dumps(parcel.raw_json) if parcel.raw_json else ""
-                normalized = await self.normalizer.normalize("assessor", html_snippet, parcel)
+                try:
+                    normalized = await self.normalizer.normalize("assessor", html_snippet, parcel)
+                except Exception as norm_err:
+                    logger.warning("Assessor normalization failed: %s, falling back to raw parcel", norm_err)
+                    normalized = parcel
+
+                leg_desc = (
+                    getattr(normalized, "legal_description", None)
+                    or getattr(normalized, "legal_desc", None)
+                    or getattr(parcel, "legal_description", None)
+                    or getattr(parcel, "legal_desc", None)
+                )
+                assessed_val = getattr(normalized, "assessed_value", None) or getattr(parcel, "assessed_value", None)
+                apn = getattr(normalized, "apn", None) or getattr(parcel, "apn", None)
+                owner = getattr(normalized, "owner_name", None) or getattr(parcel, "owner_name", None)
+                addr = getattr(normalized, "property_address", None) or getattr(parcel, "property_address", None)
+
                 self.records_repo.insert(
                     self.run_id,
                     {
                         "source": "assessor",
-                        "apn": normalized.apn or parcel.apn,
-                        "owner_name": normalized.owner_name or parcel.owner_name,
-                        "property_address": normalized.property_address or parcel.property_address,
-                        "legal_description": normalized.legal_description or parcel.legal_description,
-                        "assessed_value": normalized.assessed_value,
+                        "apn": apn,
+                        "owner_name": owner,
+                        "property_address": addr,
+                        "legal_description": leg_desc,
+                        "assessed_value": assessed_val,
                         "raw_json": parcel.raw_json,
                     },
                 )
+                try:
+                    self._persist_assessor_chain_of_title(parcel)
+                except Exception as chain_err:
+                    logger.warning("Failed to persist assessor chain of title: %s", chain_err)
+
                 await self.run_logger.record_found(
                     SourceType.ASSESSOR,
-                    apn=normalized.apn or parcel.apn,
-                    owner_name=normalized.owner_name or parcel.owner_name,
-                    property_address=normalized.property_address or parcel.property_address,
+                    apn=apn,
+                    owner_name=owner,
+                    property_address=addr,
                 )
                 count += 1
             duration = int((time.monotonic() - t0) * 1000)
@@ -693,6 +918,7 @@ class Orchestrator:
         playwright_notes: Optional[str] = None,
         book_number: Optional[str] = None,
         page_number: Optional[str] = None,
+        available_values: Optional[dict[str, str]] = None,
     ) -> int:
         t0 = time.monotonic()
         recorder = GilaRecorderDriver()
@@ -725,34 +951,115 @@ class Orchestrator:
                 query_value,
                 book_number=book_number,
                 page_number=page_number,
+                available_values=available_values,
             )
-            base._page = recorder.page
+            base._page = recorder._page
             base._browser_stream = recorder._browser_stream
+            await base.stabilize_browser_session()
             await recorder.save_browser_preview()
             count = 0
             for doc in documents:
+                orig_doc = doc
                 if doc.screenshot_path and doc.screenshot_path.lower().endswith(".pdf"):
                     if not doc.ocr_json:
                         doc.ocr_json = {"download_path": doc.screenshot_path}
                 elif doc.screenshot_path:
-                    doc = await self.ocr.extract_document(doc.screenshot_path, doc.document_type)
+                    try:
+                        extracted = await self.ocr.extract_document(doc.screenshot_path, doc.document_type)
+                        if extracted and extracted.ocr_json and "error" not in extracted.ocr_json:
+                            doc = extracted
+                    except Exception as ocr_err:
+                        logger.warning("Document OCR failed, keeping original: %s", ocr_err)
                 normalized = await self.normalizer.normalize(
                     "recorder",
                     json.dumps(doc.ocr_json) if doc.ocr_json else query_value,
                     doc,
                 )
+                merged_ocr = {
+                    **(getattr(orig_doc, "ocr_json", None) or {}),
+                    **(getattr(doc, "ocr_json", None) or {}),
+                    **(getattr(normalized, "ocr_json", None) or {}),
+                }
+                for key in (
+                    "download_path",
+                    "pdf_path",
+                    "folder_name",
+                    "pdf_file",
+                    "image_path",
+                    "book_number",
+                    "page_number",
+                    "clerk_file_number",
+                    "legal_description",
+                    "recording_date",
+                ):
+                    val = (
+                        (orig_doc.ocr_json or {}).get(key)
+                        if getattr(orig_doc, "ocr_json", None)
+                        else None
+                    ) or (
+                        (doc.ocr_json or {}).get(key)
+                        if getattr(doc, "ocr_json", None)
+                        else None
+                    )
+                    if val:
+                        merged_ocr[key] = val
+                screenshot_path = (
+                    getattr(orig_doc, "screenshot_path", None)
+                    or getattr(doc, "screenshot_path", None)
+                    or getattr(normalized, "screenshot_path", None)
+                    or merged_ocr.get("download_path")
+                )
+                if screenshot_path and str(screenshot_path).lower().endswith(".pdf"):
+                    merged_ocr.setdefault("download_path", screenshot_path)
+
+                doc_type = (
+                    getattr(normalized, "document_type", None)
+                    or getattr(orig_doc, "document_type", None)
+                    or getattr(doc, "document_type", None)
+                )
+                bk_pg = (
+                    getattr(normalized, "book_page", None)
+                    or getattr(orig_doc, "book_page", None)
+                    or getattr(doc, "book_page", None)
+                    or (f"{merged_ocr['book_number']}/{merged_ocr['page_number']}" if "book_number" in merged_ocr and "page_number" in merged_ocr else None)
+                )
+                inst_num = (
+                    getattr(normalized, "instrument_number", None)
+                    or getattr(orig_doc, "instrument_number", None)
+                    or getattr(doc, "instrument_number", None)
+                    or merged_ocr.get("clerk_file_number")
+                )
+                grantor_name = (
+                    getattr(normalized, "grantor", None)
+                    or getattr(orig_doc, "grantor", None)
+                    or getattr(doc, "grantor", None)
+                )
+                grantee_name = (
+                    getattr(normalized, "grantee", None)
+                    or getattr(orig_doc, "grantee", None)
+                    or getattr(doc, "grantee", None)
+                )
+                rec_date = (
+                    normalized.recording_date.isoformat()
+                    if getattr(normalized, "recording_date", None)
+                    else (
+                        orig_doc.recording_date.isoformat()
+                        if getattr(orig_doc, "recording_date", None)
+                        else None
+                    )
+                )
                 self.documents_repo.insert(
                     self.run_id,
                     {
-                        "document_type": normalized.document_type,
-                        "recording_date": normalized.recording_date.isoformat() if normalized.recording_date else None,
-                        "book_page": normalized.book_page,
-                        "instrument_number": normalized.instrument_number,
-                        "grantor": normalized.grantor,
-                        "grantee": normalized.grantee,
-                        "source_url": normalized.source_url or getattr(doc, "source_url", None) or url,
-                        "screenshot_path": normalized.screenshot_path or getattr(doc, "screenshot_path", None),
-                        "ocr_json": normalized.ocr_json,
+                        "document_type": doc_type,
+                        "recording_date": rec_date,
+                        "book_page": bk_pg,
+                        "instrument_number": inst_num,
+                        "grantor": grantor_name,
+                        "grantee": grantee_name,
+                        "source_url": getattr(normalized, "source_url", None) or getattr(orig_doc, "source_url", None) or getattr(doc, "source_url", None) or url,
+                        "screenshot_path": screenshot_path,
+                        "ocr_json": merged_ocr,
                     },
                 )
                 await self.run_logger.record_found(
@@ -800,6 +1107,15 @@ class Orchestrator:
 
         detail_url = tax_url or resolve_florida_tax_url(county, apn)
         try:
+            if not await base.ensure_browser_ready():
+                await self.run_logger.node_failed(
+                    "TaxNode", "Browser is not available for tax lookup"
+                )
+                await self.run_logger.source_failed(
+                    SourceType.TAX_RECORD, "Browser is not available for tax lookup"
+                )
+                return 0
+            await base.stabilize_browser_session()
             await self.run_logger.node_started("TaxNode", url=detail_url)
             await self.run_logger.source_started(SourceType.TAX_RECORD, detail_url)
             # Pass the portal_url so the driver navigates to the correct URL.
@@ -829,6 +1145,45 @@ class Orchestrator:
                     "raw_json": record.raw_json,
                 },
             )
+            saved_pdfs: set[str] = set()
+            tax_doc_candidates: list[tuple[str, str]] = []
+            for bill_doc in record.raw_json.get("downloaded_bills") or []:
+                pdf_path = bill_doc.get("pdf_path")
+                if pdf_path and bill_doc.get("pdf_downloaded", True):
+                    tax_doc_candidates.append((bill_doc.get("bill") or "Annual Bill", pdf_path))
+            for bill in record.raw_json.get("last_two_bills") or []:
+                pdf_path = bill.get("pdf_path")
+                if pdf_path and bill.get("pdf_downloaded", True):
+                    bill_name = (bill.get("bill_summary") or {}).get("bill") or bill.get("bill_title") or "Annual Bill"
+                    tax_doc_candidates.append((bill_name, pdf_path))
+
+            tax_bill_dir = Path("screenshots") / "tax_bills" / self.run_id
+            if tax_bill_dir.is_dir():
+                for pdf in sorted(tax_bill_dir.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True):
+                    tax_doc_candidates.append((pdf.stem.replace("_", " "), str(pdf.resolve())))
+
+            for bill_name, pdf_path in tax_doc_candidates:
+                if pdf_path in saved_pdfs or not is_valid_pdf(pdf_path):
+                    continue
+                saved_pdfs.add(pdf_path)
+                self.documents_repo.insert(
+                    self.run_id,
+                    {
+                        "document_type": "tax_bill",
+                        "source_url": record.source_url,
+                        "screenshot_path": pdf_path,
+                        "ocr_json": {
+                            "download_path": pdf_path,
+                            "source": "tax_bill",
+                            "bill": bill_name,
+                        },
+                    },
+                )
+                await self.run_logger.record_found(
+                    SourceType.TAX_RECORD,
+                    apn=apn,
+                    message=f"Downloaded tax bill PDF: {bill_name}",
+                )
             await self.run_logger.record_found(
                 SourceType.TAX_RECORD,
                 apn=apn,
@@ -865,10 +1220,16 @@ class Orchestrator:
         gis.status_callback = base.status_callback
         gis.playwright_notes = playwright_notes
         try:
+            if not await gis.ensure_browser_ready():
+                await self.run_logger.node_failed("GISNode", "Browser is not available for GIS map capture")
+                await self.run_logger.source_failed(SourceType.GIS, "Browser is not available for GIS map capture")
+                return False
             await self.run_logger.node_started("GISNode", url=url)
             await self.run_logger.source_started(SourceType.GIS, url)
             path = await gis.capture_parcel_map(url, parcel, query_type, query_value)
             await gis.save_browser_preview()
+            base._page = gis._page
+            await base.stabilize_browser_session()
             duration = int((time.monotonic() - t0) * 1000)
             await self.run_logger.source_completed(
                 SourceType.GIS, records_found=1 if path else 0, duration_ms=duration, screenshot_path=path

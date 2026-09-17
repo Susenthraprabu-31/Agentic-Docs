@@ -43,6 +43,9 @@ export interface SearchRequest {
   county: string;
   query_type: QueryType;
   query_value: string;
+  address?: string;
+  owner_name?: string;
+  parcel_number?: string;
   book_number?: string;
   page_number?: string;
   pipeline_graph?: PipelineGraph;
@@ -282,15 +285,24 @@ export function getDocumentDownloadUrl(runId: string): string {
 export async function downloadOfficialDocument(runId: string, filename?: string): Promise<void> {
   const res = await fetch(getDocumentDownloadUrl(runId));
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || "Failed to download official document");
+    const text = await res.text();
+    let message = "Failed to download official document";
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { detail?: string };
+        message = parsed.detail || text;
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
   }
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename || `official_document_${runId}.pdf`;
+  link.download = filename || `official_documents_${runId.slice(0, 8)}.zip`;
   document.body.appendChild(link);
   link.click();
   link.remove();

@@ -2,20 +2,139 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+:root {
+  color-scheme: light dark;
 }
 
-/* React Flow dark canvas */
+html.light {
+  color-scheme: light;
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-panel: #ffffff;
+  --border-subtle: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --canvas-bg: #f1f5f9;
+  --grid-dots: #cbd5e1;
+  --node-bg: #ffffff;
+  --node-border: #e2e8f0;
+  --node-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg-app: #0d1117;
+  --bg-surface: #161b22;
+  --bg-panel: #0d1117;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --canvas-bg: #0d1117;
+  --grid-dots: #1a2030;
+  --node-bg: #1a1f2e;
+  --node-border: #2e384d;
+  --node-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased selection:bg-violet-500/20 selection:text-violet-900;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.dark body {
+  @apply bg-[#0d1117] text-zinc-100 selection:bg-violet-500/30 selection:text-violet-200;
+}
+
+/* React Flow customization */
 .react-flow__node {
   cursor: default;
 }
 
 .react-flow__edge-path {
-  stroke: #14b8a6;
-  stroke-width: 2;
+  stroke: #cbd5e1;
+  stroke-width: 1.5;
+  transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
+
+html.dark .react-flow__edge-path {
+  stroke: #334155;
+}
+
+/* Completed edge (solid green) */
+.edge-completed .react-flow__edge-path {
+  stroke: #10b981 !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: none !important;
+}
+
+/* Currently working / Running edge (animated flowing violet line) */
+.edge-running .react-flow__edge-path {
+  stroke: #8b5cf6 !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: 6 4 !important;
+  animation: react-flow-dash 0.6s linear infinite !important;
+  filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.5));
+}
+
+/* Pending edge (clean dashed muted line) */
+.edge-pending .react-flow__edge-path {
+  stroke: #cbd5e1 !important;
+  stroke-width: 1.5px !important;
+  stroke-dasharray: 5 5 !important;
+}
+
+html.dark .edge-pending .react-flow__edge-path {
+  stroke: #475569 !important;
+}
+
+/* Failed edge (red dashed line) */
+.edge-failed .react-flow__edge-path {
+  stroke: #ef4444 !important;
+  stroke-width: 2px !important;
+  stroke-dasharray: 4 4 !important;
+}
+
+@keyframes react-flow-dash {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .react-flow__attribution {
   display: none;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
 }

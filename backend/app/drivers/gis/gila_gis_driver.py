@@ -46,6 +46,10 @@ class GilaGisDriver(BaseDriver):
         query_type: Optional[QueryType] = None,
         query_value: Optional[str] = None,
     ) -> Optional[str]:
+        if not await self.ensure_browser_ready():
+            await self._emit_status("Browser is not available for GIS map capture.")
+            return None
+
         if "floridapa.com" in gis_url.lower() or is_florida_pa_assessor(gis_url):
             return await self._capture_florida_pa_map(gis_url, parcel, query_type, query_value)
 

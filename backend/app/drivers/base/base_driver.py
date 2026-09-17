@@ -77,6 +77,57 @@ CLOUDFLARE_CHALLENGE_TITLES = (
     "attention required",
 )
 
+# Angular/React SPAs often never reach domcontentloaded before Playwright times out.
+SPA_NAVIGATION_PROFILES: tuple[dict[str, object], ...] = (
+    {
+        "fragments": ("miamidadepa.gov", "propertysearch"),
+        "wait_selector": "app-root, mat-tab-group, [role='tab'], input[type='text']",
+        "timeout_ms": 60_000,
+    },
+    {
+        "fragments": ("county-taxes.net",),
+        "wait_selector": "input[type='text'], input[type='search'], iframe",
+        "timeout_ms": 90_000,
+    },
+    {
+        "fragments": ("county-taxes.com",),
+        "wait_selector": "input[type='text'], input[type='search'], iframe",
+        "timeout_ms": 90_000,
+    },
+    {
+        "fragments": ("ocpaweb.ocpafl.org",),
+        "wait_selector": "app-root, input, form",
+        "timeout_ms": 60_000,
+    },
+    {
+        "fragments": ("miamidadeclerk.gov", "officialrecords"),
+        "wait_selector": (
+            "#bookType, #recordingBookNumber, #recordingPageNumber, "
+            "input[type='text'], form, button, app-root"
+        ),
+        "timeout_ms": 60_000,
+    },
+    {
+        "fragments": ("officialrecords.broward.org",),
+        "wait_selector": "input[type='text'], form, button, #MainContent",
+        "timeout_ms": 60_000,
+    },
+    {
+        "fragments": ("myfloridacounty.com",),
+        "wait_selector": "input[type='text'], form, button, iframe",
+        "timeout_ms": 60_000,
+    },
+)
+
+
+def spa_navigation_profile(url: str) -> Optional[dict[str, object]]:
+    lower = url.lower()
+    for profile in SPA_NAVIGATION_PROFILES:
+        fragments = profile.get("fragments") or ()
+        if all(fragment in lower for fragment in fragments):
+            return profile
+    return None
+
 
 class BaseDriver:
     def __init__(self, screenshot_dir: Optional[Path] = None) -> None:
@@ -202,6 +253,129 @@ class BaseDriver:
         self._browser_stream = BrowserStream()
         await self._browser_stream.start(self.page, run_id)
 
+    def _page_is_alive(self, page: Optional[Page] = None) -> bool:
+        candidate = page or self._page
+        if candidate is None:
+            return False
+        try:
+            return not candidate.is_closed()
+        except Exception:
+            return False
+
+    def _context_is_alive(self) -> bool:
+        if self._context is None:
+            return False
+        try:
+            _ = self._context.pages
+            return True
+        except Exception:
+            return False
+
+    async def ensure_page_alive(self) -> bool:
+        """Recover a usable page when the active tab was closed by a prior node."""
+        if not self._context_is_alive():
+            return False
+        if self._page_is_alive():
+            return True
+
+        for pg in list(self._context.pages):
+            if self._page_is_alive(pg):
+                self._page = pg
+                if self.preview_run_id:
+                    try:
+                        await self.start_live_stream(self.preview_run_id)
+                    except Exception as exc:
+                        logger.debug("Failed to restart live stream on recovered page: %s", exc)
+                return True
+
+        try:
+            self._page = await self._context.new_page()
+            if self.preview_run_id:
+                try:
+                    await self.start_live_stream(self.preview_run_id)
+                except Exception as exc:
+                    logger.debug("Failed to start live stream on new page: %s", exc)
+            return True
+        except Exception as exc:
+            logger.warning("Could not create replacement browser page: %s", exc)
+            return False
+
+    async def restart(self, headless: bool | None = None) -> None:
+        """Restart Playwright after the browser window or context was closed."""
+        preview_run_id = self.preview_run_id
+        status_callback = self.status_callback
+        playwright_notes = self.playwright_notes
+        screenshot_dir = self.screenshot_dir
+        await self.stop()
+        self.preview_run_id = preview_run_id
+        self.status_callback = status_callback
+        self.playwright_notes = playwright_notes
+        self.screenshot_dir = screenshot_dir
+        await self.start(headless=headless)
+
+    async def ensure_browser_ready(self) -> bool:
+        """Ensure a live browser page exists, restarting the session if needed."""
+        if await self.ensure_page_alive():
+            return True
+        try:
+            await self._emit_status("Browser session ended — restarting for next step...")
+            await self.restart()
+            if self.preview_run_id:
+                await self.start_live_stream(self.preview_run_id)
+            return self._page_is_alive()
+        except Exception as exc:
+            logger.warning("Could not restart browser session: %s", exc)
+            return False
+
+    async def stabilize_browser_session(self) -> bool:
+        """Keep one healthy tab open before the next pipeline node runs."""
+        if not self._context_is_alive():
+            return await self.ensure_browser_ready()
+
+        pages: list[Page] = []
+        try:
+            for pg in list(self._context.pages):
+                if self._page_is_alive(pg):
+                    pages.append(pg)
+        except Exception:
+            return await self.ensure_browser_ready()
+
+        if not pages:
+            return await self.ensure_browser_ready()
+
+        def _page_rank(pg: Page) -> int:
+            try:
+                url = pg.url.lower()
+            except Exception:
+                return 0
+            if "officialrecords" in url and "recordpage" not in url:
+                return 5
+            if "propertysearch" in url or "miamidadepa" in url:
+                return 4
+            if "county-taxes" in url:
+                return 4
+            if "recordpage" in url:
+                return 2
+            if url.endswith(".pdf") or "/pdf" in url:
+                return 1
+            return 3
+
+        best = max(pages, key=_page_rank)
+        self._page = best
+        for pg in pages:
+            if pg is not best:
+                try:
+                    await pg.close()
+                except Exception:
+                    pass
+
+        if self.preview_run_id:
+            try:
+                await self.start_live_stream(self.preview_run_id)
+            except Exception as exc:
+                logger.debug("Failed to refresh live stream after stabilization: %s", exc)
+        return True
+
     async def set_active_page(self, new_page: Page) -> None:
         """Switch active page and transfer live browser screencast to the new page."""
         self._page = new_page
@@ -234,11 +408,38 @@ class BaseDriver:
         except Exception as exc:
             logger.debug("Request blocking not enabled: %s", exc)
 
+    async def _spa_shell_ready(self, selector: str) -> bool:
+        try:
+            if await self.page.locator(selector).first.count() > 0:
+                return True
+            return bool(
+                await self.page.evaluate(
+                    """() => {
+                        const root = document.querySelector('app-root');
+                        if (root && root.children.length > 0) return true;
+                        const tabs = document.querySelector('mat-tab-group, [role="tablist"]');
+                        return !!tabs;
+                    }"""
+                )
+            )
+        except Exception:
+            return False
+
     async def has_actionable_page_content(self, page: Optional[Page] = None) -> bool:
         """True when a county portal page has loaded (not a bare Cloudflare interstitial)."""
         pg = page or self.page
         try:
             url = pg.url.lower()
+            if "miamidadepa.gov" in url and "propertysearch" in url:
+                if await pg.locator("mat-tab-group, [role='tab'], input[type='text']").count():
+                    return True
+                if await pg.locator("app-root").count():
+                    return True
+            if "miamidadeclerk.gov" in url and "officialrecords" in url:
+                if await pg.locator(
+                    "#bookType, #recordingBookNumber, input[type='text'], form, button"
+                ).count():
+                    return True
             if "schneidercorp.com" in url or "qpublic.net" in url:
                 if "keyvalue=" in url:
                     return True
@@ -391,10 +592,29 @@ class BaseDriver:
         timeout: int = NAVIGATION_TIMEOUT_MS,
     ) -> None:
         """Navigate without networkidle — ad-heavy sites like NETR never go idle."""
+        spa_profile = spa_navigation_profile(url)
+        shell_selector = wait_selector or (
+            str(spa_profile["wait_selector"]) if spa_profile else None
+        )
+        nav_timeout = int(spa_profile["timeout_ms"]) if spa_profile else timeout
+        wait_until = "commit" if spa_profile else "domcontentloaded"
+
         last_error: Optional[Exception] = None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                await self.page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                if not await self.ensure_page_alive():
+                    raise RuntimeError("Browser page is not available")
+                await self.page.goto(url, wait_until=wait_until, timeout=nav_timeout)
+
+                if shell_selector:
+                    try:
+                        await self.page.wait_for_selector(shell_selector, timeout=25_000, state="attached")
+                    except Exception:
+                        if not await self._spa_shell_ready(shell_selector):
+                            raise TimeoutError(
+                                f"SPA shell not ready after navigation to {url}"
+                            )
+
                 if "schneidercorp.com" in url.lower():
                     has_form = await self.page.locator(
                         "#ctlBodyPane_ctl02_ctl01_txtParcelID, #ctlBodyPane_ctl01_ctl01_txtAddress"
@@ -404,7 +624,7 @@ class BaseDriver:
                 elif await self.is_cloudflare_blocked():
                     await self.wait_for_cloudflare_clear(max_wait=45)
 
-                if wait_selector:
+                if wait_selector and wait_selector != shell_selector:
                     try:
                         await self.page.wait_for_selector(wait_selector, timeout=20_000)
                     except Exception:
@@ -419,6 +639,14 @@ class BaseDriver:
                 return
             except Exception as exc:
                 last_error = exc
+                if spa_profile and shell_selector and await self._spa_shell_ready(shell_selector):
+                    logger.info(
+                        "Navigation reported an error for %s but SPA shell is ready — continuing",
+                        url,
+                    )
+                    await self.polite_delay(1.5)
+                    await self.save_browser_preview()
+                    return
                 logger.warning("safe_goto attempt %d/%d failed for %s: %s", attempt, MAX_RETRIES, url, exc)
                 if attempt < MAX_RETRIES:
                     await self.polite_delay(2.0)

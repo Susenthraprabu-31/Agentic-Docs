@@ -133,6 +133,36 @@ def is_myflorida_county_recorder(url: str) -> bool:
     return MYFLORIDA_COUNTY_HOST in url.lower()
 
 
+def resolve_florida_county_sources(county: str, parcel: str = "") -> "CountySources":
+    """Best-effort portal URLs when NETR is not in the pipeline."""
+    from app.extraction.schemas import CountySources
+
+    county_slug = (county or "").lower().replace(" ", "-")
+    assessor_url: Optional[str] = None
+    recorder_url: Optional[str] = None
+    gis_url: Optional[str] = None
+    treasurer_url: Optional[str] = None
+
+    if county_slug == "miami-dade":
+        assessor_url = MIAMI_DADE_SEARCH_URL
+        recorder_url = MIAMI_DADE_RECORDER_SEARCH_URL
+        gis_url = MIAMI_DADE_SEARCH_URL
+    elif county_slug == "orange":
+        assessor_url = ORANGE_SEARCH_URL
+
+    if parcel:
+        treasurer_url = resolve_florida_tax_url(county_slug, parcel)
+    elif county_slug in FL_CUSTOM_TAX_URLS:
+        treasurer_url = FL_CUSTOM_TAX_URLS[county_slug]
+
+    return CountySources(
+        assessor_url=assessor_url,
+        recorder_url=recorder_url,
+        gis_url=gis_url,
+        treasurer_url=treasurer_url,
+    )
+
+
 def resolve_florida_recorder_url(recorder_url: str, county: Optional[str] = None) -> str:
     """Normalize NETR recorder links for Florida county clerk portals."""
     county_slug = (county or "").lower().replace(" ", "-")

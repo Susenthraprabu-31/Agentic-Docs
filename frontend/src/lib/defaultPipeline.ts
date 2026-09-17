@@ -24,6 +24,12 @@ export interface PipelineNodeData {
 
   queryValue?: string;
 
+  address?: string;
+
+  ownerName?: string;
+
+  parcelNumber?: string;
+
   bookNumber?: string;
 
   pageNumber?: string;
@@ -50,8 +56,9 @@ export interface PipelineNodeData {
 
   reportStatus?: "idle" | "generating" | "ready" | "failed";
 
-  [key: string]: unknown;
+  executionStatus?: "pending" | "running" | "done" | "failed" | "skipped";
 
+  [key: string]: unknown;
 }
 
 
@@ -393,25 +400,18 @@ export function collectNodeOverrides(nodes: Node<PipelineNodeData>[]) {
 
 
 export function getInputFromNodes(nodes: Node<PipelineNodeData>[]) {
-
   const input = nodes.find((n) => n.data.nodeId === "input");
-
   return {
-
     state: input?.data.state || "AZ",
-
     county: input?.data.county || "gila",
-
     queryType: (input?.data.queryType || "owner") as QueryType,
-
     queryValue: input?.data.queryValue || "",
-
+    ownerName: (input?.data.ownerName as string) || "",
+    address: (input?.data.address as string) || "",
+    parcelNumber: (input?.data.parcelNumber as string) || "",
     bookNumber: input?.data.bookNumber || "",
-
     pageNumber: input?.data.pageNumber || "",
-
   };
-
 }
 
 

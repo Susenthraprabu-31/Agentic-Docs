@@ -1,0 +1,192 @@
+{
+  "id": "ed8532aa-d34a-4902-a52e-f67efa7d21e2",
+  "name": "recorder Workflow",
+  "description": "",
+  "nodes": [
+    {
+      "id": "input",
+      "data": {
+        "label": "Input",
+        "state": "FL",
+        "county": "miami-dade",
+        "nodeId": "input",
+        "enabled": true,
+        "queryType": "book_page",
+        "bookNumber": "30189",
+        "pageNumber": "4575",
+        "queryValue": "30189/4575"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 230,
+        "height": 62
+      },
+      "position": {
+        "x": 280,
+        "y": 0
+      },
+      "selected": true
+    },
+    {
+      "id": "netr",
+      "data": {
+        "url": "",
+        "label": "NETR Resolver",
+        "nodeId": "netr",
+        "enabled": true,
+        "playwrightNotes": "Auto-scrape publicrecords.netronline.com for portal links. Leave URL empty to use NETR."
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 230,
+        "height": 62
+      },
+      "position": {
+        "x": 280,
+        "y": 200
+      }
+    },
+    {
+      "id": "platform",
+      "data": {
+        "label": "Platform Detector",
+        "nodeId": "platform",
+        "enabled": true,
+        "playwrightNotes": "Maps portal URLs to platform drivers (Schneider, FloridaPA, etc.)"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 230,
+        "height": 62
+      },
+      "position": {
+        "x": 280,
+        "y": 400
+      }
+    },
+    {
+      "id": "recorder",
+      "data": {
+        "url": "",
+        "label": "Recorder",
+        "nodeId": "recorder",
+        "enabled": true,
+        "playwrightNotes": "e.g. Search by grantor name, expand first result row"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 230,
+        "height": 61
+      },
+      "position": {
+        "x": 289.331921191119,
+        "y": 628.2926500834101
+      },
+      "selected": false
+    },
+    {
+      "id": "normalizer",
+      "data": {
+        "label": "Normalizer",
+        "nodeId": "normalizer",
+        "enabled": true,
+        "playwrightNotes": "Merge & deduplicate records by APN"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 230,
+        "height": 61
+      },
+      "position": {
+        "x": 315.4613005262523,
+        "y": 972.5980094467491
+      },
+      "selected": false
+    },
+    {
+      "id": "report",
+      "data": {
+        "label": "Report",
+        "nodeId": "report",
+        "enabled": true,
+        "reportStatus": "generating"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 230,
+        "height": 61
+      },
+      "position": {
+        "x": 332.2587586702665,
+        "y": 1237.9214577845821
+      },
+      "selected": false
+    },
+    {
+      "id": "output",
+      "data": {
+        "label": "Output",
+        "nodeId": "output",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 230,
+        "height": 61
+      },
+      "position": {
+        "x": 324.7932217173713,
+        "y": 1482.7146795019535
+      },
+      "selected": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-netr",
+      "source": "input",
+      "target": "netr",
+      "animated": true
+    },
+    {
+      "id": "e-netr-platform",
+      "source": "netr",
+      "target": "platform",
+      "animated": true
+    },
+    {
+      "id": "e-normalizer-report",
+      "source": "normalizer",
+      "target": "report",
+      "animated": true,
+      "selected": false
+    },
+    {
+      "id": "e-report-output",
+      "source": "report",
+      "target": "output",
+      "animated": true
+    },
+    {
+      "id": "xy-edge__platform-recorder",
+      "source": "platform",
+      "target": "recorder",
+      "animated": true
+    },
+    {
+      "id": "xy-edge__recorder-normalizer",
+      "source": "recorder",
+      "target": "normalizer",
+      "animated": true
+    }
+  ],
+  "metadata": {
+    "step_count": 7
+  },
+  "created_at": "2026-09-17T06:49:49.725925+00:00",
+  "updated_at": "2026-09-17T07:18:01.10252+00:00"
+}

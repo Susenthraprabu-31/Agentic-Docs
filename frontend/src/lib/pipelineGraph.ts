@@ -25,7 +25,21 @@ export interface GraphValidationResult {
   order?: string[];
 }
 
-const NODE_ID_TO_EVENT: Record<string, string> = {
+const NODE_EXECUTION_PRIORITY: Record<string, number> = {
+  input: 0,
+  netr: 10,
+  platform: 20,
+  assessor: 30,
+  recorder: 40,
+  gis: 50,
+  tax: 60,
+  ai_agent: 65,
+  normalizer: 70,
+  report: 80,
+  output: 90,
+};
+
+export const NODE_ID_TO_EVENT: Record<string, string> = {
   input: "InputNode",
   netr: "NETRResolverNode",
   platform: "PlatformDetectorNode",
@@ -52,8 +66,15 @@ function nodeDataPayload(data: PipelineNodeData): Record<string, unknown> {
     county: data.county,
     query_type: data.queryType,
     query_value: data.queryValue,
+    address: data.address?.trim() || undefined,
+    owner_name: data.ownerName?.trim() || undefined,
+    ownerName: data.ownerName?.trim() || undefined,
+    parcel_number: data.parcelNumber?.trim() || undefined,
+    parcelNumber: data.parcelNumber?.trim() || undefined,
     book_number: data.bookNumber,
     page_number: data.pageNumber,
+    bookNumber: data.bookNumber,
+    pageNumber: data.pageNumber,
     agent_name: data.agentName?.trim() || undefined,
     instructions: data.instructions?.trim() || undefined,
     user_prompt: data.userPrompt?.trim() || undefined,
@@ -133,8 +154,20 @@ export function validatePipelineGraph(graph: PipelineGraph): GraphValidationResu
     inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
   }
 
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const sortKey = (canvasId: string) => {
+    const nodeId = byId.get(canvasId)?.node_id || "";
+    return [NODE_EXECUTION_PRIORITY[nodeId] ?? 100, canvasId] as [number, string];
+  };
+
   const order: string[] = [];
-  const kahn = [...reachable].filter((id) => (inDegree.get(id) || 0) === 0).sort();
+  const kahn = [...reachable]
+    .filter((id) => (inDegree.get(id) || 0) === 0)
+    .sort((a, b) => {
+      const [pa, ca] = sortKey(a);
+      const [pb, cb] = sortKey(b);
+      return pa - pb || ca.localeCompare(cb);
+    });
   const visited = new Set<string>();
 
   while (kahn.length) {
@@ -146,7 +179,11 @@ export function validatePipelineGraph(graph: PipelineGraph): GraphValidationResu
       inDegree.set(next, (inDegree.get(next) || 0) - 1);
       if (inDegree.get(next) === 0) kahn.push(next);
     }
-    kahn.sort();
+    kahn.sort((a, b) => {
+      const [pa, ca] = sortKey(a);
+      const [pb, cb] = sortKey(b);
+      return pa - pb || ca.localeCompare(cb);
+    });
   }
 
   if (order.length !== reachable.size) {

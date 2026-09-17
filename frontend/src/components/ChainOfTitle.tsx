@@ -92,38 +92,38 @@ function formatDetails(entry: ChainEntry): string {
 export default function ChainOfTitle({ entries, currentOwner }: Props) {
   if (!entries.length) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-base font-semibold text-slate-800 mb-2">Chain of Title</h3>
-        <p className="text-sm text-slate-400">No ownership transfers found for this parcel.</p>
+      <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 transition-colors">
+        <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100 mb-2">Chain of Title</h3>
+        <p className="text-sm text-slate-500 dark:text-zinc-400">No ownership transfers found for this parcel.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-      <h3 className="text-base font-semibold text-slate-800 mb-1">Chain of Title</h3>
-      <p className="text-xs text-slate-500 mb-4">
+    <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 transition-colors">
+      <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100 mb-1">Chain of Title</h3>
+      <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">
         Ownership history from Sales Information on the assessor report — newest transfers first.
       </p>
 
       {currentOwner && (
-        <div className="mb-5 rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
-          <p className="text-xs uppercase tracking-wide text-blue-600 font-medium">Current Owner</p>
-          <p className="text-sm font-semibold text-slate-900 mt-1">{currentOwner}</p>
+        <div className="mb-5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/40 px-4 py-3">
+          <p className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-300 font-bold">Current Owner</p>
+          <p className="text-sm font-bold text-slate-900 dark:text-zinc-100 mt-1">{currentOwner}</p>
         </div>
       )}
 
-      <ol className="relative border-l border-slate-200 ml-3 space-y-6">
+      <ol className="relative border-l border-slate-200 dark:border-white/[0.1] ml-3 space-y-6">
         {entries.map((entry, i) => (
           <li key={chainKey(entry) || i} className="ml-6">
-            <span className="absolute -left-1.5 flex h-3 w-3 rounded-full bg-blue-500 ring-4 ring-white" />
-            <time className="text-xs text-slate-400">{entry.recording_date || "Unknown date"}</time>
-            <p className="text-sm font-medium text-slate-800 mt-0.5">
+            <span className="absolute -left-1.5 flex h-3 w-3 rounded-full bg-blue-500 ring-4 ring-white dark:ring-[#161b22]" />
+            <time className="text-xs text-slate-500 dark:text-zinc-400 font-medium">{entry.recording_date || "Unknown date"}</time>
+            <p className="text-sm font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
               {entry.document_type || "Ownership Transfer"}
             </p>
-            <p className="text-sm text-slate-700 mt-1">{formatOwnership(entry)}</p>
+            <p className="text-sm text-slate-800 dark:text-zinc-200 mt-1">{formatOwnership(entry)}</p>
             {formatDetails(entry) && (
-              <p className="text-xs text-slate-500 mt-1">{formatDetails(entry)}</p>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{formatDetails(entry)}</p>
             )}
           </li>
         ))}
