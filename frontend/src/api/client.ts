@@ -113,6 +113,9 @@ export interface ReportData {
     tax_record?: Record<string, unknown>;
     documents?: Record<string, unknown>[];
     sources_trail?: Record<string, unknown>[];
+    gis_screenshot_path?: string;
+    gis_screenshot_url?: string;
+    gis_screenshot_data_uri?: string;
     generated_at?: string;
   };
   pdf_path?: string;

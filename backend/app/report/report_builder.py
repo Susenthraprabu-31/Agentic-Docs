@@ -57,26 +57,89 @@ def _embed_image_as_data_uri(image_path: str | None) -> str | None:
     return None
 
 
-def _resolve_gis_screenshot_data_uri(
-    event_path: str | None,
-    property_record: dict[str, Any] | None,
-) -> str | None:
-    data_uri = _embed_image_as_data_uri(event_path)
-    if data_uri:
-        return data_uri
+def _find_gis_screenshot_file(event_path: str | None, folio: str | None) -> Path | None:
+    """Locate a captured GIS map PNG on disk."""
+    candidates: list[Path] = []
+    if event_path:
+        candidates.extend(
+            [
+                Path(event_path),
+                BACKEND_ROOT / event_path,
+                BACKEND_ROOT / "screenshots" / Path(event_path).name,
+                Path.cwd() / Path(event_path).name,
+            ]
+        )
+    if folio:
+        safe_name = str(folio).replace("/", "-")
+        candidates.extend(
+            [
+                BACKEND_ROOT / "screenshots" / f"gis_map_{safe_name}.png",
+                Path.cwd() / "screenshots" / f"gis_map_{safe_name}.png",
+            ]
+        )
 
-    apn = (property_record or {}).get("apn")
-    if not apn:
-        return None
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            resolved = candidate.resolve()
+            if resolved.is_file() and resolved.stat().st_size > 0:
+                return resolved
+        except Exception:
+            continue
 
-    safe_name = str(apn).replace("/", "-")
-    for candidate in (
-        BACKEND_ROOT / "screenshots" / f"gis_map_{safe_name}.png",
-        Path.cwd() / "screenshots" / f"gis_map_{safe_name}.png",
-    ):
-        if candidate.is_file():
-            return _embed_image_as_data_uri(str(candidate.resolve()))
+    screenshots_dir = BACKEND_ROOT / "screenshots"
+    if folio and screenshots_dir.is_dir():
+        folio_digits = "".join(ch for ch in str(folio) if ch.isdigit())
+        for png in screenshots_dir.glob("gis_map_*.png"):
+            if folio_digits and folio_digits in png.stem.replace("-", ""):
+                return png.resolve()
+
     return None
+
+
+def _extract_gis_screenshot_path(
+    events: list[dict[str, Any]],
+    documents: list[dict[str, Any]],
+) -> str | None:
+    screenshot_path: str | None = None
+    for event in events:
+        payload = event.get("payload") or {}
+        if event.get("source") == "gis" and event.get("event_type") == "source_completed":
+            screenshot_path = payload.get("screenshot_path") or screenshot_path
+        if payload.get("node") == "GISNode" and event.get("event_type") == "node_completed":
+            screenshot_path = payload.get("screenshot_path") or screenshot_path
+
+    for doc in documents:
+        ocr = doc.get("ocr_json") or {}
+        if doc.get("document_type") == "gis_map" or ocr.get("source") == "gis":
+            screenshot_path = (
+                doc.get("screenshot_path")
+                or ocr.get("image_path")
+                or screenshot_path
+            )
+    return screenshot_path
+
+
+def _resolve_gis_screenshot(
+    events: list[dict[str, Any]],
+    documents: list[dict[str, Any]],
+    property_record: dict[str, Any] | None,
+    query_value: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Return local path, embedded data URI, and public URL for the GIS map."""
+    event_path = _extract_gis_screenshot_path(events, documents)
+    folio = (property_record or {}).get("apn") or query_value
+    file_path = _find_gis_screenshot_file(event_path, folio)
+    if not file_path:
+        return None, None, None
+
+    data_uri = _embed_image_as_data_uri(str(file_path))
+    public_url = f"/screenshots/{file_path.name}"
+    return str(file_path.resolve()), data_uri, public_url
 
 
 class ReportBuilder:
@@ -99,7 +162,6 @@ class ReportBuilder:
         )
         tax_record = next((r for r in records if r.get("source") == "tax_record"), None)
         sources_trail = []
-        gis_screenshot_path: str | None = None
 
         for e in events:
             payload = e.get("payload") or {}
@@ -111,12 +173,12 @@ class ReportBuilder:
                     "records_found": payload.get("records_found", 0),
                 }
             )
-            # Capture the GIS screenshot path from the gis source_completed event
-            if e.get("source") == "gis" and e.get("event_type") == "source_completed":
-                gis_screenshot_path = payload.get("screenshot_path")
 
-        gis_screenshot_data_uri = _resolve_gis_screenshot_data_uri(
-            gis_screenshot_path, property_record
+        gis_screenshot_path, gis_screenshot_data_uri, gis_screenshot_url = _resolve_gis_screenshot(
+            events,
+            documents,
+            property_record,
+            run.get("query_value"),
         )
 
         # Extract chain of title from the assessor raw_json
@@ -167,6 +229,9 @@ class ReportBuilder:
             "documents": documents,
             "chain_of_title": chain_of_title,
             "sources_trail": sources_trail,
+            "gis_screenshot_path": gis_screenshot_path,
+            "gis_screenshot_url": gis_screenshot_url,
+            "gis_screenshot_data_uri": gis_screenshot_data_uri,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -186,6 +251,30 @@ class ReportBuilder:
         )
         return report_json, html
 
+
+    def refresh_report_json(self, report: dict[str, Any]) -> dict[str, Any]:
+        """Re-render report_json from current run data without regenerating the PDF."""
+        run_id = report.get("run_id")
+        if not run_id:
+            return report
+        run = self.runs_repo.get_run(run_id)
+        if not run:
+            return report
+
+        report_json, _ = self._render_report_html(run_id, run)
+        updated = {**report, "report_json": report_json}
+
+        mem = get_memory_store()
+        mem.reports[run_id] = updated
+
+        client = get_supabase()
+        if client:
+            try:
+                client.table("reports").update({"report_json": report_json}).eq("id", report["id"]).execute()
+            except Exception as exc:
+                logger.warning("Supabase report_json refresh failed: %s", exc)
+
+        return updated
 
     async def build_and_save(self, run_id: str) -> dict[str, Any]:
         run = self.runs_repo.get_run(run_id)

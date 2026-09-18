@@ -1,6 +1,8 @@
 from app.config.assessor_portals import resolve_assessor_search_url
 from app.config.florida_portals import (
     ORANGE_SEARCH_URL,
+    build_miami_dade_property_search_url,
+    extract_miami_dade_folio_from_url,
     resolve_florida_county_sources,
     is_broward_assessor,
     is_florida_pa_assessor,
@@ -45,6 +47,14 @@ def test_resolve_miami_dade_urls():
         "https://www.miamidadeclerk.gov/clerk/home.page",
         "miami-dade",
     ) == MIAMI_DADE_RECORDER_SEARCH_URL
+
+
+def test_miami_dade_folio_url_helpers():
+    sample = "https://apps.miamidadepa.gov/PropertySearch/#/?folio=30-4009-094-0070"
+    assert extract_miami_dade_folio_from_url(sample) == "30-4009-094-0070"
+    built = build_miami_dade_property_search_url("30-4009-094-0070", sample)
+    assert built.endswith("/#/?folio=30-4009-094-0070")
+    assert "miamidadepa.gov" in built
 
 
 def test_resolve_florida_county_sources_miami_dade():

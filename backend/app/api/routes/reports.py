@@ -284,6 +284,8 @@ async def get_report_by_run(run_id: str) -> dict:
             report = await builder.build_and_save(run_id)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=f"Report not available: {exc}") from exc
+    else:
+        report = builder.refresh_report_json(report)
     return _report_payload(report)
 
 

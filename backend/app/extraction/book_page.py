@@ -5,6 +5,10 @@ import re
 from typing import Optional
 
 BOOK_PAGE_SPLIT_RE = re.compile(r"^\s*(\d+)\s*[/\-]\s*(\d+)\s*$")
+BOOK_PAGE_LABEL_RE = re.compile(
+    r"(?i)^\s*book\s*:?\s*(\d+)\s*(?:[/\-]|page\s*:?\s*)(\d+)\s*$"
+)
+BOOK_PAGE_INLINE_RE = re.compile(r"(?i)book\s*:?\s*(\d+)\s+page\s*:?\s*(\d+)")
 
 
 def parse_book_page(
@@ -21,9 +25,15 @@ def parse_book_page(
     if not value:
         return None
 
-    match = BOOK_PAGE_SPLIT_RE.match(value)
-    if match:
-        return match.group(1), match.group(2)
+    for pattern in (BOOK_PAGE_SPLIT_RE, BOOK_PAGE_LABEL_RE):
+        match = pattern.match(value)
+        if match:
+            return match.group(1), match.group(2)
+
+    inline = BOOK_PAGE_INLINE_RE.search(value)
+    if inline:
+        return inline.group(1), inline.group(2)
+
     return None
 
 

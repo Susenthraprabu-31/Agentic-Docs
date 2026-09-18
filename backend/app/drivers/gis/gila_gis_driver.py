@@ -5,6 +5,8 @@ from typing import Optional
 from playwright.async_api import Frame, Locator
 
 from app.config.florida_portals import (
+    MIAMI_DADE_SEARCH_URL,
+    extract_miami_dade_folio_from_url,
     format_florida_pa_address_for_search,
     is_florida_pa_assessor,
     is_miami_dade_gis,
@@ -23,6 +25,8 @@ from app.drivers.assessor.florida_assessor import (
     _wait_for_florida_pa_frame,
 )
 from app.drivers.base.base_driver import BaseDriver
+from app.drivers.page_search_ai import execute_ai_page_search
+from app.drivers.playwright_instructions import apply_playwright_instructions
 from app.extraction.schemas import QueryType
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,51 @@ MAP_SELECTORS = [
 
 
 class GilaGisDriver(BaseDriver):
+    async def _try_gis_ai_search(
+        self,
+        gis_url: str,
+        parcel: Optional[str],
+        query_type: Optional[QueryType],
+        query_value: Optional[str],
+    ) -> bool:
+        search_value = parcel or query_value or ""
+        if not search_value:
+            return False
+        qt = query_type or QueryType.PARCEL
+        notes = (self.playwright_notes or "").strip() or (
+            "Navigate to map, zoom to parcel, screenshot canvas"
+        )
+        await self._emit_status("Direct GIS search failed — trying AI page analysis...")
+
+        try:
+            if gis_url and gis_url not in (self.page.url or ""):
+                await self.safe_goto(
+                    gis_url,
+                    wait_selector="input, app-root, mat-tab-group, canvas, form",
+                    timeout=60_000,
+                )
+        except Exception as exc:
+            logger.debug("Could not reopen GIS URL for AI fallback: %s", exc)
+
+        if notes:
+            if await apply_playwright_instructions(self, notes, qt, search_value):
+                await self.polite_delay(2.0)
+                if is_miami_dade_gis(gis_url):
+                    return await _is_miami_dade_detail_page(self)
+                return True
+
+        if await execute_ai_page_search(
+            self,
+            qt,
+            search_value,
+            user_instructions=notes,
+        ):
+            await self.polite_delay(2.0)
+            if is_miami_dade_gis(gis_url):
+                return await _is_miami_dade_detail_page(self)
+            return True
+        return False
+
     async def capture_parcel_map(
         self,
         gis_url: str,
@@ -56,11 +105,24 @@ class GilaGisDriver(BaseDriver):
         if is_miami_dade_gis(gis_url):
             return await self._capture_miami_dade_map(gis_url, parcel, query_type, query_value)
 
-        await self.page.goto(gis_url, wait_until="domcontentloaded")
+        opened = False
+        try:
+            await self.safe_goto(
+                gis_url,
+                wait_selector="input, canvas, form, app-root",
+                timeout=60_000,
+            )
+            opened = True
+        except Exception as exc:
+            logger.warning("GIS navigation failed for %s: %s", gis_url, exc)
+
+        if not opened:
+            opened = await self._try_gis_ai_search(gis_url, parcel, query_type, query_value)
+
         await self.polite_delay(2.0)
         await self.dismiss_netronline_modals()
 
-        if parcel:
+        if parcel and not opened:
             search = self.page.locator('input[type="text"], input[type="search"]').first
             try:
                 if await search.count() > 0 and await search.is_visible(timeout=2_000):
@@ -105,17 +167,31 @@ class GilaGisDriver(BaseDriver):
         query_type: Optional[QueryType],
         query_value: Optional[str],
     ) -> Optional[str]:
-        folio = normalize_florida_parcel(parcel, county="miami-dade") if parcel else None
+        folio = extract_miami_dade_folio_from_url(gis_url)
+        if not folio and parcel:
+            folio = normalize_florida_parcel(parcel, county="miami-dade")
+        elif not folio and query_type == QueryType.PARCEL and query_value:
+            folio = normalize_florida_parcel(query_value, county="miami-dade")
+
         safe_name = (folio or "overview").replace("/", "-")
         path = self.screenshot_dir / f"gis_map_{safe_name}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not await navigate_miami_dade_property_search(
+        opened = await navigate_miami_dade_property_search(
             self,
             query_type or QueryType.PARCEL,
             query_value or folio or "",
             parcel=folio,
-        ):
+            gis_url=gis_url or MIAMI_DADE_SEARCH_URL,
+        )
+        if not opened:
+            opened = await self._try_gis_ai_search(
+                gis_url or MIAMI_DADE_SEARCH_URL,
+                folio,
+                query_type or QueryType.PARCEL,
+                query_value or folio or "",
+            )
+        if not opened:
             await self._emit_status("Could not open Miami-Dade property detail for map capture.")
             return None
 

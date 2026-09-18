@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import ChainOfTitle, { mergeChainEntries } from "../components/ChainOfTitle";
 import PropertyDetails from "../components/PropertyDetails";
 import DocumentsList from "../components/DocumentsList";
+import GisMapPreview from "../components/GisMapPreview";
 import TaxRecords from "../components/TaxRecords";
 import ReportPreview from "../components/ReportPreview";
 import PipelineNodes from "../components/PipelineNodes";
@@ -98,6 +99,12 @@ export default function RunDetail() {
 
       {runDetail?.run.status === "completed" && (
         <>
+          <GisMapPreview
+            gisScreenshotUrl={report?.report_json?.gis_screenshot_url}
+            gisScreenshotDataUri={report?.report_json?.gis_screenshot_data_uri}
+            documents={documents as Record<string, unknown>[]}
+            queryValue={runDetail.run.query_value}
+          />
           <DocumentsList documents={documents as Record<string, string>[]} />
           <ChainOfTitle entries={chainEntries} currentOwner={currentOwner || undefined} />
           <ReportPreview report={report} loading={reportLoading} />

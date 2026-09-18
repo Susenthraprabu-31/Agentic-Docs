@@ -78,4 +78,28 @@ class DocumentsRepository:
 
         return mem_docs
 
+    def delete_by_ids(self, run_id: str, ids: list[str]) -> int:
+        if not ids:
+            return 0
+
+        id_set = set(ids)
+        mem = get_memory_store()
+        before = len(mem.documents)
+        mem.documents = [
+            d for d in mem.documents
+            if not (d.get("run_id") == run_id and d.get("id") in id_set)
+        ]
+        removed = before - len(mem.documents)
+
+        client = get_supabase()
+        if client:
+            result = supabase_call(
+                lambda: client.table("documents").delete().eq("run_id", run_id).in_("id", ids).execute(),
+                label="delete_documents",
+            )
+            if result and result.data:
+                return len(result.data)
+
+        return removed
+
 

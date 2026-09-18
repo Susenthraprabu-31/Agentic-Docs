@@ -10,13 +10,13 @@
         "state": "FL",
         "county": "miami-dade",
         "nodeId": "input",
-        "address": "2125 SW 93 CT",
+        "address": "9441 SW 21 ST",
         "enabled": true,
         "queryType": "address",
-        "bookNumber": "30189",
-        "pageNumber": "4575",
-        "queryValue": "2125 SW 93 CT",
-        "parcelNumber": "30-4009-096-0060",
+        "bookNumber": "",
+        "pageNumber": "",
+        "queryValue": "9441 SW 21 ST",
+        "parcelNumber": "30-4009-094-0050",
         "executionStatus": "done"
       },
       "type": "pipelineNode",
@@ -28,7 +28,7 @@
         "x": 280,
         "y": 0
       },
-      "selected": false
+      "selected": true
     },
     {
       "id": "netr",
@@ -42,7 +42,7 @@
       "type": "pipelineNode",
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 280,
@@ -60,7 +60,7 @@
       "type": "pipelineNode",
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 280,
@@ -79,7 +79,7 @@
       "type": "pipelineNode",
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 280,
@@ -98,7 +98,7 @@
       "type": "pipelineNode",
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 280,
@@ -118,7 +118,7 @@
       "dragging": false,
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 281.56869831031,
@@ -138,7 +138,7 @@
       "dragging": false,
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 300.1292534664172,
@@ -151,19 +151,22 @@
       "data": {
         "label": "Report",
         "nodeId": "report",
-        "enabled": true
+        "enabled": true,
+        "reportId": "4ddabffa-2ab8-4428-82b3-1dc77601dc9f",
+        "reportRunId": "a10ff826-8060-4fa8-8ef8-c6726d09f6fd",
+        "reportStatus": "ready"
       },
       "type": "pipelineNode",
       "dragging": false,
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 101
       },
       "position": {
         "x": 309.27891413297044,
         "y": 1477.3945470681863
       },
-      "selected": true
+      "selected": false
     },
     {
       "id": "output",
@@ -175,7 +178,7 @@
       "type": "pipelineNode",
       "measured": {
         "width": 240,
-        "height": 61
+        "height": 62
       },
       "position": {
         "x": 280,
@@ -237,5 +240,5 @@
     "step_count": 9
   },
   "created_at": "2026-09-17T11:23:48.710613+00:00",
-  "updated_at": "2026-09-17T14:57:16.604685+00:00"
+  "updated_at": "2026-09-18T06:52:51.622805+00:00"
 }

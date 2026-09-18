@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ChainOfTitle, { mergeChainEntries } from "../components/ChainOfTitle";
 import DocumentsList from "../components/DocumentsList";
+import GisMapPreview from "../components/GisMapPreview";
 import PropertyDetails from "../components/PropertyDetails";
 import ReportPreview from "../components/ReportPreview";
 import TaxRecords from "../components/TaxRecords";
@@ -78,6 +79,13 @@ export default function ReportView() {
               </div>
             </div>
           )}
+
+          <GisMapPreview
+            gisScreenshotUrl={report.report_json?.gis_screenshot_url}
+            gisScreenshotDataUri={report.report_json?.gis_screenshot_data_uri}
+            documents={documents}
+            queryValue={queryValue}
+          />
 
           <TaxRecords taxRecord={taxRecord as Parameters<typeof TaxRecords>[0]["taxRecord"]} />
           <DocumentsList documents={documents} runId={runId} />

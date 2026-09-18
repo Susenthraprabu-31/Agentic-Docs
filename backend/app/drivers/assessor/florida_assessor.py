@@ -681,27 +681,73 @@ async def _extract_miami_dade_detail(
     return []
 
 
+async def _open_miami_dade_direct_folio_url(
+    driver: "GilaAssessorDriver",
+    url: str,
+    folio: str,
+) -> bool:
+    """Open Miami-Dade property detail using the folio hash route."""
+    await driver._emit_status(f"Opening Miami-Dade property detail for folio {folio}...")
+    try:
+        await driver.safe_goto(
+            url,
+            wait_selector="mat-tab-group, [role='tab'], app-root, text=Folio",
+            timeout=60_000,
+        )
+    except Exception as exc:
+        logger.warning("Direct Miami-Dade folio navigation failed: %s", exc)
+        return False
+
+    await driver.polite_delay(2.0)
+    for _ in range(20):
+        if await _is_miami_dade_detail_page(driver):
+            return True
+        await driver.page.wait_for_timeout(1_000)
+    return await _is_miami_dade_detail_page(driver)
+
+
 async def navigate_miami_dade_property_search(
     driver: "GilaAssessorDriver",
     query_type: QueryType,
     query_value: str,
     parcel: str | None = None,
+    gis_url: str | None = None,
 ) -> bool:
     """Open Miami-Dade property search and land on a parcel detail page."""
+    from app.config.florida_portals import (
+        build_miami_dade_property_search_url,
+        extract_miami_dade_folio_from_url,
+    )
+
+    folio = parcel
+    if not folio and gis_url:
+        folio = extract_miami_dade_folio_from_url(gis_url)
+    if not folio and query_type == QueryType.PARCEL and query_value:
+        folio = normalize_florida_parcel(query_value, county="miami-dade")
+    elif folio:
+        folio = normalize_florida_parcel(folio, county="miami-dade")
+
     if await _is_miami_dade_detail_page(driver):
-        if parcel:
+        if folio:
             try:
                 body = await driver.page.inner_text("body")
-                if re.sub(r"\D", "", parcel) in re.sub(r"\D", "", body):
+                if re.sub(r"\D", "", folio) in re.sub(r"\D", "", body):
                     return True
             except Exception:
                 return True
         else:
             return True
 
-    search_value = parcel or query_value
-    qt = QueryType.PARCEL if parcel else query_type
-    records = await _search_miami_dade(driver, MIAMI_DADE_SEARCH_URL, qt, search_value)
+    if folio:
+        direct_url = build_miami_dade_property_search_url(folio, gis_url)
+        if await _open_miami_dade_direct_folio_url(driver, direct_url, folio):
+            return True
+        await driver._emit_status("Direct folio URL did not load detail page — trying form search...")
+
+    search_value = folio or query_value
+    qt = QueryType.PARCEL if folio else query_type
+    base_url = gis_url or MIAMI_DADE_SEARCH_URL
+    records = await _search_miami_dade(driver, base_url, qt, search_value)
     return bool(records) or await _is_miami_dade_detail_page(driver)
 
 

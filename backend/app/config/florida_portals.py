@@ -31,6 +31,31 @@ ORANGE_RECORDER_HOST = "or.occompt.com"
 # Miami-Dade Property Appraiser (Angular SPA)
 MIAMI_DADE_SEARCH_URL = "https://apps.miamidadepa.gov/propertysearch/#/"
 
+
+def extract_miami_dade_folio_from_url(url: str) -> Optional[str]:
+    """Extract a folio from Miami-Dade Property Search hash URLs."""
+    if not url:
+        return None
+    match = re.search(r"[?&]folio=([^&#]+)", url, re.I)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"#/folio/([^/?&#]+)", url, re.I)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def build_miami_dade_property_search_url(folio: str, base_url: Optional[str] = None) -> str:
+    """Build a direct Miami-Dade Property Search URL for a folio number."""
+    from urllib.parse import urlparse
+
+    folio_value = normalize_florida_parcel(folio, county="miami-dade")
+    raw_base = (base_url or MIAMI_DADE_SEARCH_URL).strip()
+    parsed = urlparse(raw_base)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.rstrip("/") or "/propertysearch"
+    return f"{origin}{path}/#/?folio={folio_value}"
+
 # Miami-Dade Clerk official records
 MIAMI_DADE_RECORDER_HOST = "miamidadeclerk.gov"
 MIAMI_DADE_RECORDER_SEARCH_URL = "https://onlineservices.miamidadeclerk.gov/officialrecords"

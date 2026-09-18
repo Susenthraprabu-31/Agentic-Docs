@@ -88,4 +88,28 @@ class RecordsRepository:
 
         return mem_records
 
+    def delete_by_ids(self, run_id: str, ids: list[str]) -> int:
+        if not ids:
+            return 0
+
+        id_set = set(ids)
+        mem = get_memory_store()
+        before = len(mem.records)
+        mem.records = [
+            r for r in mem.records
+            if not (r.get("run_id") == run_id and r.get("id") in id_set)
+        ]
+        removed = before - len(mem.records)
+
+        client = get_supabase()
+        if client:
+            result = supabase_call(
+                lambda: client.table("records").delete().eq("run_id", run_id).in_("id", ids).execute(),
+                label="delete_records",
+            )
+            if result and result.data:
+                return len(result.data)
+
+        return removed
+
 
