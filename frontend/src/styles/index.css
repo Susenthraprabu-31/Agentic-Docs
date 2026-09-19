@@ -12,7 +12,7 @@ html.light {
   --bg-surface: #ffffff;
   --bg-panel: #ffffff;
   --border-subtle: #e2e8f0;
-  --text-main: #0f172a;
+  --text-main: #7c3aed;
   --text-muted: #64748b;
   --canvas-bg: #f1f5f9;
   --grid-dots: #cbd5e1;
@@ -54,6 +54,11 @@ html.dark body {
   stroke: #cbd5e1;
   stroke-width: 1.5;
   transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
+
+.react-flow__edge-interaction {
+  cursor: pointer;
+  pointer-events: stroke;
 }
 
 html.dark .react-flow__edge-path {

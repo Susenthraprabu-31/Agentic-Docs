@@ -10,6 +10,7 @@ import {
   useReactFlow,
   addEdge,
   Connection,
+  Edge,
   Node,
 } from "@xyflow/react";
 
@@ -17,6 +18,7 @@ import "@xyflow/react/dist/style.css";
 
 import PipelineNode from "./PipelineNode";
 import AIAgentNode from "./AIAgentNode";
+import DeletableEdge from "./DeletableEdge";
 import RightConfigPanel from "./BrowserPanel";
 import WorkflowSidebar from "./WorkflowSidebar";
 import NodePalettePopup from "./NodePalettePopup";
@@ -39,7 +41,11 @@ import ThemeToggle from "../common/ThemeToggle";
 
 const nodeTypes = {
   pipelineNode: PipelineNode,
-  aiAgentNode: AIAgentNode,
+  aiAgentNode: PipelineNode,
+};
+
+const edgeTypes = {
+  deletable: DeletableEdge,
 };
 
 const DRAG_TYPE = "application/reactflow";
@@ -133,6 +139,49 @@ function EditorCanvas() {
         );
       });
   }, [activeRunId, events, runDetail?.run.status, lastRunGraph, setNodes]);
+
+  // Node results & AI agent response tracking
+  useEffect(() => {
+    if (!activeRunId) return;
+
+    const aiEvent = [...events].reverse().find(
+      (e) => e.event_type === "node_completed" && (e.payload?.node === "AIAgentNode" || e.payload?.node === "ChatbotNode")
+    );
+    const planAiResponse = (runDetail?.run?.plan_json as Record<string, any> | undefined)?.ai_agent_response;
+    const planChatbotResponse = (runDetail?.run?.plan_json as Record<string, any> | undefined)?.chatbot_response;
+    const payloadAny = aiEvent?.payload as Record<string, any> | undefined;
+    const aiContent = String(payloadAny?.result?.content || payloadAny?.message || planAiResponse || "");
+    const chatbotContent = String(
+      payloadAny?.node === "ChatbotNode"
+        ? payloadAny?.result?.content || payloadAny?.message || planChatbotResponse
+        : planChatbotResponse || aiContent || ""
+    );
+
+    const planResults = ((runDetail?.run?.plan_json as Record<string, any> | undefined)?.node_results || {}) as Record<string, unknown>;
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        let changed = false;
+        const updatedData = { ...n.data };
+
+        if (n.data.nodeId === "ai_agent" && aiContent && n.data.aiAgentResponse !== aiContent) {
+          updatedData.aiAgentResponse = aiContent;
+          changed = true;
+        } else if (n.data.nodeId === "chatbot" && (chatbotContent || aiContent) && n.data.aiAgentResponse !== (chatbotContent || aiContent)) {
+          updatedData.aiAgentResponse = chatbotContent || aiContent;
+          changed = true;
+        }
+
+        const nodeRes = planResults[n.id] || planResults[n.data.nodeId];
+        if (nodeRes && !n.data.nodeResult) {
+          updatedData.nodeResult = nodeRes;
+          changed = true;
+        }
+
+        return changed ? { ...n, data: updatedData } : n;
+      })
+    );
+  }, [activeRunId, events, runDetail?.run?.plan_json, setNodes]);
 
   // Derive execution status for all canvas nodes based on run stream events
   const nodeStatusMap = useMemo<Record<string, "pending" | "running" | "done" | "failed" | "skipped">>(() => {
@@ -240,6 +289,7 @@ function EditorCanvas() {
 
       return {
         ...edge,
+        type: edge.type || "deletable",
         className: edgeClass,
         animated: isAnimated,
         style: {
@@ -252,7 +302,10 @@ function EditorCanvas() {
   }, [edges, nodeStatusMap, isDark]);
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge({ ...connection, animated: true }, eds)),
+    (connection: Connection) =>
+      setEdges((eds) =>
+        addEdge({ ...connection, type: "deletable", animated: true }, eds)
+      ),
     [setEdges]
   );
 
@@ -260,6 +313,14 @@ function EditorCanvas() {
     (deleted: Node[]) => {
       const ids = new Set(deleted.map((n) => n.id));
       setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
+    },
+    [setEdges]
+  );
+
+  const onEdgesDelete = useCallback(
+    (deleted: Edge[]) => {
+      const ids = new Set(deleted.map((e) => e.id));
+      setEdges((eds) => eds.filter((e) => !ids.has(e.id)));
     },
     [setEdges]
   );
@@ -290,7 +351,7 @@ function EditorCanvas() {
       const lastNode = nodes[nodes.length - 1];
       const position = lastNode
         ? { x: lastNode.position.x, y: lastNode.position.y + 180 }
-        : { x: 300, y: 300 };
+        : { x: 280, y: 100 };
       const newNode = createNodeFromCatalog(def, position);
       setNodes((nds) => nds.concat(newNode));
       if (lastNode) {
@@ -299,6 +360,7 @@ function EditorCanvas() {
             id: `e-${lastNode.id}-${newNode.id}`,
             source: lastNode.id,
             target: newNode.id,
+            type: "deletable",
             animated: true,
           })
         );
@@ -326,7 +388,12 @@ function EditorCanvas() {
       setActiveWorkflowId(workflow.id);
       setWorkflowTitle(workflow.name);
       if (workflow.nodes?.length) {
-        setNodes(workflow.nodes as Node<PipelineNodeData>[]);
+        setNodes(
+          workflow.nodes.map((n) => ({
+            ...n,
+            type: "pipelineNode",
+          })) as Node<PipelineNodeData>[]
+        );
       }
       if (workflow.edges?.length) {
         setEdges(workflow.edges);
@@ -339,8 +406,8 @@ function EditorCanvas() {
   const onNewWorkflow = useCallback(() => {
     setActiveWorkflowId(null);
     setWorkflowTitle("Untitled Workflow");
-    setNodes(DEFAULT_NODES);
-    setEdges(DEFAULT_EDGES);
+    setNodes([]);
+    setEdges([]);
     setSelectedNodeId(null);
   }, [setNodes, setEdges]);
 
@@ -684,10 +751,13 @@ function EditorCanvas() {
             onDragOver={onDragOver}
             onDrop={onDrop}
             onNodesDelete={onNodesDelete}
+            onEdgesDelete={onEdgesDelete}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
             deleteKeyCode={["Backspace", "Delete"]}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            defaultEdgeOptions={{ type: "deletable", animated: true, deletable: true }}
             fitView
             fitViewOptions={{ padding: 0.3 }}
             minZoom={0.15}
@@ -704,6 +774,33 @@ function EditorCanvas() {
               showInteractive={false}
             />
           </ReactFlow>
+
+          {/* Empty Canvas Placeholder */}
+          {nodes.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10 p-6">
+              <div className="text-center p-8 max-w-sm rounded-2xl bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border border-slate-200 dark:border-white/[0.08] shadow-2xl pointer-events-auto">
+                <div className="w-14 h-14 rounded-2xl bg-violet-600/10 border border-violet-500/20 text-violet-500 flex items-center justify-center mx-auto mb-3.5 shadow-sm">
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">Blank Workflow Canvas</h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 mb-5 leading-relaxed">
+                  Start building your custom workflow by dragging nodes from the sidebar or click below.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPaletteAnchor({ x: 0, y: 0 })}
+                  className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-lg shadow-violet-900/30 transition-all flex items-center justify-center gap-2 w-full"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add First Node
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Edge toggle handle when panel is closed */}
           {!showRightPanel && (

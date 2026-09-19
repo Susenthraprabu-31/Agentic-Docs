@@ -90,6 +90,9 @@ export interface RunDetail {
       query_type?: string;
       query_value?: string;
       pipeline_graph?: PipelineGraph;
+      node_results?: Record<string, unknown>;
+      ai_agent_response?: string;
+      [key: string]: unknown;
     };
     error_message?: string;
   };
@@ -116,6 +119,9 @@ export interface ReportData {
     gis_screenshot_path?: string;
     gis_screenshot_url?: string;
     gis_screenshot_data_uri?: string;
+    ai_agent_response?: string;
+    ai_agent_model?: string;
+    ai_agent_meta?: Record<string, unknown>;
     generated_at?: string;
   };
   pdf_path?: string;
@@ -279,6 +285,37 @@ export async function downloadReportPdf(reportId: string, runId: string): Promis
     storageUrl: res.headers.get("X-PDF-Storage-Url"),
     storagePath: res.headers.get("X-PDF-Storage-Path"),
   };
+}
+
+export function getReportExcelUrl(runId: string): string {
+  return `${API_BASE}/reports/run/${runId}/excel/download`;
+}
+
+export async function downloadReportExcel(runId: string, filename?: string): Promise<void> {
+  const res = await fetch(getReportExcelUrl(runId));
+  if (!res.ok) {
+    const text = await res.text();
+    let message = "Failed to download Chain Sheet Excel";
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { detail?: string };
+        message = parsed.detail || text;
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || `chain_sheet_${runId.slice(0, 8)}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function getDocumentDownloadUrl(runId: string): string {

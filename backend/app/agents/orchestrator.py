@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -35,7 +35,7 @@ from app.config.platform_rules import get_assessor_platform_rules, get_recorder_
 from app.extraction.assessor_book_page import enrich_raw_json_with_latest_book_page, extract_latest_book_page
 from app.extraction.book_page import format_book_page_label, parse_book_page
 from app.extraction.schemas import CountySources, QueryType, RunStatus, SourceType
-from app.agents.ai_agent_coordinator import wait_for_pending
+from app.agents.ai_agent_coordinator import complete_pending, fail_pending, wait_for_pending
 from app.pipeline.graph_executor import ParsedPipelineGraph, requires_browser, resolve_pipeline_graph
 from app.pipeline.run_normalizer import normalize_run_data
 from app.report.pdf_exporter import is_valid_pdf
@@ -65,6 +65,7 @@ NODE_EVENT_NAMES = {
     "gis": "GISNode",
     "tax": "TaxNode",
     "ai_agent": "AIAgentNode",
+    "chatbot": "ChatbotNode",
     "normalizer": "NormalizerNode",
     "report": "ReportNode",
     "output": "OutputNode",
@@ -86,6 +87,9 @@ class RunContext:
     book_page_source: Optional[str] = None
     sources: Optional[CountySources] = None
     report_id: Optional[str] = None
+    node_results: dict[str, Any] = field(default_factory=dict)
+    last_completed_node_result: Any = None
+    last_completed_node_id: Optional[str] = None
 
 
 def _data_str(data: dict[str, Any], *keys: str, default: str = "") -> str:
@@ -329,7 +333,16 @@ class Orchestrator:
                     message=f"Running {event_name}",
                     step_node_id=node_id,
                 )
-                await self._dispatch_node(node_id, data, ctx, driver, resolver, canvas_id=canvas_id)
+                await self._dispatch_node(
+                    node_id,
+                    data,
+                    ctx,
+                    driver,
+                    resolver,
+                    canvas_id=canvas_id,
+                    pipeline_graph=pipeline_graph,
+                    parsed=parsed,
+                )
 
             self.sources = ctx.sources
             self.runs_repo.update_run(
@@ -431,6 +444,23 @@ class Orchestrator:
                 return str(url)
         return ""
 
+    def _record_node_result(self, ctx: RunContext, node_id: str, canvas_id: str, result: Any) -> None:
+        if canvas_id:
+            ctx.node_results[canvas_id] = result
+        ctx.node_results[node_id] = result
+        ctx.last_completed_node_result = result
+        ctx.last_completed_node_id = node_id
+        try:
+            run_row = self.runs_repo.get_run(self.run_id) or {}
+            plan = run_row.get("plan_json") or {}
+            if isinstance(plan, dict):
+                self.runs_repo.update_run(
+                    self.run_id,
+                    plan_json={**plan, "node_results": dict(ctx.node_results)},
+                )
+        except Exception as exc:
+            logger.warning("Could not persist node_results for run %s: %s", self.run_id, exc)
+
     async def _dispatch_node(
         self,
         node_id: str,
@@ -439,6 +469,8 @@ class Orchestrator:
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
         canvas_id: str = "",
+        pipeline_graph: Optional[dict[str, Any]] = None,
+        parsed: Optional[ParsedPipelineGraph] = None,
     ) -> None:
         handlers = {
             "input": self._node_input,
@@ -452,14 +484,23 @@ class Orchestrator:
             "report": self._node_report,
             "output": self._node_output,
         }
-        if node_id == "ai_agent":
-            await self._node_ai_agent(data, ctx, driver, resolver, canvas_id=canvas_id)
+        if node_id in ("ai_agent", "chatbot"):
+            await self._node_ai_agent(
+                data,
+                ctx,
+                driver,
+                resolver,
+                canvas_id=canvas_id,
+                pipeline_graph=pipeline_graph,
+                parsed=parsed,
+                node_id=node_id,
+            )
             return
         handler = handlers.get(node_id)
         if not handler:
             await self.run_logger.log("node_completed", node=node_id, message=f"Unknown node type: {node_id}")
             return
-        await handler(data, ctx, driver, resolver)
+        await handler(data, ctx, driver, resolver, canvas_id=canvas_id)
 
     async def _node_input(
         self,
@@ -467,9 +508,22 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         await self.run_logger.node_started("InputNode")
         _apply_input_data_to_ctx(data, ctx)
+        input_result = {
+            "state": ctx.state,
+            "county": ctx.county,
+            "query_type": ctx.query_type.value,
+            "query_value": ctx.query_value,
+            "address": ctx.address,
+            "owner_name": ctx.owner_name,
+            "parcel": ctx.parcel,
+            "book_number": ctx.book_number,
+            "page_number": ctx.page_number,
+        }
+        self._record_node_result(ctx, "input", canvas_id, input_result)
         await self.run_logger.node_completed(
             "InputNode",
             state=ctx.state,
@@ -479,6 +533,7 @@ class Orchestrator:
             address=ctx.address,
             owner_name=ctx.owner_name,
             parcel=ctx.parcel,
+            result=input_result,
         )
 
     async def _node_netr(
@@ -487,6 +542,7 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         if not driver or not resolver:
             await self.run_logger.source_skipped(SourceType.NETRONLINE, "Browser not required for this run")
@@ -513,10 +569,18 @@ class Orchestrator:
             ]
             if u
         )
+        netr_result = {
+            "links_found": links_found,
+            "assessor_url": getattr(ctx.sources, "assessor_url", None) if ctx.sources else None,
+            "recorder_url": getattr(ctx.sources, "recorder_url", None) if ctx.sources else None,
+            "tax_url": getattr(ctx.sources, "tax_url", None) if ctx.sources else None,
+            "gis_url": getattr(ctx.sources, "gis_url", None) if ctx.sources else None,
+        }
+        self._record_node_result(ctx, "netr", canvas_id, netr_result)
         await self.run_logger.source_completed(
             SourceType.NETRONLINE, records_found=links_found, duration_ms=duration
         )
-        await self.run_logger.node_completed("NETRResolverNode", records_found=links_found)
+        await self.run_logger.node_completed("NETRResolverNode", records_found=links_found, result=netr_result)
 
     async def _node_platform(
         self,
@@ -524,14 +588,23 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         assessor_url = ctx.sources.assessor_url if ctx.sources else ""
         recorder_url = ctx.sources.recorder_url if ctx.sources else ""
         await self.run_logger.node_started("PlatformDetectorNode")
+        assessor_p = _detect_platform(assessor_url, get_assessor_platform_rules())
+        recorder_p = _detect_platform(recorder_url, get_recorder_platform_rules())
+        platform_result = {
+            "assessor_platform": assessor_p,
+            "recorder_platform": recorder_p,
+        }
+        self._record_node_result(ctx, "platform", canvas_id, platform_result)
         await self.run_logger.node_completed(
             "PlatformDetectorNode",
-            assessor_platform=_detect_platform(assessor_url, get_assessor_platform_rules()),
-            recorder_platform=_detect_platform(recorder_url, get_recorder_platform_rules()),
+            assessor_platform=assessor_p,
+            recorder_platform=recorder_p,
+            result=platform_result,
         )
 
     async def _node_assessor(
@@ -540,6 +613,7 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         if not driver:
             await self.run_logger.node_started("AssessorNode")
@@ -585,6 +659,16 @@ class Orchestrator:
                     "from Assessor Sales Information for downstream Recorder search"
                 ),
             )
+        assessor_rec = self._get_assessor_record()
+        assessor_records = [r for r in self.records_repo.list_by_run(self.run_id) if r.get("source") == "assessor"]
+        assessor_result = {
+            "records_found": len(assessor_records),
+            "parcel": ctx.parcel,
+            "owner_name": ctx.owner_name,
+            "address": ctx.address,
+            "property": assessor_rec,
+        }
+        self._record_node_result(ctx, "assessor", canvas_id, assessor_result)
 
     async def _node_recorder(
         self,
@@ -592,6 +676,7 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         if not driver:
             await self.run_logger.node_started("RecorderNode")
@@ -688,6 +773,14 @@ class Orchestrator:
                 "query_value": recorder_qv or ctx.query_value or "",
             },
         )
+        docs = self.documents_repo.list_by_run(self.run_id)
+        recorder_result = {
+            "documents_found": len(docs),
+            "documents": docs,
+            "book_number": ctx.book_number,
+            "page_number": ctx.page_number,
+        }
+        self._record_node_result(ctx, "recorder", canvas_id, recorder_result)
 
     async def _node_gis(
         self,
@@ -695,6 +788,7 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         if not driver:
             await self.run_logger.source_skipped(SourceType.GIS, "Browser not started")
@@ -737,6 +831,11 @@ class Orchestrator:
             ctx.query_value,
             playwright_notes=notes,
         )
+        gis_result = {
+            "parcel": parcel,
+            "gis_url": gis_url,
+        }
+        self._record_node_result(ctx, "gis", canvas_id, gis_result)
 
     async def _node_tax(
         self,
@@ -744,6 +843,7 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         if not driver:
             await self.run_logger.source_skipped(SourceType.TAX_RECORD, "Browser not started")
@@ -770,6 +870,13 @@ class Orchestrator:
             tax_url=tax_url, playwright_notes=notes,
             query_type=ctx.query_type, query_value=ctx.query_value,
         )
+        tax_records = [r for r in self.records_repo.list_by_run(self.run_id) if r.get("source") == "tax"]
+        tax_result = {
+            "records_found": len(tax_records),
+            "records": tax_records,
+            "parcel": ctx.parcel,
+        }
+        self._record_node_result(ctx, "tax", canvas_id, tax_result)
 
     async def _node_ai_agent(
         self,
@@ -778,10 +885,22 @@ class Orchestrator:
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
         canvas_id: str = "",
+        pipeline_graph: Optional[dict[str, Any]] = None,
+        parsed: Optional[ParsedPipelineGraph] = None,
+        node_id: str = "ai_agent",
     ) -> None:
+        is_chatbot = node_id == "chatbot"
+        node_type_name = "ChatbotNode" if is_chatbot else "AIAgentNode"
+        default_agent_name = "Title Chatbot" if is_chatbot else "OpenAI Agent"
+        default_instructions = (
+            "You are a conversational AI Title Search Assistant. Answer user questions clearly and concisely using the pipeline data."
+            if is_chatbot
+            else "You are a helpful AI assistant."
+        )
+
         config = {
-            "agent_name": _data_str(data, "agent_name", default="OpenAI Agent"),
-            "instructions": _data_str(data, "instructions"),
+            "agent_name": _data_str(data, "agent_name", default=default_agent_name),
+            "instructions": _data_str(data, "instructions", default=default_instructions),
             "user_prompt": _data_str(data, "user_prompt"),
             "model": _data_str(data, "model", default="gpt-4o"),
             "temperature": data.get("temperature", 0.7),
@@ -789,33 +908,153 @@ class Orchestrator:
         }
         records = self.records_repo.list_by_run(self.run_id)
         documents = self.documents_repo.list_by_run(self.run_id)
+
+        # Resolve predecessor node to pass previous_result
+        prev_canvas_id: Optional[str] = None
+        prev_node_id: Optional[str] = None
+        if pipeline_graph and canvas_id:
+            edges = pipeline_graph.get("edges") or []
+            for edge in edges:
+                if edge.get("target") == canvas_id:
+                    prev_canvas_id = edge.get("source")
+                    if prev_canvas_id and parsed and prev_canvas_id in parsed.node_map:
+                        prev_node_id = parsed.node_map[prev_canvas_id].get("node_id")
+                    break
+
+        if not prev_node_id and parsed and canvas_id:
+            try:
+                idx = parsed.order.index(canvas_id)
+                if idx > 0:
+                    prev_canvas_id = parsed.order[idx - 1]
+                    prev_node_id = parsed.node_map[prev_canvas_id].get("node_id")
+            except (ValueError, IndexError):
+                pass
+
+        if not prev_node_id:
+            prev_node_id = ctx.last_completed_node_id
+
+        previous_result = None
+        if prev_canvas_id and prev_canvas_id in ctx.node_results:
+            previous_result = ctx.node_results[prev_canvas_id]
+        elif prev_node_id and prev_node_id in ctx.node_results:
+            previous_result = ctx.node_results[prev_node_id]
+        else:
+            previous_result = ctx.last_completed_node_result
+
+        report_result = ctx.node_results.get("report")
+
         context_data = {
             "run_id": self.run_id,
             "state": ctx.state,
             "county": ctx.county,
             "query_value": ctx.query_value,
+            "previous_node": prev_node_id or "previous",
+            "previous_result": previous_result,
+            "report": report_result,
+            "node_results": dict(ctx.node_results),
             "records": records,
             "documents": documents,
             "sources": ctx.sources.model_dump() if ctx.sources else {},
         }
-        agent_name = config["agent_name"]
+        agent_name = config.get("agent_name") or default_agent_name
         await self.run_logger.node_started(
-            "AIAgentNode", agent_name=agent_name, model=config.get("model"), canvas_id=canvas_id
+            node_type_name, agent_name=agent_name, model=config.get("model"), canvas_id=canvas_id
         )
         await self.run_logger.log(
-            "ai_agent_invoke",
-            node="AIAgentNode",
-            message="POST /runs/{id}/ai-agent/execute — check Network tab",
+            "chatbot_invoke" if is_chatbot else "ai_agent_invoke",
+            node=node_type_name,
+            message=f"Executing {agent_name} ({config.get('model', 'gpt-4o')})...",
             canvas_id=canvas_id,
             config=config,
             context_data=context_data,
         )
         try:
-            await wait_for_pending(self.run_id, canvas_id)
-        except TimeoutError as exc:
-            await self.run_logger.node_failed("AIAgentNode", str(exc))
-        except ValueError as exc:
-            await self.run_logger.node_failed("AIAgentNode", str(exc))
+            t0 = time.monotonic()
+            ai_result = await self.ai_agent.run(
+                instructions=config.get("instructions") or default_instructions,
+                user_prompt=config.get("user_prompt") or "",
+                model=config.get("model") or "gpt-4o",
+                temperature=float(config.get("temperature") or 0.7),
+                max_tokens=int(config.get("max_tokens") or 1000),
+                context_data=context_data,
+            )
+            duration = int((time.monotonic() - t0) * 1000)
+            preview = (ai_result.get("content") or "")[:500]
+
+            ai_result_payload = {
+                **ai_result,
+                "agent_name": agent_name,
+                "duration_ms": duration,
+            }
+
+            self._record_node_result(ctx, node_id, canvas_id, ai_result_payload)
+
+            # Persist official AI Analysis/Chatbot document into documents_repo
+            doc_type = "AI Chatbot Response" if is_chatbot else "AI Title Analysis"
+            doc_data = {
+                "document_type": doc_type,
+                "recording_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "instrument_number": f"{'CB' if is_chatbot else 'AI'}-{self.run_id[:8].upper()}",
+                "grantor": f"OpenAI ({ai_result.get('model', 'gpt-4o')})",
+                "grantee": ctx.owner_name or "Title Production Report",
+                "notes": ai_result.get("content"),
+                "ocr_json": {
+                    "source": node_id,
+                    "agent_name": agent_name,
+                    "model": ai_result.get("model"),
+                    "prompt_tokens": ai_result.get("prompt_tokens"),
+                    "completion_tokens": ai_result.get("completion_tokens"),
+                    "duration_ms": duration,
+                    "ai_response": ai_result.get("content"),
+                },
+            }
+            try:
+                self.documents_repo.insert(self.run_id, doc_data)
+            except Exception as exc:
+                logger.warning("Failed to insert %s document: %s", doc_type, exc)
+
+            # Persist to run plan
+            run = self.runs_repo.get_run(self.run_id) or {}
+            plan = run.get("plan_json") or {}
+            updated_node_results = dict(ctx.node_results)
+            updated_node_results[node_id] = ai_result_payload
+            if canvas_id:
+                updated_node_results[canvas_id] = ai_result_payload
+
+            plan_updates = {
+                **plan,
+                "node_results": updated_node_results,
+            }
+            if is_chatbot:
+                plan_updates["chatbot_response"] = ai_result.get("content")
+                plan_updates["chatbot_model"] = ai_result.get("model")
+                if not plan.get("ai_agent_response"):
+                    plan_updates["ai_agent_response"] = ai_result.get("content")
+            else:
+                plan_updates["ai_agent_response"] = ai_result.get("content")
+                plan_updates["ai_agent_model"] = ai_result.get("model")
+
+            self.runs_repo.update_run(
+                self.run_id,
+                plan_json=plan_updates,
+            )
+
+            complete_pending(self.run_id, canvas_id, ai_result)
+
+            await self.run_logger.node_completed(
+                node_type_name,
+                agent_name=agent_name,
+                model=ai_result.get("model"),
+                duration_ms=duration,
+                detail=preview,
+                prompt_tokens=ai_result.get("prompt_tokens"),
+                completion_tokens=ai_result.get("completion_tokens"),
+                result=ai_result_payload,
+            )
+        except Exception as exc:
+            fail_pending(self.run_id, canvas_id, str(exc))
+            await self.run_logger.node_failed(node_type_name, str(exc))
+            raise
 
     async def _node_normalizer(
         self,
@@ -823,6 +1062,7 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         await self.run_logger.node_started("NormalizerNode")
         stats = normalize_run_data(self.run_id, self.records_repo, self.documents_repo)
@@ -830,7 +1070,12 @@ class Orchestrator:
             f"Records {stats['records_before']}→{stats['records_after']}, "
             f"documents {stats['documents_before']}→{stats['documents_after']}"
         )
-        await self.run_logger.node_completed("NormalizerNode", detail=detail, **stats)
+        normalizer_result = {
+            "stats": stats,
+            "detail": detail,
+        }
+        self._record_node_result(ctx, "normalizer", canvas_id, normalizer_result)
+        await self.run_logger.node_completed("NormalizerNode", detail=detail, result=normalizer_result, **stats)
 
     async def _node_report(
         self,
@@ -838,16 +1083,35 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         await self.run_logger.node_started("ReportNode")
         try:
             builder = ReportBuilder()
             report = await builder.build_and_save(self.run_id)
             ctx.report_id = report.get("id")
+            report_json = report.get("report_json") or {}
+            report_result = {
+                "report_id": ctx.report_id,
+                "pdf_path": report.get("pdf_path"),
+                "storage_url": report.get("storage_url"),
+                "pdf_url": f"/reports/run/{self.run_id}",
+                "property": report_json.get("property") or {},
+                "tax_record": report_json.get("tax_record") or {},
+                "chain_of_title": report_json.get("chain_of_title") or [],
+                "documents_count": len(report_json.get("documents") or []),
+                "documents": report_json.get("documents") or [],
+                "sources_trail": report_json.get("sources_trail") or [],
+                "ai_agent_response": report_json.get("ai_agent_response"),
+                "ai_agent_model": report_json.get("ai_agent_model"),
+                "status": "ready",
+            }
+            self._record_node_result(ctx, "report", canvas_id, report_result)
             await self.run_logger.node_completed(
                 "ReportNode",
                 detail="PDF report generated",
                 report_id=ctx.report_id,
+                result=report_result,
             )
         except Exception as exc:
             await self.run_logger.node_failed("ReportNode", str(exc))
@@ -859,9 +1123,16 @@ class Orchestrator:
         ctx: RunContext,
         driver: Optional[NetronlineDriver],
         resolver: Optional[CountyResolver],
+        canvas_id: str = "",
     ) -> None:
         await self.run_logger.node_started("OutputNode")
-        await self.run_logger.node_completed("OutputNode", total_records=ctx.total_records)
+        output_result = {
+            "total_records": ctx.total_records,
+            "report_id": ctx.report_id,
+            "node_results": dict(ctx.node_results),
+        }
+        self._record_node_result(ctx, "output", canvas_id, output_result)
+        await self.run_logger.node_completed("OutputNode", total_records=ctx.total_records, result=output_result)
 
     def _persist_assessor_chain_of_title(self, parcel: Any) -> int:
         chain = (parcel.raw_json or {}).get("chain_of_title") or []

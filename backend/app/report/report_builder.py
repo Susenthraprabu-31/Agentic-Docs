@@ -142,6 +142,119 @@ def _resolve_gis_screenshot(
     return str(file_path.resolve()), data_uri, public_url
 
 
+def _format_markdown_to_html(md_text: str) -> str:
+    """Format markdown text with headings, bullet points, and bold tags into clean HTML."""
+    if not md_text:
+        return ""
+    import html as html_lib
+    import re
+    lines = md_text.splitlines()
+    html_lines: list[str] = []
+    in_list = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            continue
+
+        if stripped.startswith("#### "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            title = html_lib.escape(stripped[5:].strip())
+            html_lines.append(f"<h5 style=\"margin: 12px 0 6px 0; color: #334155; font-size: 13px; font-weight: 700;\">{title}</h5>")
+            continue
+        if stripped.startswith("### "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            title = html_lib.escape(stripped[4:].strip())
+            html_lines.append(f"<h4 style=\"margin: 16px 0 8px 0; color: #4338ca; font-size: 14px; font-weight: 700;\">{title}</h4>")
+            continue
+        if stripped.startswith("## "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            title = html_lib.escape(stripped[3:].strip())
+            html_lines.append(f"<h3 style=\"margin: 18px 0 8px 0; color: #1e1b4b; font-size: 15px; font-weight: 700;\">{title}</h3>")
+            continue
+
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            if not in_list:
+                html_lines.append("<ul style=\"margin: 4px 0 8px 18px; padding-left: 0;\">")
+                in_list = True
+            content = html_lib.escape(stripped[2:].strip())
+            content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", content)
+            html_lines.append(f"<li style=\"margin-bottom: 4px; line-height: 1.5;\">{content}</li>")
+            continue
+
+        if in_list:
+            html_lines.append("</ul>")
+            in_list = False
+
+        content = html_lib.escape(stripped)
+        content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", content)
+        html_lines.append(f"<p style=\"margin: 6px 0; line-height: 1.5;\">{content}</p>")
+
+    if in_list:
+        html_lines.append("</ul>")
+    return "\n".join(html_lines)
+
+
+def _resolve_ai_agent_data(
+    run: dict[str, Any],
+    documents: list[dict[str, Any]],
+) -> tuple[Optional[str], Optional[str], dict[str, Any]]:
+    """Extract AI agent response, model name, and metadata from run or documents."""
+    plan_json = run.get("plan_json") or {}
+    ai_response = plan_json.get("ai_agent_response") or plan_json.get("chatbot_response")
+    ai_model = plan_json.get("ai_agent_model") or plan_json.get("chatbot_model")
+    ai_meta: dict[str, Any] = {}
+
+    node_results = plan_json.get("node_results") or {}
+    ai_node = node_results.get("ai_agent") or node_results.get("chatbot") or {}
+    if not isinstance(ai_node, dict):
+        ai_node = {}
+
+    if not ai_response:
+        ai_response = ai_node.get("content")
+    if not ai_model:
+        ai_model = ai_node.get("model")
+
+    # If still not found, search all node results for an AI agent payload
+    if not ai_response:
+        for val in node_results.values():
+            if isinstance(val, dict) and val.get("content") and (val.get("model") or val.get("agent_name")):
+                ai_response = val.get("content")
+                ai_model = val.get("model") or ai_model
+                ai_node = val
+                break
+
+    # If still not found, check existing documents for an AI analysis or chatbot document
+    if not ai_response:
+        for d in documents:
+            ocr = d.get("ocr_json") or {}
+            if ocr.get("source") in ("ai_agent", "chatbot") or d.get("document_type") in ("AI Title Analysis", "AI Chatbot Response"):
+                ai_response = d.get("notes") or ocr.get("ai_response")
+                ai_model = ocr.get("model") or ai_model
+                break
+
+    if ai_node:
+        ai_meta = {
+            "model": ai_model or ai_node.get("model"),
+            "agent_name": ai_node.get("agent_name"),
+            "duration_ms": ai_node.get("duration_ms"),
+            "prompt_tokens": ai_node.get("prompt_tokens"),
+            "completion_tokens": ai_node.get("completion_tokens"),
+            "total_tokens": ai_node.get("total_tokens"),
+        }
+
+    return ai_response, ai_model, ai_meta
+
+
 class ReportBuilder:
     def __init__(self) -> None:
         self.runs_repo = RunsRepository()
@@ -217,6 +330,42 @@ class ReportBuilder:
                 if data_uri:
                     d["image_data_uri"] = data_uri
 
+        # Extract AI agent response and metadata if present in run or documents
+        ai_agent_response, ai_agent_model, ai_agent_meta = _resolve_ai_agent_data(run, documents)
+
+        # Ensure an official AI Title Analysis or Chatbot document is inserted into documents_repo
+        has_ai_doc = any(
+            d.get("document_type") in ("AI Title Analysis", "AI Chatbot Response")
+            or (d.get("ocr_json") or {}).get("source") in ("ai_agent", "chatbot")
+            for d in documents
+        )
+        if ai_agent_response and not has_ai_doc:
+            is_chatbot = (ai_agent_meta or {}).get("agent_name") == "Title Chatbot" or "chatbot" in str(ai_agent_meta or {})
+            doc_type = "AI Chatbot Response" if is_chatbot else "AI Title Analysis"
+            doc_prefix = "CB" if is_chatbot else "AI"
+            doc_row = {
+                "document_type": doc_type,
+                "recording_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "instrument_number": f"{doc_prefix}-{run_id[:8].upper()}",
+                "grantor": f"OpenAI ({ai_agent_model or 'gpt-4o'})",
+                "grantee": (property_record.get("owner_name") if property_record else None) or "Title Production Report",
+                "notes": ai_agent_response,
+                "ocr_json": {
+                    "source": "chatbot" if is_chatbot else "ai_agent",
+                    "model": ai_agent_model or "gpt-4o",
+                    "ai_response": ai_agent_response,
+                    **(ai_agent_meta or {}),
+                },
+            }
+            try:
+                saved_doc = self.documents_repo.insert(run_id, doc_row)
+                documents.append(saved_doc)
+            except Exception as exc:
+                logger.warning("Could not persist %s document: %s", doc_type, exc)
+                documents.append(doc_row)
+
+        ai_agent_html = _format_markdown_to_html(ai_agent_response) if ai_agent_response else ""
+
         report_json: dict[str, Any] = {
             "run_id": run_id,
             "state": run["state"],
@@ -232,6 +381,9 @@ class ReportBuilder:
             "gis_screenshot_path": gis_screenshot_path,
             "gis_screenshot_url": gis_screenshot_url,
             "gis_screenshot_data_uri": gis_screenshot_data_uri,
+            "ai_agent_response": ai_agent_response,
+            "ai_agent_model": ai_agent_model,
+            "ai_agent_meta": ai_agent_meta,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -247,6 +399,10 @@ class ReportBuilder:
             chain_of_title=chain_of_title,
             chain_docs=chain_docs,
             gis_screenshot_data_uri=gis_screenshot_data_uri,
+            ai_agent_response=ai_agent_response,
+            ai_agent_model=ai_agent_model,
+            ai_agent_meta=ai_agent_meta,
+            ai_agent_html=ai_agent_html,
             generated_at=report_json["generated_at"],
         )
         return report_json, html

@@ -58,6 +58,10 @@ export interface PipelineNodeData {
 
   executionStatus?: "pending" | "running" | "done" | "failed" | "skipped";
 
+  aiAgentResponse?: string;
+
+  nodeResult?: unknown;
+
   [key: string]: unknown;
 }
 

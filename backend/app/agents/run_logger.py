@@ -73,10 +73,11 @@ class RunLogger:
         duration_ms: Optional[int] = None,
         **extra: Any,
     ) -> None:
+        message = extra.pop("message", None) or f"{source.value} complete — {records_found} record(s) found"
         await self.log(
             "source_completed",
             source=source,
-            message=f"{source.value} complete — {records_found} record(s) found",
+            message=message,
             records_found=records_found,
             duration_ms=duration_ms,
             **extra,
@@ -92,14 +93,16 @@ class RunLogger:
         await self.log("record_found", source=source, records_found=1, **fields)
 
     async def node_started(self, node_name: str, **extra: Any) -> None:
-        await self.log("node_started", message=f"{node_name} started", node=node_name, **extra)
+        message = extra.pop("message", None) or f"{node_name} started"
+        await self.log("node_started", message=message, node=node_name, **extra)
 
     async def node_completed(self, node_name: str, detail: Optional[str] = None, **extra: Any) -> None:
-        message = detail or f"{node_name} completed"
+        message = extra.pop("message", None) or detail or f"{node_name} completed"
         await self.log("node_completed", message=message, node=node_name, **extra)
 
     async def node_failed(self, node_name: str, error: str, **extra: Any) -> None:
-        await self.log("node_failed", message=error, node=node_name, reason=error, **extra)
+        message = extra.pop("message", None) or error
+        await self.log("node_failed", message=message, node=node_name, reason=error, **extra)
 
     async def run_completed(self, report_id: Optional[str] = None, total_records: int = 0) -> None:
         await self.log(

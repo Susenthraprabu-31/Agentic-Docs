@@ -26,6 +26,7 @@ const NODE_COLORS: Record<string, string> = {
   report: "#ef4444",
   output: "#10b981",
   ai_agent: "#7c3aed",
+  chatbot: "#0ea5e9",
 };
 
 interface Props {
@@ -176,7 +177,10 @@ export default function WorkflowSidebar({
         </span>
         <button
           type="button"
-          onClick={onNew}
+          onClick={() => {
+            onNew();
+            setActiveTab("nodes");
+          }}
           className="flex items-center gap-1 px-2 py-1 rounded-md bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold transition-colors shadow-sm"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

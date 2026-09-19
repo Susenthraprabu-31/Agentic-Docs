@@ -80,6 +80,38 @@ export default function ReportView() {
             </div>
           )}
 
+          {/* AI Title Analysis & Verification Card */}
+          {report.report_json?.ai_agent_response && (
+            <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-purple-200/80 dark:border-purple-800/40 p-6 transition-colors">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-purple-100 dark:border-purple-900/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-600/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">AI Title Analysis & Verification</h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">Autonomous LLM examination of public property records</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {report.report_json.ai_agent_model && (
+                    <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 font-mono">
+                      {report.report_json.ai_agent_model}
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                    Verified
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 p-4 rounded-xl bg-purple-50/40 dark:bg-[#0d1117] border border-purple-100 dark:border-purple-900/30 text-sm leading-relaxed text-slate-800 dark:text-zinc-200 whitespace-pre-wrap font-sans">
+                {report.report_json.ai_agent_response}
+              </div>
+            </div>
+          )}
+
           <GisMapPreview
             gisScreenshotUrl={report.report_json?.gis_screenshot_url}
             gisScreenshotDataUri={report.report_json?.gis_screenshot_data_uri}

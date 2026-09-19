@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.db.repositories.documents_repository import DocumentsRepository
 from app.db.repositories.records_repository import RecordsRepository
+from app.report.excel_generator import generate_chain_sheet_excel
 from app.report.pdf_exporter import PdfExporter, is_valid_pdf
 from app.report.report_builder import ReportBuilder
 
@@ -350,6 +351,81 @@ async def download_run_document(run_id: str):
         zip_buffer,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/run/{run_id}/excel/download")
+async def download_run_excel(run_id: str):
+    """Generate and download the Chain Sheet Excel (.xlsx) spreadsheet for a run."""
+    builder = ReportBuilder()
+    report = builder.get_report_by_run(run_id)
+    if not report:
+        try:
+            report = await builder.build_and_save(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=f"Report not available to export Excel: {exc}") from exc
+    else:
+        report = builder.refresh_report_json(report)
+
+    report_json = report.get("report_json") or {}
+    from app.db.repositories.runs_repository import RunsRepository
+    runs_repo = RunsRepository()
+    run_dict = runs_repo.get_run(run_id) or {}
+
+    excel_buffer = generate_chain_sheet_excel(report_json, run_dict)
+
+    parcel = (
+        (report_json.get("property") or {}).get("apn")
+        or report_json.get("query_value")
+        or run_dict.get("parcel")
+        or run_id[:8]
+    )
+    safe_parcel = re.sub(r"[^\w\-]+", "_", str(parcel))
+    filename = f"chain_sheet_{safe_parcel}_{run_id[:8]}.xlsx"
+
+    return StreamingResponse(
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.get("/{report_id}/excel/download")
+async def download_report_excel(report_id: str):
+    """Generate and download the Chain Sheet Excel (.xlsx) spreadsheet by report ID."""
+    builder = ReportBuilder()
+    report = builder.get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    report = builder.refresh_report_json(report)
+    run_id = report.get("run_id") or report_id
+
+    report_json = report.get("report_json") or {}
+    from app.db.repositories.runs_repository import RunsRepository
+    runs_repo = RunsRepository()
+    run_dict = runs_repo.get_run(run_id) or {}
+
+    excel_buffer = generate_chain_sheet_excel(report_json, run_dict)
+
+    parcel = (
+        (report_json.get("property") or {}).get("apn")
+        or report_json.get("query_value")
+        or run_dict.get("parcel")
+        or run_id[:8]
+    )
+    safe_parcel = re.sub(r"[^\w\-]+", "_", str(parcel))
+    filename = f"chain_sheet_{safe_parcel}_{run_id[:8]}.xlsx"
+
+    return StreamingResponse(
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
     )
 
 

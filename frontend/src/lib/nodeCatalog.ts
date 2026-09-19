@@ -306,11 +306,11 @@ export const SIDEBAR_NODES: SidebarNodeDef[] = [
 
     catalogId: "ai_agent",
 
-    type: "aiAgentNode",
+    type: "pipelineNode",
 
     label: "OpenAI Agent",
 
-    description: "LLM orchestrator — API key from backend .env",
+    description: " API key from backend .env",
 
     category: "ai",
 
@@ -328,11 +328,51 @@ export const SIDEBAR_NODES: SidebarNodeDef[] = [
 
       userPrompt:
 
-        "Analyze this data: {{dataFlow.previous()}}\n\nPlease provide insights and recommendations.",
+        "Analyze this data: {{workflow.previous}}\n\nPlease provide insights and recommendations.",
 
       model: "gpt-4o",
 
       agentType: "orchestrator",
+
+      temperature: 0.7,
+
+      maxTokens: 1000,
+
+    },
+
+  },
+
+  {
+
+    catalogId: "chatbot",
+
+    type: "pipelineNode",
+
+    label: "AI Chatbot",
+
+    description: "Conversational title assistant & Q&A agent",
+
+    category: "ai",
+
+    defaultData: {
+
+      label: "AI Chatbot",
+
+      nodeId: "chatbot",
+
+      enabled: true,
+
+      agentName: "Title Chatbot",
+
+      instructions:
+        "You are an expert real estate title chatbot and legal document advisor. Answer user queries, explain title findings, clarify deed terms, and provide concise, accurate advice based on the provided title records.",
+
+      userPrompt:
+        "Review the public property and title records: {{workflow.previous}}\n\nProvide an interactive summary and answers to common title questions regarding this property.",
+
+      model: "gpt-4o",
+
+      agentType: "assistant",
 
       temperature: 0.7,
 

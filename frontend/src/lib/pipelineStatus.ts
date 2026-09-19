@@ -19,6 +19,7 @@ export const PIPELINE_GRAPH: PipelineNodeDef[] = [
   { id: "GISNode", label: "GIS", description: "Map screenshot capture", sourceKey: "gis" },
   { id: "TaxNode", label: "Tax", description: "Tax collector record", sourceKey: "tax_record" },
   { id: "AIAgentNode", label: "OpenAI Agent", description: "LLM analysis of collected data" },
+  { id: "ChatbotNode", label: "Title Chatbot", description: "Interactive title and record Q&A" },
   { id: "NormalizerNode", label: "Normalizer", description: "Merge & deduplicate results" },
   { id: "ReportNode", label: "Report", description: "Generate PDF report" },
   { id: "OutputNode", label: "Output", description: "Finalize run" },

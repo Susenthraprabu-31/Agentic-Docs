@@ -14,6 +14,7 @@ interface Document {
   file_name?: string;
   folder_name?: string;
   image_data_uri?: string;
+  notes?: string;
   ocr_json?: {
     sale_price?: string;
     source?: string;
@@ -24,6 +25,13 @@ interface Document {
     image_path?: string;
     book_number?: string;
     page_number?: string;
+    model?: string;
+    ai_response?: string;
+    agent_name?: string;
+    tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    duration_ms?: number;
   };
 }
 
@@ -34,6 +42,7 @@ interface Props {
 
 function sourceLabel(doc: Document): string {
   const source = doc.ocr_json?.source;
+  if (source === "ai_agent") return "OpenAI Agent";
   if (source === "assessor_sales") return "Assessor Sales";
   if (source === "assessor") return "Assessor";
   if (source) return String(source);
@@ -108,7 +117,15 @@ export default function DocumentsList({ documents, runId }: Props) {
               const bp = doc.book_page || (ocr.book_number && ocr.page_number ? `${ocr.book_number}/${ocr.page_number}` : "—");
               return (
                 <tr key={i} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 transition-colors">
-                  <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-zinc-100">{doc.document_type || "—"}</td>
+                  <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-zinc-100">
+                    {doc.document_type === "AI Title Analysis" || doc.ocr_json?.source === "ai_agent" ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40">
+                        {doc.document_type || "AI Title Analysis"}
+                      </span>
+                    ) : (
+                      doc.document_type || "—"
+                    )}
+                  </td>
                   <td className="py-2.5 px-3 text-slate-700 dark:text-zinc-300">{doc.recording_date || "—"}</td>
                   <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-zinc-300">{bp}</td>
                   <td className="py-2.5 px-3 font-mono text-xs text-slate-800 dark:text-zinc-200">{doc.instrument_number || "—"}</td>
@@ -116,7 +133,14 @@ export default function DocumentsList({ documents, runId }: Props) {
                   <td className="py-2.5 px-3 text-slate-800 dark:text-zinc-200">{doc.grantee || "—"}</td>
                   <td className="py-2.5 px-3 text-xs text-slate-500 dark:text-zinc-400">{sourceLabel(doc)}</td>
                   <td className="py-2.5 px-3">
-                    {runId ? (
+                    {doc.document_type === "AI Title Analysis" || doc.ocr_json?.source === "ai_agent" ? (
+                      <span className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 text-xs font-semibold">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        AI Generated
+                      </span>
+                    ) : runId ? (
                       <button
                         type="button"
                         onClick={() => handleDownload(doc.file_name)}
@@ -144,9 +168,56 @@ export default function DocumentsList({ documents, runId }: Props) {
         </table>
       </div>
 
-      {/* Official Document Copies Attachment Cards */}
+      {/* Official Document Copies & AI Examination Attachment Cards */}
       {documents.map((doc, idx) => {
         const ocr = doc.ocr_json || {};
+        const isAiDoc = doc.document_type === "AI Title Analysis" || ocr.source === "ai_agent";
+        if (isAiDoc) {
+          const content = doc.notes || ocr.ai_response || "";
+          return (
+            <div key={idx} className="mt-6 p-5 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40">
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-purple-200/80 dark:border-purple-800/40">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700/50">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      AI Document Analysis
+                    </span>
+                    <span className="text-xs text-purple-700/70 dark:text-purple-400 font-mono">
+                      CFN: {doc.instrument_number || "—"}
+                    </span>
+                    {ocr.model && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-200/70 dark:bg-purple-800/60 text-purple-800 dark:text-purple-200">
+                        {ocr.model}
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 mt-1">
+                    {doc.document_type || "AI Title Analysis"}
+                  </h4>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-zinc-400 mt-1">
+                    <span>
+                      Grantor: <strong className="text-slate-900 dark:text-zinc-100 font-semibold">{doc.grantor || "OpenAI Agent"}</strong>
+                    </span>
+                    <span>
+                      Grantee: <strong className="text-slate-900 dark:text-zinc-100 font-semibold">{doc.grantee || "Title Report"}</strong>
+                    </span>
+                    {doc.recording_date && (
+                      <span>
+                        Date: <strong className="text-slate-900 dark:text-zinc-100 font-semibold">{doc.recording_date}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 p-4 rounded-lg bg-white dark:bg-[#0d1117] border border-purple-100 dark:border-purple-900/40 text-xs sm:text-sm text-slate-800 dark:text-zinc-200 whitespace-pre-wrap font-sans leading-relaxed shadow-sm">
+                {content}
+              </div>
+            </div>
+          );
+        }
         const folderName =
           doc.folder_name ||
           ocr.folder_name ||

@@ -1,0 +1,266 @@
+{
+  "id": "5477e998-95f7-46c9-8e67-7d8376fbe6fd",
+  "name": "Title Research",
+  "description": "",
+  "nodes": [
+    {
+      "id": "input",
+      "data": {
+        "label": "Input",
+        "state": "FL",
+        "county": "miami-dade",
+        "nodeId": "input",
+        "address": "9441 SW 21 ST",
+        "enabled": true,
+        "queryType": "address",
+        "queryValue": "9441 SW 21 ST",
+        "parcelNumber": "30-4009-094-0050",
+        "executionStatus": "pending"
+      },
+      "type": "pipelineNode",
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 280,
+        "y": 0
+      },
+      "selected": true
+    },
+    {
+      "id": "assessor",
+      "data": {
+        "url": "https://apps.miamidadepa.gov/PropertySearch/#/",
+        "label": "Assessor",
+        "nodeId": "assessor",
+        "enabled": true,
+        "executionStatus": "pending",
+        "playwrightNotes": "e.g. Click parcel search tab, fill owner field, wait for results table"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 282.40825531887396,
+        "y": 162.08696967833842
+      },
+      "selected": false
+    },
+    {
+      "id": "recorder",
+      "data": {
+        "url": "https://onlineservices.miamidadeclerk.gov/officialrecords/",
+        "label": "Recorder",
+        "nodeId": "recorder",
+        "enabled": true,
+        "executionStatus": "pending",
+        "playwrightNotes": "e.g. Search by grantor name, expand first result row"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 284.66401845450036,
+        "y": 324.0860058446318
+      },
+      "selected": false
+    },
+    {
+      "id": "gis",
+      "data": {
+        "url": "https://apps.miamidadepa.gov/PropertySearch/#/",
+        "label": "GIS",
+        "nodeId": "gis",
+        "enabled": true,
+        "executionStatus": "pending",
+        "playwrightNotes": "e.g. Navigate to map, zoom to parcel, screenshot canvas"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 286.49912739965094,
+        "y": 468.69093076435104
+      },
+      "selected": false
+    },
+    {
+      "id": "tax",
+      "data": {
+        "url": "https://county-taxes.net/fl-miamidade/property-tax",
+        "label": "Tax",
+        "nodeId": "tax",
+        "enabled": true,
+        "executionStatus": "pending",
+        "playwrightNotes": "e.g. Open PropertyDetail page, wait for tax bill table"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 292.84576261605434,
+        "y": 635.6589697516398
+      },
+      "selected": false
+    },
+    {
+      "id": "normalizer",
+      "data": {
+        "label": "Normalizer",
+        "nodeId": "normalizer",
+        "enabled": true,
+        "playwrightNotes": "Merge & deduplicate records by APN"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 295.9428341326323,
+        "y": 793.4514640131753
+      },
+      "selected": false
+    },
+    {
+      "id": "report",
+      "data": {
+        "label": "Report",
+        "nodeId": "report",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 286.1941430331559,
+        "y": 939.5865135115504
+      },
+      "selected": false
+    },
+    {
+      "id": "ai_agent-1789794578562",
+      "data": {
+        "label": "OpenAI Agent",
+        "model": "gpt-4.1",
+        "nodeId": "ai_agent",
+        "enabled": true,
+        "agentName": "OpenAI Title Audit Agent",
+        "agentType": "orchestrator",
+        "maxTokens": 2500,
+        "userPrompt": "Analyze all generated property details, title records, tax information, and official recorded documents provided below:\n\n=== GENERATED REPORT & PROPERTY DETAILS ===\n{{workflow.previous}}\n\n=== DETAILED NODE RECORDS ===\n- Recorded Documents & Deeds: {{workflow.recorder}}\n- Tax Assessment & Payment Details: {{workflow.tax}}\n- Property Appraiser / Assessor Record: {{workflow.assessor}}\n- GIS & Parcel Boundary Data: {{workflow.gis}}\n- Normalized Merged Records: {{workflow.normalizer}}\n\n=== YOUR MANDATORY TITLE & DOCUMENT AUDIT CHECKLIST ===\nCross-examine ALL provided details and documents to verify whether they all belong to the SAME subject property and whether there are any discrepancies, mismatches, or title defects.\n\n1. SUBJECT PROPERTY IDENTIFIERS CROSS-CHECK:\n   - APN / Parcel ID: Compare APN across Assessor, Tax, GIS, and Recorded Documents.\n   - Property Address: Compare physical address across all sources.\n   - Legal Description: Compare subdivision, lot, block, section/township/range across Assessor and Recorded Deeds.\n   - Owner of Record: Compare the primary owner name across Assessor, Tax, and the most recent Deed.\n\n2. DOCUMENT-BY-DOCUMENT MATCH & CONTINUITY AUDIT:\n   Examine every document in the chain of title / recorded documents:\n   - Document Type (e.g., Warranty Deed, Quitclaim Deed, Mortgage, Release, Assignment, Lien)\n   - Recording Date & Book/Page or Instrument Number\n   - Grantor(s) and Grantee(s)\n   - Does this document match the subject property's APN, address, or legal description? (MATCH / MISMATCH / UNRELATED)\n   - Chain of Title: Is there an unbroken chain of ownership leading to the current owner?\n\n3. ENCUMBRANCES & LIENS CHECK:\n   - Are there any open/unsatisfied mortgages or deeds of trust?\n   - Are there any outstanding tax liens, municipal liens, or judgment liens?\n   - Is property tax paid and current, or delinquent?\n\n4. DEFINITIVE MATCH VERDICT:\n   State clearly at the top and conclude in the summary:\n   - [MATCH VERDICT]: \"ALL RECORDS MATCH\" or \"RECORD MISMATCH DETECTED\"\n   - If MISMATCH, explicitly highlight which document or record failed to match and why.\n   - Provide recommended corrective actions or requirements for title clearance.",
+        "temperature": 0.2,
+        "instructions": "You are an expert Certified Title Examiner and Public Records Auditor. Your objective is to cross-examine all property records, assessor data, tax collector records, and official recorded documents. You must rigorously verify whether all documents and records match the subject property, verify chain of title continuity, identify any unreleased encumbrances or tax delinquencies, and issue a clear verdict on whether all records match or a mismatch was detected.",
+        "executionStatus": "pending"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 288.8705603592581,
+        "y": 1100.8147698695684
+      },
+      "selected": false
+    },
+    {
+      "id": "output-1789794947004",
+      "data": {
+        "label": "Output",
+        "nodeId": "output",
+        "enabled": true
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 297.62545089453545,
+        "y": 1257.074023406591
+      },
+      "selected": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-assessor-recorder",
+      "source": "assessor",
+      "target": "recorder",
+      "animated": true
+    },
+    {
+      "id": "e-recorder-gis",
+      "source": "recorder",
+      "target": "gis",
+      "animated": true
+    },
+    {
+      "id": "e-gis-tax",
+      "source": "gis",
+      "target": "tax",
+      "animated": true
+    },
+    {
+      "id": "e-tax-normalizer",
+      "source": "tax",
+      "target": "normalizer",
+      "animated": true
+    },
+    {
+      "id": "e-normalizer-report",
+      "source": "normalizer",
+      "target": "report",
+      "animated": true
+    },
+    {
+      "id": "xy-edge__report-ai_agent-1789794578562",
+      "type": "deletable",
+      "source": "report",
+      "target": "ai_agent-1789794578562",
+      "animated": true,
+      "deletable": true
+    },
+    {
+      "id": "xy-edge__ai_agent-output",
+      "type": "deletable",
+      "source": "ai_agent-1789794578562",
+      "target": "output-1789794947004",
+      "animated": true,
+      "deletable": true
+    },
+    {
+      "id": "xy-edge__input-assessor",
+      "type": "deletable",
+      "source": "input",
+      "target": "assessor",
+      "animated": true,
+      "deletable": true
+    }
+  ],
+  "metadata": {
+    "step_count": 9
+  },
+  "created_at": "2026-09-19T05:19:58.441403+00:00",
+  "updated_at": "2026-09-19T06:42:22.568352+00:00"
+}

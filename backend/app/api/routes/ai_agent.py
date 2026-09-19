@@ -60,7 +60,82 @@ async def _execute_openai(
 async def test_ai_agent(body: AIAgentTestRequest) -> dict[str, Any]:
     """Standalone test — visible in browser Network tab."""
     t0 = time.monotonic()
-    result = await _execute_openai(body.config, body.context_data)
+    context = dict(body.context_data or {})
+    prev_node = str(context.get("previous_node") or "previous").lower().strip()
+
+    sample_property = {
+        "apn": "30-4009-094-0050",
+        "address": "9441 SW 21 ST",
+        "owner": "John Smith",
+        "legal_description": "SUB NO 2 LOT 5 BLK 4",
+    }
+    sample_report = {
+        "status": "sample_data",
+        "report_id": "test-sample-report",
+        "property": sample_property,
+        "tax_record": {"status": "Paid", "gross_tax": 4520.18, "delinquent": False},
+        "chain_of_title": [
+            {"document_type": "Warranty Deed", "recording_date": "2021-04-15", "grantor": "Alice Baker", "grantee": "John Smith"}
+        ],
+        "documents_count": 3,
+    }
+    sample_assessor = {
+        "records_found": 1,
+        "parcel": "30-4009-094-0050",
+        "owner_name": "John Smith",
+        "address": "9441 SW 21 ST",
+        "property": sample_property,
+    }
+    sample_recorder = {
+        "documents_found": 3,
+        "documents": sample_report["chain_of_title"],
+        "book_number": "1494",
+        "page_number": "2483",
+    }
+    sample_tax = {
+        "records_found": 1,
+        "records": [sample_report["tax_record"]],
+        "parcel": "30-4009-094-0050",
+    }
+    sample_gis = {
+        "parcel": "30-4009-094-0050",
+        "gis_url": "https://gisweb.miamidade.gov/propertysearch/",
+    }
+    sample_normalizer = {
+        "stats": {"records_before": 3, "records_after": 3, "documents_before": 3, "documents_after": 3},
+        "detail": "Records normalized (deduplicated 0)",
+    }
+    sample_input = {
+        "state": "FL",
+        "county": "miami-dade",
+        "query_type": "address",
+        "query_value": "9441 SW 21 ST",
+        "address": "9441 SW 21 ST",
+        "parcel": "30-4009-094-0050",
+    }
+
+    node_samples = {
+        "assessor": sample_assessor,
+        "recorder": sample_recorder,
+        "tax": sample_tax,
+        "gis": sample_gis,
+        "report": sample_report,
+        "normalizer": sample_normalizer,
+        "input": sample_input,
+    }
+
+    if "previous_result" not in context:
+        chosen_prev = node_samples.get(prev_node, sample_report)
+        context["previous_result"] = chosen_prev
+        context.setdefault("report", sample_report)
+
+    # Populate node_results with all sample nodes so tokens like {{workflow.assessor}}, {{workflow.tax}}, etc. work during tests
+    node_results = dict(context.get("node_results") or {})
+    for k, v in node_samples.items():
+        node_results.setdefault(k, v)
+    context["node_results"] = node_results
+
+    result = await _execute_openai(body.config, context)
     return {
         **result,
         "duration_ms": int((time.monotonic() - t0) * 1000),
@@ -81,9 +156,38 @@ async def execute_run_ai_agent(run_id: str, body: AIAgentExecuteRequest) -> dict
     t0 = time.monotonic()
 
     try:
+        run_row = repo.get_run(run_id) or {}
+        plan = run_row.get("plan_json") or {}
+        node_results = plan.get("node_results") if isinstance(plan, dict) else {}
+        node_results = dict(node_results or {})
+
+        # If already completed by the backend orchestrator directly, return cached result
+        if isinstance(plan, dict) and plan.get("ai_agent_response"):
+            cached = node_results.get(body.canvas_id) or node_results.get("ai_agent")
+            if cached and isinstance(cached, dict):
+                return {
+                    **cached,
+                    "endpoint": f"POST /runs/{run_id}/ai-agent/execute (cached)",
+                }
+
         if not body.context_data:
             records = RecordsRepository().list_by_run(run_id)
             documents = DocumentsRepository().list_by_run(run_id)
+            report_result = node_results.get("report")
+            if not report_result:
+                from app.report.report_builder import ReportBuilder
+                rep = ReportBuilder().get_report_by_run(run_id)
+                if rep:
+                    report_result = {
+                        "report_id": rep.get("id"),
+                        "pdf_url": f"/reports/run/{run_id}",
+                        "property": (rep.get("report_json") or {}).get("property") or {},
+                        "tax_record": (rep.get("report_json") or {}).get("tax_record") or {},
+                        "chain_of_title": (rep.get("report_json") or {}).get("chain_of_title") or [],
+                        "documents_count": len((rep.get("report_json") or {}).get("documents") or []),
+                    }
+                    node_results["report"] = report_result
+
             body.context_data = {
                 "run_id": run_id,
                 "state": run.get("state"),
@@ -91,28 +195,51 @@ async def execute_run_ai_agent(run_id: str, body: AIAgentExecuteRequest) -> dict
                 "query_value": run.get("query_value"),
                 "records": records,
                 "documents": documents,
+                "report": report_result,
+                "previous_result": report_result or (list(node_results.values())[-1] if node_results else None),
+                "node_results": node_results,
             }
+        else:
+            # Ensure report and node_results are present if available in plan
+            if "node_results" not in body.context_data and node_results:
+                body.context_data["node_results"] = node_results
+            if "report" not in body.context_data and "report" in node_results:
+                body.context_data["report"] = node_results["report"]
+            if "previous_result" not in body.context_data and "report" in node_results:
+                body.context_data["previous_result"] = node_results["report"]
 
         result = await _execute_openai(body.config, body.context_data)
         duration = int((time.monotonic() - t0) * 1000)
         preview = (result.get("content") or "")[:500]
+
+        ai_result_payload = {
+            **result,
+            "agent_name": agent_name,
+            "duration_ms": duration,
+        }
 
         await logger.node_completed(
             "AIAgentNode",
             agent_name=agent_name,
             model=result.get("model"),
             duration_ms=duration,
-            message=preview,
+            detail=preview,
             prompt_tokens=result.get("prompt_tokens"),
             completion_tokens=result.get("completion_tokens"),
+            result=ai_result_payload,
         )
 
-        run_row = repo.get_run(run_id) or {}
-        plan = run_row.get("plan_json") or {}
         if isinstance(plan, dict):
+            updated_results = {**node_results, "ai_agent": ai_result_payload}
+            if body.canvas_id:
+                updated_results[body.canvas_id] = ai_result_payload
             repo.update_run(
                 run_id,
-                plan_json={**plan, "ai_agent_response": result.get("content")},
+                plan_json={
+                    **plan,
+                    "ai_agent_response": result.get("content"),
+                    "node_results": updated_results,
+                },
             )
 
         if not complete_pending(run_id, body.canvas_id, result):

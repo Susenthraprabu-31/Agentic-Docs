@@ -20,15 +20,16 @@
         "executionStatus": "done"
       },
       "type": "pipelineNode",
+      "dragging": false,
       "measured": {
         "width": 240,
         "height": 61
       },
       "position": {
-        "x": 280,
-        "y": 0
+        "x": -327.9999999999983,
+        "y": -65.33333333333314
       },
-      "selected": true
+      "selected": false
     },
     {
       "id": "netr",
@@ -40,14 +41,16 @@
         "playwrightNotes": "Auto-scrape publicrecords.netronline.com for portal links. Leave URL empty to use NETR."
       },
       "type": "pipelineNode",
+      "dragging": false,
       "measured": {
         "width": 240,
         "height": 62
       },
       "position": {
-        "x": 280,
-        "y": 200
-      }
+        "x": -77.33333333333233,
+        "y": 41.33333333333377
+      },
+      "selected": false
     },
     {
       "id": "platform",
@@ -58,14 +61,16 @@
         "playwrightNotes": "Maps portal URLs to platform drivers (Schneider, FloridaPA, etc.)"
       },
       "type": "pipelineNode",
+      "dragging": false,
       "measured": {
         "width": 240,
         "height": 62
       },
       "position": {
-        "x": 280,
-        "y": 400
-      }
+        "x": 242.66666666666674,
+        "y": 146.66666666666737
+      },
+      "selected": false
     },
     {
       "id": "assessor",
@@ -77,14 +82,16 @@
         "playwrightNotes": "e.g. Click parcel search tab, fill owner field, wait for results table"
       },
       "type": "pipelineNode",
+      "dragging": false,
       "measured": {
         "width": 240,
         "height": 62
       },
       "position": {
-        "x": 280,
-        "y": 600
-      }
+        "x": 549.3333333333326,
+        "y": 252.00000000000097
+      },
+      "selected": false
     },
     {
       "id": "recorder",
@@ -96,14 +103,16 @@
         "playwrightNotes": "e.g. Search by grantor name, expand first result row"
       },
       "type": "pipelineNode",
+      "dragging": false,
       "measured": {
         "width": 240,
         "height": 62
       },
       "position": {
-        "x": 280,
-        "y": 800
-      }
+        "x": 260.82776842672996,
+        "y": 364.00000000000125
+      },
+      "selected": false
     },
     {
       "id": "tax",
@@ -121,8 +130,8 @@
         "height": 62
       },
       "position": {
-        "x": 281.56869831031,
-        "y": 1058.8171520720962
+        "x": -62.61466307616593,
+        "y": 417.15671085893064
       },
       "selected": false
     },
@@ -141,8 +150,8 @@
         "height": 62
       },
       "position": {
-        "x": 300.1292534664172,
-        "y": 1266.4149542683224
+        "x": -304.7381298534309,
+        "y": 499.9961656952521
       },
       "selected": false
     },
@@ -152,8 +161,8 @@
         "label": "Report",
         "nodeId": "report",
         "enabled": true,
-        "reportId": "4ddabffa-2ab8-4428-82b3-1dc77601dc9f",
-        "reportRunId": "a10ff826-8060-4fa8-8ef8-c6726d09f6fd",
+        "reportId": "c74e001a-e758-4fac-ad9b-300b0f3a8aed",
+        "reportRunId": "083ebbbc-f761-4035-a7d5-f0e033072ea6",
         "reportStatus": "ready"
       },
       "type": "pipelineNode",
@@ -163,8 +172,8 @@
         "height": 101
       },
       "position": {
-        "x": 309.27891413297044,
-        "y": 1477.3945470681863
+        "x": -37.65034370641179,
+        "y": 645.8604970816721
       },
       "selected": false
     },
@@ -176,14 +185,38 @@
         "enabled": true
       },
       "type": "pipelineNode",
+      "dragging": false,
       "measured": {
         "width": 240,
         "height": 62
       },
       "position": {
-        "x": 280,
-        "y": 1800
-      }
+        "x": 337.9012510232232,
+        "y": 753.9701061032754
+      },
+      "selected": false
+    },
+    {
+      "id": "gis-1789725248965",
+      "data": {
+        "url": "https://apps.miamidadepa.gov/PropertySearch",
+        "label": "GIS",
+        "nodeId": "gis",
+        "enabled": true,
+        "executionStatus": "done",
+        "playwrightNotes": "e.g. Navigate to map, zoom to parcel, screenshot canvas"
+      },
+      "type": "pipelineNode",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 62
+      },
+      "position": {
+        "x": 312.29143168693537,
+        "y": 487.51098341992724
+      },
+      "selected": true
     }
   ],
   "edges": [
@@ -230,15 +263,25 @@
       "animated": true
     },
     {
-      "id": "xy-edge__recorder-tax",
+      "id": "xy-edge__recorder-gis-1789725248965",
+      "type": "deletable",
       "source": "recorder",
+      "target": "gis-1789725248965",
+      "animated": true,
+      "deletable": true
+    },
+    {
+      "id": "xy-edge__gis-1789725248965-tax",
+      "type": "deletable",
+      "source": "gis-1789725248965",
       "target": "tax",
-      "animated": true
+      "animated": true,
+      "deletable": true
     }
   ],
   "metadata": {
-    "step_count": 9
+    "step_count": 10
   },
   "created_at": "2026-09-17T11:23:48.710613+00:00",
-  "updated_at": "2026-09-18T06:52:51.622805+00:00"
+  "updated_at": "2026-09-18T10:00:16.783008+00:00"
 }
