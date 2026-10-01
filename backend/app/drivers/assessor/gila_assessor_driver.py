@@ -5,11 +5,25 @@ from app.config.assessor_portals import (
     HONOLULU_LANDING_URL,
     HONOLULU_PROPERTY_SEARCH_URL,
     HONOLULU_SEARCH_URL,
-    is_honolulu_schneider,
     resolve_assessor_search_url,
 )
-from app.drivers.assessor.florida_assessor import search_florida_assessor
+from app.config.schneider_portals import (
+    QPUBLIC_GLOBAL_CLICK_SEARCH_JS,
+    QPUBLIC_GLOBAL_FILL_JS,
+    QPUBLIC_GLOBAL_INPUT_SELECTORS,
+    QPUBLIC_GLOBAL_SEARCH_BUTTON_SELECTORS,
+    SCHNEIDER_WARMUP_URL,
+    is_honolulu_schneider,
+    is_qpublic_global_landing_url,
+    is_schneider_search_url,
+    normalize_schneider_search_url,
+    schneider_warmup_url,
+    should_use_global_qpublic_search,
+)
+from app.drivers.browser_sessions import load_portal_cookies, save_portal_cookies
+from app.drivers.form_fill import fill_first_visible_input
 from app.drivers.page_search_ai import execute_ai_page_search
+from app.drivers.assessor.florida_assessor import search_florida_assessor
 from app.drivers.playwright_instructions import apply_playwright_instructions
 from app.drivers.base.base_driver import BaseDriver
 from app.extraction.html_extractors import extract_parcel_from_html
@@ -521,6 +535,393 @@ class GilaAssessorDriver(BaseDriver):
 
         return await self._is_honolulu_detail_page()
 
+    async def _has_schneider_search_form(self) -> bool:
+        if await self._is_qpublic_global_search_page():
+            return True
+        selectors = [
+            "#ctlBodyPane_ctl02_ctl01_txtParcelID",
+            "#ctlBodyPane_ctl01_ctl01_txtAddress",
+            'input[id*="Parcel" i]',
+            'input[id*="Address" i]',
+            'input[placeholder*="parcel" i]',
+        ]
+        for sel in selectors:
+            try:
+                loc = self.page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible(timeout=1_500):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _ensure_schneider_page_focused(self) -> None:
+        """When using CDP, switch to the Schneider/qPublic tab."""
+        if "schneidercorp.com" in self.page.url.lower() or "qpublic.net" in self.page.url.lower():
+            return
+        if not self.context:
+            return
+        for pg in self.context.pages:
+            try:
+                url = pg.url.lower()
+                if "schneidercorp.com" in url or "qpublic.net" in url:
+                    await self.set_active_page(pg)
+                    return
+            except Exception:
+                continue
+
+    async def _has_visible_qpublic_search_input(self) -> bool:
+        for sel in QPUBLIC_GLOBAL_INPUT_SELECTORS[:5]:
+            try:
+                loc = self.page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible(timeout=800):
+                    return True
+            except Exception:
+                continue
+        try:
+            loc = self.page.get_by_placeholder(re.compile(r"search by name|parcel|address", re.I)).first
+            return await loc.count() > 0 and await loc.is_visible(timeout=800)
+        except Exception:
+            return False
+
+    async def _is_qpublic_global_search_page(self) -> bool:
+        if is_qpublic_global_landing_url(self.page.url):
+            return True
+        return await self._has_visible_qpublic_search_input()
+
+    async def _prepare_qpublic_global_search_page(self) -> None:
+        """Open the hero search section — homepage alone often hides the input."""
+        await self._ensure_schneider_page_focused()
+        if not await self._has_visible_qpublic_search_input():
+            if await self.is_cloudflare_hard_block():
+                cleared = await self.wait_for_portal_access(
+                    success_selector='input[placeholder*="Search by name" i], input[type="search"]',
+                )
+                if not cleared and not await self._has_visible_qpublic_search_input():
+                    return
+            elif not (
+                is_qpublic_global_landing_url(self.page.url)
+                and await self.has_actionable_page_content()
+            ):
+                try:
+                    await self.page.goto(
+                        SCHNEIDER_WARMUP_URL, wait_until="domcontentloaded", timeout=60_000
+                    )
+                    await self.polite_delay(2.5)
+                except Exception as exc:
+                    logger.debug("qPublic warmup navigation skipped: %s", exc)
+
+        await self.page.evaluate(
+            """() => {
+              if (!location.hash || location.hash === '#') location.hash = 'search';
+              const hero = document.querySelector('input[placeholder*="Search" i], input[type="search"]');
+              if (hero) hero.scrollIntoView({ block: 'center' });
+            }"""
+        )
+        await self.polite_delay(1.2)
+
+        for tab_sel in ('button:has-text("Global")', 'text=Global', '[data-value="global"]'):
+            try:
+                tab = self.page.locator(tab_sel).first
+                if await tab.count() > 0 and await tab.is_visible(timeout=1_500):
+                    await tab.click(force=True)
+                    await self.polite_delay(0.6)
+                    break
+            except Exception:
+                continue
+
+        try:
+            await self.page.get_by_placeholder(
+                re.compile(r"search by name|parcel|address", re.I)
+            ).first.wait_for(state="visible", timeout=12_000)
+        except Exception:
+            pass
+
+    async def _verify_input_value(self, loc, expected: str) -> bool:
+        try:
+            actual = (await loc.input_value()).strip()
+            if not actual:
+                return False
+            if expected.strip() in actual:
+                return True
+            digits_expected = re.sub(r"\D", "", expected)
+            digits_actual = re.sub(r"\D", "", actual)
+            return bool(digits_expected and digits_expected in digits_actual)
+        except Exception:
+            return False
+
+    async def _fill_qpublic_global_search(self, query_value: str) -> bool:
+        await self._prepare_qpublic_global_search_page()
+
+        try:
+            loc = self.page.get_by_placeholder(re.compile(r"search by name|parcel|address", re.I)).first
+            if await loc.count() > 0 and await loc.is_visible(timeout=3_000):
+                await loc.scroll_into_view_if_needed()
+                await loc.click()
+                await loc.fill("")
+                await loc.press_sequentially(query_value, delay=30)
+                if await self._verify_input_value(loc, query_value):
+                    return True
+                await loc.fill(query_value)
+                if await self._verify_input_value(loc, query_value):
+                    return True
+        except Exception as exc:
+            logger.debug("qPublic placeholder fill failed: %s", exc)
+
+        for sel in QPUBLIC_GLOBAL_INPUT_SELECTORS:
+            try:
+                loc = self.page.locator(sel).first
+                if await loc.count() == 0 or not await loc.is_visible(timeout=2_000):
+                    continue
+                await loc.scroll_into_view_if_needed()
+                await loc.click()
+                await loc.fill("")
+                try:
+                    await loc.press_sequentially(query_value, delay=30)
+                except Exception:
+                    await loc.fill(query_value)
+                if await self._verify_input_value(loc, query_value):
+                    return True
+            except Exception:
+                continue
+
+        try:
+            result = await self.page.evaluate(QPUBLIC_GLOBAL_FILL_JS, query_value)
+            if isinstance(result, dict) and result.get("ok"):
+                return True
+        except Exception as exc:
+            logger.debug("qPublic JS fill failed: %s", exc)
+
+        return False
+
+    async def _click_qpublic_global_search(self) -> bool:
+        for sel in QPUBLIC_GLOBAL_SEARCH_BUTTON_SELECTORS:
+            try:
+                btn = self.page.locator(sel).first
+                if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                    await btn.scroll_into_view_if_needed()
+                    await btn.click(force=True)
+                    await self.page.wait_for_load_state("domcontentloaded")
+                    return True
+            except Exception:
+                continue
+
+        try:
+            btn = self.page.get_by_role("button", name=re.compile(r"^search$", re.I)).first
+            if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                await btn.click(force=True)
+                return True
+        except Exception:
+            pass
+
+        try:
+            if await self.page.evaluate(QPUBLIC_GLOBAL_CLICK_SEARCH_JS):
+                await self.polite_delay(1.5)
+                return True
+        except Exception as exc:
+            logger.debug("qPublic JS search click failed: %s", exc)
+
+        try:
+            await self.page.keyboard.press("Enter")
+            return True
+        except Exception:
+            return False
+
+    async def _run_qpublic_global_search(
+        self,
+        query_type: QueryType,
+        query_value: str,
+    ) -> list[ParcelRecord]:
+        """qPublic.net global landing — one field for name, address, or parcel ID."""
+        label = {"parcel": "parcel ID", "owner": "owner name", "address": "address"}.get(
+            query_type.value, query_type.value
+        )
+        await self._prepare_qpublic_global_search_page()
+        await self._emit_status(f"qPublic global search — entering {label}: {query_value[:80]}...")
+
+        filled = await self._fill_qpublic_global_search(query_value)
+        if not filled:
+            await self._emit_status("Analyzing search page with AI...")
+            notes = (self.playwright_notes or "").strip() or (
+                f"Fill the search box with the {label} and click the Search button."
+            )
+            if not await execute_ai_page_search(
+                self, query_type, query_value, user_instructions=notes
+            ):
+                await self._emit_status("Could not find qPublic search field.")
+                return []
+        else:
+            await self.dismiss_schneider_terms()
+            await self._emit_status(f"Filled search box — clicking Search for {query_value[:40]}...")
+            if not await self._click_qpublic_global_search():
+                await self._emit_status("Analyzing page to find Search button...")
+                await execute_ai_page_search(self, query_type, query_value)
+
+        await self.polite_delay(4.0)
+        try:
+            await self.page.wait_for_selector(
+                "table a, .search-result, a[href*='Application.aspx'], a[href*='KeyValue']",
+                timeout=20_000,
+            )
+        except Exception:
+            pass
+
+        clicked = await self._click_first_parcel_result()
+        if clicked:
+            await self.polite_delay(2.0)
+
+        if await self._is_honolulu_detail_page() or "keyvalue=" in self.page.url.lower():
+            parcel = await self._extract_schneider_detail_record()
+        else:
+            html = await self.page.content()
+            parcel = extract_schneider_qpublic_from_html(html, self.page.url)
+
+        if parcel.apn or parcel.owner_name or parcel.property_address:
+            return [parcel]
+        return await self._parse_result_links()
+
+    async def _warmup_schneider_portal(self, search_url: str) -> bool:
+        await load_portal_cookies(self, search_url)
+        warmup = schneider_warmup_url(search_url)
+        if not warmup:
+            return True
+        await self._emit_status("Connecting to county property portal...")
+        try:
+            if not (
+                is_qpublic_global_landing_url(self.page.url)
+                and await self.has_actionable_page_content()
+            ):
+                await self.page.goto(warmup, wait_until="domcontentloaded", timeout=45_000)
+                await self.polite_delay(2.0)
+            await self.dismiss_schneider_terms()
+            if await self.is_cloudflare_blocked():
+                return await self.wait_for_portal_access(
+                    max_wait=180,
+                    success_selector="#ctlBodyPane, .widgetLabel, a, input",
+                )
+        except Exception as exc:
+            logger.debug("Schneider warmup navigation skipped: %s", exc)
+        return True
+
+    async def _open_schneider_search_page(self, target: str) -> bool:
+        await self._emit_status("Opening property search page...")
+        opened = await self.safe_schneider_goto(
+            target,
+            wait_selector=(
+                "#ctlBodyPane_ctl02_ctl01_txtParcelID, "
+                "#ctlBodyPane_ctl01_ctl01_txtAddress, "
+                "input[id*='Parcel' i], input[id*='Address' i]"
+            ),
+        )
+        if not opened and not await self._has_schneider_search_form():
+            return False
+
+        await self.save_browser_preview()
+        await self.dismiss_schneider_terms()
+
+        if await self.is_cloudflare_blocked():
+            cleared = await self.wait_for_portal_access(
+                max_wait=180,
+                success_selector=(
+                    "#ctlBodyPane, .widgetLabel, "
+                    "#ctlBodyPane_ctl02_ctl01_txtParcelID, "
+                    "input[id*='Parcel' i], input[id*='Address' i]"
+                ),
+            )
+            if not cleared and not await self._has_schneider_search_form():
+                return False
+
+        if not is_schneider_search_url(target) and not await self._has_schneider_search_form():
+            await self._open_qpublic_search()
+        ready = (
+            not await self.is_cloudflare_blocked()
+            and (
+                await self._has_schneider_search_form()
+                or await self._is_qpublic_global_search_page()
+            )
+        )
+        if not ready and await self.is_cloudflare_blocked():
+            cleared = await self._wait_for_schneider_portal_if_needed(target)
+            ready = cleared and (
+                await self._has_schneider_search_form()
+                or await self._is_qpublic_global_search_page()
+            )
+        if ready:
+            await save_portal_cookies(self, target)
+        return ready
+
+    async def _county_search_page_ready(self, search_url: str) -> bool:
+        if await self.is_cloudflare_blocked():
+            return False
+        target = normalize_schneider_search_url(search_url)
+        if await self._has_schneider_search_form():
+            return True
+        if is_schneider_search_url(target) and await self._has_schneider_county_form():
+            return True
+        return False
+
+    async def _wait_for_schneider_portal_if_needed(self, search_url: str) -> bool:
+        """Pause on Cloudflare until the user completes verification in CDP Chrome."""
+        from app.config.settings import get_settings
+
+        if await self.has_actionable_page_content() and not await self.is_cloudflare_blocked():
+            return True
+        if not await self.is_cloudflare_blocked() and not await self.is_cloudflare_hard_block():
+            return True
+
+        await load_portal_cookies(self, search_url)
+        await self._bootstrap_trusted_portal_cookies(url=search_url)
+        settings = get_settings()
+        if await self.is_cloudflare_hard_block():
+            if await self._find_working_schneider_tab():
+                return True
+            target = normalize_schneider_search_url(search_url)
+            if await self._retry_schneider_navigation_with_cookies(target, 60_000):
+                return True
+            settings = get_settings()
+            return await self.wait_for_manual_schneider_portal(
+                max_wait=settings.playwright_cloudflare_wait_seconds,
+                success_selector=(
+                    "#ctlBodyPane_ctl02_ctl01_txtParcelID, "
+                    "#ctlBodyPane_ctl01_ctl01_txtAddress, "
+                    'input[placeholder*="parcel" i], input[id*="Parcel" i], '
+                    'input[placeholder*="Search by name" i]'
+                ),
+            )
+        await self._emit_status(
+            "Cloudflare is blocking the county portal — open a NEW tab in CDP Chrome, "
+            "visit the county assessor URL, complete verification, then wait."
+        )
+        return await self.wait_for_portal_access(
+            max_wait=settings.playwright_cloudflare_wait_seconds,
+            success_selector=(
+                "#ctlBodyPane_ctl02_ctl01_txtParcelID, "
+                "#ctlBodyPane_ctl01_ctl01_txtAddress, "
+                'input[placeholder*="parcel" i], input[id*="Parcel" i], '
+                'input[placeholder*="Search by name" i]'
+            ),
+        )
+
+    async def _navigate_schneider_search(self, search_url: str) -> bool:
+        target = normalize_schneider_search_url(search_url)
+        await load_portal_cookies(self, search_url)
+
+        # County Application.aspx URLs (e.g. Alachua AppID=1081) — open directly, skip global warmup.
+        if is_schneider_search_url(search_url):
+            await self._ensure_schneider_page_focused()
+            if await self._county_search_page_ready(search_url):
+                return True
+            if await self._open_schneider_search_page(target):
+                return True
+            return False
+
+        for _ in range(2):
+            await self._warmup_schneider_portal(search_url)
+            if await self._is_qpublic_global_search_page():
+                return True
+            if await self._open_schneider_search_page(target):
+                return True
+        return False
+
     async def _search_qpublic(
         self,
         search_url: str,
@@ -528,7 +929,43 @@ class GilaAssessorDriver(BaseDriver):
         query_value: str,
     ) -> list[ParcelRecord]:
         """Generic Schneider Corp qPublic — used by many US counties."""
-        if "pagetype=search" not in search_url.lower():
+        if not await self._wait_for_schneider_portal_if_needed(search_url):
+            await self._emit_status(
+                "County portal is still blocked by Cloudflare. "
+                "Complete verification in Live Browser, then re-run the pipeline."
+            )
+            return []
+
+        if not await self._navigate_schneider_search(search_url):
+            if await self.is_cloudflare_blocked():
+                if await self._wait_for_schneider_portal_if_needed(search_url):
+                    if not await self._navigate_schneider_search(search_url):
+                        await self._emit_status("Could not open Schneider property search page.")
+                        return []
+                else:
+                    await self._emit_status(
+                        "County portal is still blocked by Cloudflare. "
+                        "Complete verification in Live Browser, then re-run the pipeline."
+                    )
+                    return []
+            else:
+                await self._emit_status("Could not open Schneider property search page.")
+                return []
+
+        if await self.is_cloudflare_blocked():
+            if not await self._wait_for_schneider_portal_if_needed(search_url):
+                await self._emit_status(
+                    "County portal is still blocked by Cloudflare after navigation."
+                )
+                return []
+
+        if should_use_global_qpublic_search(search_url) and await self._is_qpublic_global_search_page():
+            records = await self._run_qpublic_global_search(query_type, query_value)
+            if records:
+                await save_portal_cookies(self, search_url)
+                return records
+
+        if not is_schneider_search_url(search_url) and not await self._has_schneider_search_form():
             await self._open_qpublic_search()
 
         if query_type == QueryType.OWNER:
@@ -555,6 +992,7 @@ class GilaAssessorDriver(BaseDriver):
         else:
             filled = await self._fill_first_visible(
                 [
+                    'input[placeholder*="enter parcel number" i]',
                     'input[placeholder*="parcel number" i]',
                     'input[id*="Parcel" i]',
                     'input[name*="Parcel" i]',
@@ -565,8 +1003,27 @@ class GilaAssessorDriver(BaseDriver):
                 query_value,
             )
 
+        if not filled and not await self.is_cloudflare_blocked():
+            await self._emit_status("Analyzing county search form with AI...")
+            notes = (self.playwright_notes or "").strip() or None
+            if await execute_ai_page_search(
+                self, query_type, query_value, user_instructions=notes
+            ):
+                filled = True
+        elif not filled and await self.is_cloudflare_blocked():
+            await self._emit_status(
+                "Cannot fill search field — Cloudflare is still blocking the county portal."
+            )
+            return []
+
         if not filled:
-            await self._fill_first_visible(['input[type="text"]'], query_value)
+            filled = await fill_first_visible_input(
+                self, ['input[type="text"]', 'input[type="search"]'], query_value
+            )
+
+        if not filled:
+            await self._emit_status("Could not find search field on county portal.")
+            return []
 
         await self.dismiss_schneider_terms()
         await self._click_search_button()
@@ -614,16 +1071,7 @@ class GilaAssessorDriver(BaseDriver):
                 continue
 
     async def _fill_first_visible(self, selectors: list[str], value: str) -> bool:
-        for sel in selectors:
-            try:
-                loc = self.page.locator(sel).first
-                if await loc.count() > 0 and await loc.is_visible(timeout=1500):
-                    await loc.click()
-                    await loc.fill(value)
-                    return True
-            except Exception:
-                continue
-        return False
+        return await fill_first_visible_input(self, selectors, value, timeout_ms=1_500)
 
     async def _click_search_button(self) -> None:
         for sel in [
@@ -678,9 +1126,10 @@ class GilaAssessorDriver(BaseDriver):
         ]
         parcel_selectors = [
             'input[name*="parcel" i]',
-            'input[name*="account" i]',
+            'input[id*="parcel" i]',
+            'input[aria-label*="parcel" i]',
+            'input[placeholder*="parcel" i]',
             'input[type="search"]',
-            'input[type="text"]',
         ]
 
         filled = False
@@ -691,18 +1140,12 @@ class GilaAssessorDriver(BaseDriver):
         else:
             selectors = parcel_selectors
 
-        for sel in selectors:
-            loc = self.page.locator(sel).first
-            if await loc.count() > 0 and await loc.is_visible():
-                await loc.fill(query_value)
-                filled = True
-                break
+        filled = await fill_first_visible_input(self, selectors, query_value)
 
         if not filled:
-            generic = self.page.locator('input[type="text"]').first
-            if await generic.count() > 0:
-                await generic.fill(query_value)
-                filled = True
+            filled = await fill_first_visible_input(
+                self, ['input[type="text"]', 'input[type="search"]'], query_value
+            )
 
         if filled:
             for btn_sel in ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Search")']:

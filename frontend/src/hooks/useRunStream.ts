@@ -164,7 +164,11 @@ export function useRunStream(runId: string | undefined) {
 
           });
 
-          if (data.event_type === "run_completed" || data.event_type === "run_failed") {
+          if (
+            data.event_type === "run_completed" ||
+            data.event_type === "run_failed" ||
+            data.event_type === "run_cancelled"
+          ) {
 
             refresh();
 
@@ -192,7 +196,11 @@ export function useRunStream(runId: string | undefined) {
 
                         ? "failed"
 
-                        : prev.run.status,
+                        : data.event_type === "run_cancelled"
+
+                          ? "cancelled"
+
+                          : prev.run.status,
 
                 },
 

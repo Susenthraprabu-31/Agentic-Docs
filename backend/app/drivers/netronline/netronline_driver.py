@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 
 from playwright.async_api import Page
 
+from app.config.florida_portals import normalize_miami_dade_property_search_url
 from app.drivers.base.base_driver import BaseDriver
 from app.extraction.schemas import CountySources
 
@@ -164,6 +165,11 @@ class NetronlineDriver(BaseDriver):
 
         if not any([sources.assessor_url, sources.recorder_url, sources.gis_url]):
             sources = await self._fallback_parse_all_links()
+
+        if sources.assessor_url:
+            sources.assessor_url = normalize_miami_dade_property_search_url(sources.assessor_url)
+        if sources.gis_url:
+            sources.gis_url = normalize_miami_dade_property_search_url(sources.gis_url)
 
         logger.info("NETR resolved sources: %s", sources.model_dump())
         return sources

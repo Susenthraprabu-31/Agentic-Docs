@@ -4,11 +4,23 @@ import type { IncomingMessage } from "http";
 
 const API_TARGET = "http://localhost:8000";
 
+/** Always proxy document file/metadata endpoints to the backend (never the SPA). */
+const apiProxy = {
+  target: API_TARGET,
+  changeOrigin: true,
+};
+
 /** React routes share prefixes with API paths — serve SPA on browser refresh. */
 function spaAwareApiProxy() {
   return {
     target: API_TARGET,
+    changeOrigin: true,
     bypass(req: IncomingMessage) {
+      const url = req.url || "";
+      // Document APIs must never be routed to the React app.
+      if (url.startsWith("/reports/documents")) {
+        return null;
+      }
       if (req.headers.accept?.includes("text/html")) {
         return "/index.html";
       }
@@ -21,19 +33,20 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/search": API_TARGET,
+      "/search": apiProxy,
+      "/reports/documents": apiProxy,
       "/runs": spaAwareApiProxy(),
       "/reports": spaAwareApiProxy(),
-      "/locations": API_TARGET,
-      "/pipeline": API_TARGET,
-      "/config": API_TARGET,
-      "/ai-agent": API_TARGET,
-      "/health": API_TARGET,
+      "/locations": apiProxy,
+      "/pipeline": apiProxy,
+      "/config": apiProxy,
+      "/ai-agent": apiProxy,
+      "/health": apiProxy,
       "/batches": spaAwareApiProxy(),
-      "/workflows": API_TARGET,
-      "/local_storage": API_TARGET,
-      "/downloads": API_TARGET,
-      "/screenshots": API_TARGET,
+      "/workflows": apiProxy,
+      "/local_storage": apiProxy,
+      "/downloads": apiProxy,
+      "/screenshots": apiProxy,
     },
   },
 });

@@ -30,6 +30,10 @@ const NODE_STYLE: Record<
     bg: "#1a1f2e", border: "#8b5cf655", iconBg: "#8b5cf6",
     icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
   },
+  name_searcher: {
+    bg: "#1a1f2e", border: "#d946ef55", iconBg: "#d946ef",
+    icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+  },
   gis: {
     bg: "#1a1f2e", border: "#22c55e55", iconBg: "#22c55e",
     icon: <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>,
@@ -75,6 +79,7 @@ const NODE_SUBTITLES: Record<string, string> = {
   platform: "Map URLs to platform drivers",
   assessor: "Fetch property details",
   recorder: "Search official records",
+  name_searcher: "Search extracted party names",
   gis: "Map screenshot capture",
   tax: "Tax collector lookup",
   normalizer: "Merge & deduplicate records",

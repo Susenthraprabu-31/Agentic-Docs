@@ -3,6 +3,12 @@
 import re
 from typing import Optional
 
+from app.config.schneider_portals import (
+    FL_SCHNEIDER_APP_PATTERN,
+    is_florida_schneider_portal,
+    normalize_schneider_search_url,
+)
+
 # Orange County Property Appraiser (Angular SPA)
 ORANGE_SEARCH_URL = "https://ocpaweb.ocpafl.org/parcelsearch"
 
@@ -11,6 +17,10 @@ FL_CUSTOM_ASSESSOR_HOSTS: dict[str, str] = {
     "orange": "ocpaweb.ocpafl.org",
     "miami-dade": "miamidade.gov",
     "broward": "bcpa.net",
+    "baker": "bakerpa.com",
+    "collier": "collierappraiser.com",
+    "desoto": "desotopa.com",
+    "brevard": "bcpao.us",
     "hillsborough": "hcpafl.org",
     "lee": "leepa.org",
     "pinellas": "pcpao.org",
@@ -22,14 +32,29 @@ FL_CUSTOM_ASSESSOR_HOSTS: dict[str, str] = {
 FLORIDA_PA_HOST_SUFFIX = ".floridapa.com"
 COLUMBIA_SEARCH_URL = "https://columbia.floridapa.com/gis/"
 
-# Schneider / qPublic (Beacon) — many smaller FL counties
-FL_SCHNEIDER_APP_PATTERN = re.compile(r"app=([a-z]+countyfl)", re.I)
+# Counties that host the floridapa.com GIS stack on their own domain.
+FL_PA_CUSTOM_HOSTS: dict[str, str] = {
+    "desoto": "desotopa.com",
+}
+FL_PA_GIS_ENTRY_URLS: dict[str, str] = {
+    "desoto": "https://www.desotopa.com/GIS/",
+}
+
+DESOTO_HOME_URL = "https://www.desotopa.com/"
+DESOTO_GIS_ENTRY_URL = "https://www.desotopa.com/GIS/"
 
 # Orange County Comptroller official records
 ORANGE_RECORDER_HOST = "or.occompt.com"
 
 # Miami-Dade Property Appraiser (Angular SPA)
 MIAMI_DADE_SEARCH_URL = "https://apps.miamidadepa.gov/propertysearch/#/"
+
+# Brevard County Property Appraiser (BCPAO Angular SPA)
+BREVARD_SEARCH_URL = "https://www.bcpao.us/PropertySearch/#/nav/Search"
+
+# Collier County Property Appraiser (frameset site — search loads in rbottom frame)
+COLLIER_HOME_URL = "https://www.collierappraiser.com/"
+COLLIER_SEARCH_URL = "https://www.collierappraiser.com/Main_Search/search_rp.html"
 
 
 def extract_miami_dade_folio_from_url(url: str) -> Optional[str]:
@@ -45,16 +70,31 @@ def extract_miami_dade_folio_from_url(url: str) -> Optional[str]:
     return None
 
 
+def normalize_miami_dade_property_search_url(url: str) -> str:
+    """Rewrite Miami-Dade property search URLs to the working Property Appraiser host.
+
+    NETR and legacy links often point at apps.miamidade.gov/propertysearch, which
+    returns HTTP 503. The live Angular SPA is hosted on apps.miamidadepa.gov.
+    """
+    if not url:
+        return url
+    lower = url.lower()
+    if "propertysearch" not in lower:
+        return url
+    if "miamidade.gov" not in lower and "miamidadepa.gov" not in lower:
+        return url
+
+    folio = extract_miami_dade_folio_from_url(url)
+    if folio:
+        return build_miami_dade_property_search_url(folio)
+    return MIAMI_DADE_SEARCH_URL
+
+
 def build_miami_dade_property_search_url(folio: str, base_url: Optional[str] = None) -> str:
     """Build a direct Miami-Dade Property Search URL for a folio number."""
-    from urllib.parse import urlparse
-
     folio_value = normalize_florida_parcel(folio, county="miami-dade")
-    raw_base = (base_url or MIAMI_DADE_SEARCH_URL).strip()
-    parsed = urlparse(raw_base)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
-    path = parsed.path.rstrip("/") or "/propertysearch"
-    return f"{origin}{path}/#/?folio={folio_value}"
+    _ = base_url  # legacy callers may pass NETR/GIS URLs — always use the PA host
+    return f"https://apps.miamidadepa.gov/propertysearch/#/?folio={folio_value}"
 
 # Miami-Dade Clerk official records
 MIAMI_DADE_RECORDER_HOST = "miamidadeclerk.gov"
@@ -77,11 +117,44 @@ def is_florida_pa_assessor(url: str) -> bool:
     return FLORIDA_PA_HOST_SUFFIX in url.lower()
 
 
+def is_desoto_assessor(url: str) -> bool:
+    return "desotopa.com" in url.lower()
+
+
 def get_florida_pa_county_from_url(url: str) -> Optional[str]:
     match = re.search(r"https?://([a-z0-9-]+)\.floridapa\.com", url.lower())
     if match:
         return match.group(1)
     return None
+
+
+def get_florida_pa_gis_county_from_url(url: str) -> Optional[str]:
+    county = get_florida_pa_county_from_url(url)
+    if county:
+        return county
+    lower = url.lower()
+    for slug, host in FL_PA_CUSTOM_HOSTS.items():
+        if host in lower:
+            return slug
+    return None
+
+
+def is_florida_pa_gis_assessor(url: str) -> bool:
+    return is_florida_pa_assessor(url) or get_florida_pa_gis_county_from_url(url) is not None
+
+
+def resolve_florida_pa_gis_url(county: Optional[str], assessor_url: str) -> str:
+    slug = (county or "").lower().replace(" ", "-")
+    if slug in FL_PA_GIS_ENTRY_URLS:
+        return FL_PA_GIS_ENTRY_URLS[slug]
+    if is_florida_pa_assessor(assessor_url):
+        pa_county = get_florida_pa_county_from_url(assessor_url)
+        if pa_county:
+            return f"https://{pa_county}.floridapa.com/gis/"
+    for host_slug, host in FL_PA_CUSTOM_HOSTS.items():
+        if host in assessor_url.lower():
+            return FL_PA_GIS_ENTRY_URLS.get(host_slug, f"https://www.{host}/GIS/")
+    return assessor_url
 
 
 def get_florida_county_from_url(url: str) -> Optional[str]:
@@ -95,7 +168,7 @@ def get_florida_county_from_url(url: str) -> Optional[str]:
     match = FL_SCHNEIDER_APP_PATTERN.search(lower)
     if match:
         return match.group(1).replace("countyfl", "").replace("county", "")
-    if "schneidercorp.com" in lower and "countyfl" in lower:
+    if is_florida_schneider_portal(url):
         return "schneider"
     return None
 
@@ -129,13 +202,20 @@ def is_broward_assessor(url: str) -> bool:
     return "bcpa.net" in url.lower()
 
 
+def is_brevard_assessor(url: str) -> bool:
+    return "bcpao.us" in url.lower()
+
+
+def is_collier_assessor(url: str) -> bool:
+    return "collierappraiser.com" in url.lower()
+
+
 def is_hillsborough_assessor(url: str) -> bool:
     return "hcpafl.org" in url.lower()
 
 
 def is_florida_schneider(url: str) -> bool:
-    lower = url.lower()
-    return "schneidercorp.com" in lower and "countyfl" in lower
+    return is_florida_schneider_portal(url)
 
 
 def is_florida_recorder(url: str) -> bool:
@@ -174,6 +254,10 @@ def resolve_florida_county_sources(county: str, parcel: str = "") -> "CountySour
         gis_url = MIAMI_DADE_SEARCH_URL
     elif county_slug == "orange":
         assessor_url = ORANGE_SEARCH_URL
+    elif county_slug == "collier":
+        assessor_url = COLLIER_HOME_URL
+    elif county_slug == "desoto":
+        assessor_url = DESOTO_HOME_URL
 
     if parcel:
         treasurer_url = resolve_florida_tax_url(county_slug, parcel)
@@ -208,6 +292,10 @@ def resolve_florida_recorder_url(recorder_url: str, county: Optional[str] = None
 
 
 def resolve_florida_assessor_url(assessor_url: str) -> str:
+    normalized = normalize_miami_dade_property_search_url(assessor_url)
+    if normalized != assessor_url:
+        return normalized
+
     if is_florida_pa_assessor(assessor_url):
         lower = assessor_url.lower().rstrip("/")
         if "/gis" not in lower:
@@ -218,15 +306,21 @@ def resolve_florida_assessor_url(assessor_url: str) -> str:
         return assessor_url
     if is_orange_county_assessor(assessor_url):
         return ORANGE_SEARCH_URL
+    if is_brevard_assessor(assessor_url):
+        return BREVARD_SEARCH_URL
+    if is_collier_assessor(assessor_url):
+        return COLLIER_HOME_URL
+    if is_desoto_assessor(assessor_url):
+        return DESOTO_HOME_URL
     if is_miami_dade_assessor(assessor_url) or (
         "miamidade.gov" in assessor_url.lower() and "/pa" in assessor_url.lower()
     ):
+        folio = extract_miami_dade_folio_from_url(assessor_url)
+        if folio:
+            return build_miami_dade_property_search_url(folio)
         return MIAMI_DADE_SEARCH_URL
     if is_florida_schneider(assessor_url):
-        lower = assessor_url.lower()
-        if "pagetype=search" not in lower:
-            sep = "&" if "?" in assessor_url else "?"
-            return f"{assessor_url}{sep}PageType=Search"
+        return normalize_schneider_search_url(assessor_url)
     return assessor_url
 
 
@@ -237,6 +331,14 @@ def normalize_florida_parcel(parcel: str, county: Optional[str] = None) -> str:
         return cleaned
 
     digits = re.sub(r"\D", "", cleaned)
+
+    if county == "collier":
+        digits = re.sub(r"\D", "", cleaned)
+        return digits or cleaned
+
+    if county == "brevard" or re.search(r"[A-Za-z*]", cleaned):
+        # Brevard parcel IDs are alphanumeric (e.g. 22-35-31-AV-*-7, 20G-35-03-XY-234-5.67)
+        return re.sub(r"\s+", "", cleaned).upper()
 
     if county == "orange" or (county is None and len(digits) in (10, 12, 15, 16)):
         # Orange PIN: often 10-16 digits; display format 22-21-31-1234-00-010
@@ -303,6 +405,20 @@ def format_florida_pa_address_for_search(address: str) -> str:
 def format_miami_dade_address_for_search(address: str) -> str:
     """Normalize address for Miami-Dade PA search (street before first comma)."""
     return format_florida_pa_address_for_search(address)
+
+
+def format_miami_dade_recorder_address_for_search(address: str) -> str:
+    """Normalize address for Miami-Dade clerk Property/Condo recorder search.
+
+    The official records portal matches street addresses when the value is
+    prefixed with a single leading space (e.g. `` 9956 SW 157 ST``).
+    """
+    cleaned = format_miami_dade_address_for_search(address)
+    if not cleaned:
+        return cleaned
+    if cleaned.startswith(" "):
+        return cleaned
+    return f" {cleaned}"
 
 
 FLORIDA_TAX_HOST_SUFFIX = ".floridatax.us"
@@ -435,6 +551,16 @@ def _folio_digits(parcel: str) -> str:
 def resolve_florida_tax_url(county: str, parcel: str) -> str:
     """Build a direct PropertyDetail URL for the correct FL county tax collector site."""
     county_slug = county.lower().replace(" ", "-")
+
+    # Address/owner searches need the portal landing page; a blank parcel must
+    # never produce a malformed PropertyDetail?p= URL.
+    if not (parcel or "").strip():
+        if county_slug in FL_FLORIDATAX_COUNTIES:
+            return f"https://{county_slug}.floridatax.us/"
+        if county_slug in FL_COUNTY_TAXES_NET:
+            return f"https://county-taxes.net/{FL_COUNTY_TAXES_NET[county_slug]}/property-tax"
+        if county_slug in FL_COUNTY_TAXES_COM:
+            return f"https://{FL_COUNTY_TAXES_COM[county_slug]}.county-taxes.com/"
 
     # Grant Street Group's county-taxes.net portal (Miami-Dade etc.)
     net_slug = FL_COUNTY_TAXES_NET.get(county_slug)

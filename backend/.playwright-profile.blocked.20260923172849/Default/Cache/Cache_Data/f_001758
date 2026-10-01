@@ -1,0 +1,423 @@
+'use strict';
+
+angular.module('propertySalesApp')
+  .controller('ReportCtrl', ['$scope', '$routeParams', 'localStorageService', 'paConfiguration', 'esriGisService', function ($scope, $routeParams, localStorageService, paConfig, esriGisService) {
+      $scope.orthoAerialYear = localStorageService.get('orthoAerialYear');
+      $scope.property = localStorageService.get('property');
+      $scope.comparableSales = localStorageService.get('comparableSales');
+      $scope.comparableSalesLegend = localStorageService.get('comparableSalesLegend');
+      $scope.propertyFeatureSet = localStorageService.get('propertyFeatureSet');
+      $scope.bufferGeom = localStorageService.get('salesBufferGeometry');
+      $scope.searchParameter = localStorageService.get('searchParameter');
+      $scope.legendColors = localStorageService.get('legendColors');
+      //delete it later
+      $scope.propertySalesInformation = localStorageService.get('propertySalesInformation');
+      $scope.mapReference = localStorageService.get('map');
+      $scope.reportType = $routeParams.type;
+      $scope.reportSearchCriteria = "Search Criteria:";
+      $scope.version = paConfig.version;     
+      //Format Currency
+      var formatMoney = function (n) {
+          if (n == undefined || n == 0) {
+              return "$0";
+          }
+          return "$" + n.toLocaleString().split(".")[0];
+      };
+
+
+      $scope.addPropertyToMapandLegend = function () {
+          createreportSearchCriteria();         
+          var propertySalesInformation = $scope.propertySalesInformation;
+          var uniqueSalesArr = [];
+          var salesArray = $scope.comparableSalesLegend;
+          var propertyFeatureSet = $scope.propertyFeatureSet;
+          var multipleSalesFlag = false;
+          $("#trSalesColors").find('div').remove();
+          $("#trSalesColors").append($scope.legendColors);
+          $('#trSalesColors').find("div").each(function (idx, item) {
+              if (idx == 0 || idx == 1 || idx == $('#trSalesColors').children().length - 1) { return; };
+              $(item).toggleClass('legendRow legendRowPrint');
+          });
+          _.each(propertySalesInformation, function (sale) {
+              var polygon = new esri.geometry.Polygon(new esri.SpatialReference({ wkid: 2236 }));
+              _.each(sale.geometry.rings, function (ring) {
+                  polygon.rings.push(ring);
+              }
+              );
+              var boundary = {
+                  "geometry": polygon
+              };
+              var highlightColor = sale.highlightColor;              
+              var highlightColor;
+              var lineColorA;
+              var fillColorA;
+              if (sale.totalSalesCount == 1) {
+                  highlightColor = sale.highlightColor;
+                  lineColorA = highlightColor[3];
+                  fillColorA = 0.4;
+              }
+              else {
+                  highlightColor = paConfig.salesPropertyColors.colorCondo;
+                  lineColorA = 0.1;
+                  fillColorA = 0.1;
+              }
+              var saleGraphic = new esri.Graphic(boundary);
+              var lineColor = new dojo.Color([highlightColor[0], highlightColor[1], highlightColor[2], lineColorA]);
+              var fillColor = new dojo.Color([highlightColor[0], highlightColor[1], highlightColor[2], fillColorA]);
+              var symbol = new esri.symbol.SimpleFillSymbol(esri.symbol.SimpleFillSymbol.STYLE_SOLID,
+                              new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID, lineColor, 2), fillColor);
+              saleGraphic.setSymbol(symbol);
+             
+              var salePoint = polygon.getExtent().getCenter();
+              if (sale.type === "salesbuffer") {
+                  if (sale.totalSalesCount > 1) {
+                      $scope.map.getLayer("salesBoundary").add(saleGraphic);
+                      addPropertyGeometrytoMap(sale.totalSalesCount, salePoint, paConfig.salesPropertyColors.colorCondo, "SQUARE");
+                  }
+                  else {
+                      $scope.map.getLayer("salesBoundary").add(saleGraphic);
+                      addPropertyGeometrytoMap(sale.salesNumber, salePoint, highlightColor, "CIRCLE");
+                  }
+              }
+          });
+          _.each($scope.comparableSales.subjectPropertyArr, function (sale) {
+              if (sale.geometry) {
+                  var polygon = new esri.geometry.Polygon(new esri.SpatialReference({ wkid: 2236 }));
+                  _.each(sale.geometry.rings, function (ring) {
+                      polygon.rings.push(ring);
+                  }
+                  );
+                  var boundary = {
+                      "geometry": polygon
+                  };
+                  var highlightColor = sale.highlightColor;
+                  var highlightColor;
+                  var lineColorA;
+                  var fillColorA;
+                  if (sale.totalSalesCount == 1) {
+                      highlightColor = sale.highlightColor;
+                      lineColorA = highlightColor[3];
+                      fillColorA = 0.4;
+                  }
+                  else {
+                      highlightColor = paConfig.salesPropertyColors.colorCondo;
+                      lineColorA = 0.1;
+                      fillColorA = 0.1;
+                  }
+                  var saleGraphic = new esri.Graphic(boundary);
+                  var lineColor = new dojo.Color([highlightColor[0], highlightColor[1], highlightColor[2], lineColorA]);
+                  var fillColor = new dojo.Color([highlightColor[0], highlightColor[1], highlightColor[2], fillColorA]);
+                  var symbol = new esri.symbol.SimpleFillSymbol(esri.symbol.SimpleFillSymbol.STYLE_SOLID,
+                                  new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID, lineColor, 2), fillColor);
+                  saleGraphic.setSymbol(symbol);
+
+                  var salePoint = polygon.getExtent().getCenter();
+                  $scope.map.getLayer("salesBoundary").add(saleGraphic);
+              }
+          });
+      };
+     
+      //Add Property Search result to map for all searches
+      var addPropertyGeometrytoMap = function (saleNumber, geometry, highlightColor, symbolType) {
+          var fontSize = saleNumber > 99 ? 10 : 12;
+          var font = new esri.symbol.Font(fontSize + "pt", esri.symbol.Font.STYLE_NORMAL, esri.symbol.Font.VARIANT_NORMAL, esri.symbol.Font.WEIGHT_BOLD, "Arial");
+          var textSymbol = new esri.symbol.TextSymbol(saleNumber, font, new dojo.Color("#FFFFFF"));
+          textSymbol.setAlign(esri.symbol.TextSymbol.ALIGN_MIDDLE);
+          textSymbol.setOffset(0, -6);
+          //Added to show boundary
+          var fontBlk = new esri.symbol.Font(fontSize + "pt", esri.symbol.Font.STYLE_NORMAL, esri.symbol.Font.VARIANT_NORMAL, esri.symbol.Font.WEIGHT_BOLDER, "Arial");
+          var textSymbolBlk = new esri.symbol.TextSymbol(saleNumber, font, new dojo.Color("#000"));
+          textSymbolBlk.setAlign(esri.symbol.TextSymbol.ALIGN_MIDDLE);
+          textSymbolBlk.setOffset(-1, -5);
+
+          if (geometry != null && geometry.x != 0 && geometry.y != 0) {
+              var circleSymbol;
+              if (symbolType == "CIRCLE") {
+                  circleSymbol = new esri.symbol.SimpleMarkerSymbol(
+                         esri.symbol.SimpleMarkerSymbol.STYLE_CIRCLE,
+                         24,
+                         new esri.symbol.SimpleLineSymbol(
+                           esri.symbol.SimpleLineSymbol.STYLE_SOLID,
+                           new dojo.Color([255, 255, 255, 1.0]), 1.5
+                         ),
+                         new dojo.Color([highlightColor[0], highlightColor[1], highlightColor[2], highlightColor[3]])
+                         );
+              }
+              if (symbolType == "SQUARE") {
+                  circleSymbol = new esri.symbol.SimpleMarkerSymbol(
+                         esri.symbol.SimpleMarkerSymbol.STYLE_SQUARE,
+                         24,
+                         new esri.symbol.SimpleLineSymbol(
+                           esri.symbol.SimpleLineSymbol.STYLE_SOLID,
+                           new dojo.Color([255, 255, 255, 1.0]), 1.5
+                         ),
+                         new dojo.Color([highlightColor[0], highlightColor[1], highlightColor[2], highlightColor[3]])
+                         );
+              }
+              var circleRenderer = new esri.renderer.SimpleRenderer(circleSymbol);
+              var newCircle = new esri.Graphic(geometry, circleSymbol);
+              $scope.map.getLayer("circleResultLayer").add(newCircle);
+              var newCircleText = new esri.Graphic(geometry, textSymbolBlk);
+              $scope.map.getLayer("circleResultLayer").add(newCircleText);
+              var newCircleText = new esri.Graphic(geometry, textSymbol);
+              $scope.map.getLayer("circleResultLayer").add(newCircleText);
+          }
+      };
+
+      function initMap() {
+          var map = new esri.Map('printmap',
+                                 {
+                                     extent: new esri.geometry.Extent($scope.mapReference.extent),
+                                     logo: false,
+                                     showAttribution: false
+                                 }
+                                );
+
+          var scalebar = new esri.dijit.Scalebar({ map: map, scalebarStyle: "line" }, dojo.byId("scale-container"));
+          $scope.map = map;
+
+          map.on('load', function () {
+              map.disableClickRecenter()
+              map.disableDoubleClickZoom()
+              map.disableKeyboardNavigation()
+              map.disableMapNavigation()
+              map.disablePan()
+              map.disableRubberBandZoom()
+              map.disableScrollWheelZoom()
+              map.disableShiftDoubleClickZoom()
+              map.disableSnapping()
+              map.hideZoomSlider();
+
+              var parcelPoint = esri.layers.GraphicsLayer({ id: "parcelPoint" });
+              var parcelBoundary = esri.layers.GraphicsLayer({ id: "parcelBoundary", minScale: 23999 });
+              var salesBoundary = esri.layers.GraphicsLayer({ id: "salesBoundary" });
+              var bufferBoundary = esri.layers.GraphicsLayer({ id: "bufferBoundary" });
+              var circleResultLayer = new esri.layers.GraphicsLayer({ id: "circleResultLayer" });
+              map.addLayer(salesBoundary);
+              map.addLayer(bufferBoundary);
+              map.addLayer(parcelBoundary);
+              map.addLayer(parcelPoint);
+              map.addLayer(circleResultLayer);
+              map.resize();             
+              // zoom into point and draw polygon
+              if (!_.isUndefined($scope.property.location)) {
+                  var geometry = {
+                      "x": $scope.property.location.x,
+                      "y": $scope.property.location.y,
+                      "spatialReference": { "wkid": 2236 }
+                  };
+                  try {
+                      var polygon = $scope.property.location.polygon;
+                      var polygonGraphic = esriGisService.getGraphicMarkerFromPolygon(polygon);
+                      $scope.map.getLayer("parcelBoundary").add(polygonGraphic);
+                      var pointGraphic = esriGisService.getGraphicMarkerFromXY(geometry.x, geometry.y)
+                      $scope.map.getLayer("parcelPoint").add(pointGraphic);
+                      $scope.addPropertyToMapandLegend();
+                      var polygonGraphic = esriGisService.getGraphicMarkerFromBufferPolygon($scope.bufferGeom);
+                      $scope.map.getLayer("bufferBoundary").add(polygonGraphic);
+                  }
+                  catch (error) {
+                      $log.error("Report: error ", error);
+                  }
+              }              
+          });
+          // urls for the map.
+          var urlAerial = paConfig.urlAerialMap;
+          var urlStreet = paConfig.urlStreetMap;
+          //Add layers.
+          var aerialLayer = new esri.layers.ArcGISTiledMapServiceLayer(urlAerial, { id: "aerial" });
+          var streetLayer = new esri.layers.ArcGISTiledMapServiceLayer(urlStreet, { id: "street" });        
+          map.addLayer(aerialLayer);
+          map.addLayer(streetLayer);        
+          streetLayer.hide();
+      };
+
+
+      var createreportSearchCriteria = function () {         
+          var reportSearchTitle = "Search:";
+          try{                       
+          //Sale Year
+          if ($scope.searchParameter.SalesYearMin || $scope.searchParameter.SalesYearMax) {
+              reportSearchTitle = "Sale Year = " + $scope.searchParameter.SalesYearMin;
+          }
+          //radius
+          reportSearchTitle += " and Radius = " + $scope.comparableSales.searchDistance;
+          //Property Type
+          if ($scope.searchParameter.DORDescription === null) {
+              reportSearchTitle += " and Property Type = 'All'";
+          }
+          else {
+              reportSearchTitle += "and Property Type = '" + $scope.searchParameter.DORDescription + "'";
+          }
+
+          //Sale Qualification
+          if ($scope.searchParameter.SalesQualifiedDesc === null) {
+              reportSearchTitle += " and Sale Qualification = 'All'";
+          }
+          else {
+              reportSearchTitle += " and Sale Qualification = '" + $scope.searchParameter.SalesQualifiedDesc + "'";
+          }
+
+              //Primary Zone
+          if ($scope.searchParameter.ZoneCode === null) {
+              reportSearchTitle += " and Zone Codes = 'All'";
+          }
+          else {
+              reportSearchTitle += " and Zone Code = '" + $scope.searchParameter.ZoneCode + "'";
+          }
+
+
+
+          //Sale Price
+          if ($scope.searchParameter.SalesAmountMin !== -1 || $scope.searchParameter.SalesAmountMax !== -1) {
+              if ($scope.searchParameter.SalesAmountMin !== -1 && $scope.searchParameter.SalesAmountMax !== -1) {
+                  reportSearchTitle += " and Sale Price = " + $scope.searchParameter.SalesAmountMin + " to " + $scope.searchParameter.SalesAmountMax;
+              }
+              else if ($scope.searchParameter.SalesAmountMin !== -1) {
+                  reportSearchTitle += " and Sale Price = " + $scope.searchParameter.SalesAmountMin;
+              }
+              else if ($scope.searchParameter.SalesAmountMax !== -1) {
+                  reportSearchTitle += " and Sale Price = " + $scope.searchParameter.SalesAmountMax;
+              }
+          }
+
+          //Adjusted Area         
+          if ($scope.searchParameter.AreaAdjustedMin !== -1 || $scope.searchParameter.AreaAdjustedMax !== -1) {
+              if ($scope.searchParameter.AreaAdjustedMin !== -1 && $scope.searchParameter.AreaAdjustedMax !== -1) {
+                  reportSearchTitle += " and Adjusted Area = " + $scope.searchParameter.AreaAdjustedMin + " to " + $scope.searchParameter.AreaAdjustedMax;
+              }
+              else if ($scope.searchParameter.AreaAdjustedMin !== -1) {
+                  reportSearchTitle += " and Adjusted Area = " + $scope.searchParameter.AreaAdjustedMin;
+              }
+              else if ($scope.searchParameter.AreaAdjustedMax !== -1) {
+                  reportSearchTitle += " and Adjusted Area = " + $scope.searchParameter.AreaAdjustedMax;
+              }
+          }
+
+          //Living SQ FT         
+          if ($scope.searchParameter.AreaLivingMin || $scope.searchParameter.AreaLivingMax !== -1) {
+              if ($scope.searchParameter.AreaLivingMin !== -1 && $scope.searchParameter.AreaLivingMax !== -1) {
+                  reportSearchTitle += " and Living SqFt = " + $scope.searchParameter.AreaLivingMin + " to " + $scope.searchParameter.AreaAdjustedMax;
+              }
+              else if ($scope.searchParameter.AreaLivingMin !== -1) {
+                  reportSearchTitle += " and Living SqFt = " + $scope.searchParameter.AreaLivingMin;
+              }
+              else if ($scope.searchParameter.AreaLivingMax !== -1) {
+                  reportSearchTitle += " and Living SqFt = " + $scope.searchParameter.AreaLivingMax;
+              }
+          }
+
+          //Actual SQ FT         
+          if ($scope.searchParameter.AreaActualMin !== -1 || $scope.searchParameter.AreaActualMax !== -1) {
+              if ($scope.searchParameter.AreaActualMin !== -1 && $scope.searchParameter.AreaActualMax !== -1) {
+                  reportSearchTitle += " and Actual SqFt = " + $scope.searchParameter.AreaLivingMin + " to " + $scope.searchParameter.AreaActualMax;
+              }
+              else if ($scope.searchParameter.AreaActualMin !== -1) {
+                  reportSearchTitle += " and Actual SqFt = " + $scope.searchParameter.AreaActualMin;
+              }
+              else if ($scope.searchParameter.AreaActualMax !== -1) {
+                  reportSearchTitle += " and Actual SqFt = " + $scope.searchParameter.AreaActualMax;
+              }
+          }
+
+
+          //Bedrooms
+          if ($scope.searchParameter.BedroomMin || $scope.searchParameter.BedroomMax) {
+              if ($scope.searchParameter.BedroomMin !== -1 && $scope.searchParameter.BedroomMax !== -1) {
+                  reportSearchTitle += " and Bedrooms = " + $scope.searchParameter.BedroomMin + " to " + $scope.searchParameter.BedroomMax;
+              }
+              else if ($scope.searchParameter.BedroomMin !== -1) {
+                  reportSearchTitle += " and Bedrooms = " + $scope.searchParameter.BedroomMin;
+              }
+              else if ($scope.searchParameter.BedroomMax !== -1) {
+                  reportSearchTitle += " and Bedrooms = " + $scope.searchParameter.BedroomMax;
+              }
+          }
+
+          //Bathrooms
+          if ($scope.searchParameter.BathMin !== -1 || $scope.searchParameter.BathMax !== -1) {
+              if ($scope.searchParameter.BathMin !== -1 && $scope.searchParameter.BathMax !== -1) {
+                  reportSearchTitle += " and Bathrooms = " + $scope.searchParameter.BathMin + " to " + $scope.searchParameter.BathMax;
+              }
+              else if ($scope.searchParameter.BathMin !== -1) {
+                  reportSearchTitle += " and Bathrooms = " + $scope.searchParameter.BathMin;
+              }
+              else if ($scope.searchParameter.BathMax !== -1) {
+                  reportSearchTitle += " and Bathrooms = " + $scope.searchParameter.BathMax;
+              }
+          }
+
+          //Lot Size
+          if ($scope.searchParameter.LotSizeMin !== -1 || $scope.searchParameter.LotSizeMax !== -1) {
+              if ($scope.searchParameter.LotSizeMin !== -1 && $scope.searchParameter.LotSizeMax !== -1) {
+                  reportSearchTitle += " and Lot Size = " + $scope.searchParameter.LotSizeMin + " to " + $scope.searchParameter.LotSizeMax;
+              }
+              else if ($scope.searchParameter.LotSizeMin !== -1) {
+                  reportSearchTitle += " and Lot Size = " + $scope.searchParameter.LotSizeMin;
+              }
+              else if ($scope.searchParameter.LotSizeMax !== -1) {
+                  reportSearchTitle += " and Lot Size = " + $scope.searchParameter.LotSizeMax;
+              }
+          }
+
+          //Year Built
+          if ($scope.searchParameter.YearBuiltMin !== -1 || $scope.searchParameter.YearBuiltMax !== -1) {
+              if ($scope.searchParameter.YearBuiltMin !== -1 && $scope.searchParameter.YearBuiltMax !== -1) {
+                  reportSearchTitle += " and Year Built = " + $scope.searchParameter.YearBuiltMin + " to " + $scope.searchParameter.YearBuiltMax;
+              }
+              else if ($scope.searchParameter.YearBuiltMin !== -1) {
+                  reportSearchTitle += " and Year Built = " + $scope.searchParameter.YearBuiltMin;
+              }
+              else if ($scope.searchParameter.YearBuiltMax !== -1) {
+                  reportSearchTitle += " and Year Built = " + $scope.searchParameter.YearBuiltMax;
+              }
+          }         
+          $scope.reportSearchCriteria = reportSearchTitle;
+          $("#divReportSearchCriteria").append(reportSearchTitle);
+          }
+          catch (error) {
+              $scope.reportSearchCriteria = reportSearchTitle;
+              $log.error("Report: error ", error);
+          }
+      };
+
+
+      $scope.doPrint = function () {
+          window.print();
+      };
+
+      $scope.getCurrentDate = function () {
+          var dt = new Date();
+          return dt.getMonth() + 1 + '/' + dt.getDate() + '/' + dt.getFullYear();
+      };
+
+      $scope.setBackgroundSolor = function (color, saleCount) {
+          if (saleCount == 1) {
+              return { backgroundColor: color }
+          }
+          else {
+              return { backgroundColor: '#FF0080' }
+          }
+      };
+
+      $scope.getClassSale = function (saleCount) {
+          if (saleCount == 1) {
+              return 'circleSalesStyle';
+          }
+          else {
+              return 'squareSalesStyle';
+          }
+      };
+
+      $scope.getSaleNumber = function (saleNumber, saleCount) {
+          if (saleCount == 1) {
+              return saleNumber;
+          }
+          else {
+              return saleCount + '*';
+          }
+      };
+
+      dojo.ready(initMap);
+      
+  }]);

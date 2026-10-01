@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.request import urlopen
 
 import logging
 
@@ -19,15 +20,42 @@ from app.db.report_storage import (
     persist_report_storage,
 )
 from app.db.supabase_client import get_memory_store, get_supabase
+from app.extraction.miami_dade_name_searches import (
+    build_name_searcher_report_entries,
+    resolve_name_searches_for_report,
+)
 from app.report.pdf_exporter import DEFAULT_REPORTS_DIR, PdfExporter
+from app.storage.document_paths import resolve_document_preview_path, resolve_document_preview_url
 from app.storage.report_pdf_storage import ReportPdfStorage
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _embed_image_as_data_uri(image_path: str | None) -> str | None:
-    """Embed a local screenshot as a base64 data URI for PDF rendering."""
+def _embed_image_from_url(image_url: str | None) -> str | None:
+    if not image_url or not image_url.startswith("http"):
+        return None
+    try:
+        with urlopen(image_url, timeout=30) as response:
+            raw = response.read()
+        if not raw:
+            return None
+        content_type = response.headers.get_content_type() if hasattr(response, "headers") else "image/png"
+        mime = content_type if content_type.startswith("image/") else "image/png"
+        encoded = base64.b64encode(raw).decode("utf-8")
+        return f"data:{mime};base64,{encoded}"
+    except Exception as exc:
+        logger.debug("Could not embed image from storage URL %s: %s", image_url, exc)
+        return None
+
+
+def _embed_image_as_data_uri(image_path: str | None, *, storage_url: str | None = None) -> str | None:
+    """Embed a local screenshot or Supabase preview URL as a base64 data URI for PDF rendering."""
+    if storage_url:
+        embedded = _embed_image_from_url(storage_url)
+        if embedded:
+            return embedded
+
     if not image_path:
         return None
 
@@ -44,6 +72,16 @@ def _embed_image_as_data_uri(image_path: str | None) -> str | None:
         Path.cwd() / "screenshots" / Path(image_path).name,
         Path.cwd() / "local_storage" / Path(image_path).name,
     ]
+
+    path_obj = Path(image_path)
+    if len(path_obj.parts) >= 2:
+        candidates.extend(
+            [
+                BACKEND_ROOT / "local_storage" / Path(*path_obj.parts[-2:]),
+                Path("local_storage") / Path(*path_obj.parts[-2:]),
+            ]
+        )
+
     for candidate in candidates:
         try:
             resolved = candidate.resolve()
@@ -319,16 +357,24 @@ class ReportBuilder:
                 d["download_path"] = str(dl_path)
                 d["file_name"] = Path(dl_path).name
 
-            img_candidate = ocr.get("image_path")
-            if not img_candidate and sp:
-                img_candidate = Path(sp).with_suffix(".png") if str(sp).lower().endswith(".pdf") else Path(sp)
-            if not img_candidate and folder_name:
-                img_candidate = Path("local_storage") / folder_name / f"{folder_name}.png"
+            if ocr.get("source") == "assessor":
+                if ocr.get("pdf_storage_url"):
+                    d["pdf_storage_url"] = ocr.get("pdf_storage_url")
+                continue
 
-            if img_candidate:
-                data_uri = _embed_image_as_data_uri(str(img_candidate))
+            preview_url = resolve_document_preview_url(d)
+            preview_path = resolve_document_preview_path(d, Path(sp) if sp else None)
+            img_candidate = str(preview_path) if preview_path else ocr.get("image_path")
+
+            if preview_url or img_candidate:
+                data_uri = _embed_image_as_data_uri(
+                    str(img_candidate) if img_candidate else None,
+                    storage_url=preview_url,
+                )
                 if data_uri:
                     d["image_data_uri"] = data_uri
+                if preview_url:
+                    d["preview_storage_url"] = preview_url
 
         # Extract AI agent response and metadata if present in run or documents
         ai_agent_response, ai_agent_model, ai_agent_meta = _resolve_ai_agent_data(run, documents)
@@ -365,6 +411,11 @@ class ReportBuilder:
                 documents.append(doc_row)
 
         ai_agent_html = _format_markdown_to_html(ai_agent_response) if ai_agent_response else ""
+        plan_json = run.get("plan_json") or {}
+        name_searches = resolve_name_searches_for_report(
+            plan_json,
+            documents=documents,
+        )
 
         report_json: dict[str, Any] = {
             "run_id": run_id,
@@ -372,11 +423,14 @@ class ReportBuilder:
             "county": run["county"],
             "query_type": run["query_type"],
             "query_value": run["query_value"],
+            "search_scope": (run.get("plan_json") or {}).get("search_scope", "full"),
+            "search_limit": (run.get("plan_json") or {}).get("search_limit"),
             "property": property_record,
             "tax_record": tax_record,
             "records": records,
             "documents": documents,
             "chain_of_title": chain_of_title,
+            "name_searches": name_searches,
             "sources_trail": sources_trail,
             "gis_screenshot_path": gis_screenshot_path,
             "gis_screenshot_url": gis_screenshot_url,
@@ -398,6 +452,7 @@ class ReportBuilder:
             documents=documents,
             chain_of_title=chain_of_title,
             chain_docs=chain_docs,
+            name_searches=name_searches,
             gis_screenshot_data_uri=gis_screenshot_data_uri,
             ai_agent_response=ai_agent_response,
             ai_agent_model=ai_agent_model,

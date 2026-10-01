@@ -4,10 +4,16 @@ from app.config.florida_portals import (
     ORANGE_SEARCH_URL,
     MIAMI_DADE_SEARCH_URL,
     is_florida_pa_assessor,
+    is_florida_pa_gis_assessor,
     is_florida_schneider,
     is_miami_dade_assessor,
     is_orange_county_assessor,
     resolve_florida_assessor_url,
+)
+from app.config.schneider_portals import (
+    is_honolulu_schneider,
+    is_schneider_portal,
+    normalize_schneider_search_url,
 )
 
 HONOLULU_LANDING_URL = "https://www.qpublic.net/hi/honolulu/"
@@ -33,19 +39,16 @@ def resolve_assessor_search_url(assessor_url: str) -> str:
     for key, search_url in ASSESSOR_SEARCH_URLS.items():
         if key in lower:
             return search_url
-    if is_florida_pa_assessor(assessor_url):
+    if is_florida_pa_gis_assessor(assessor_url):
         return resolve_florida_assessor_url(assessor_url)
     if is_orange_county_assessor(assessor_url):
         return ORANGE_SEARCH_URL
     if is_miami_dade_assessor(assessor_url):
         return MIAMI_DADE_SEARCH_URL
-    if is_florida_schneider(assessor_url):
-        return resolve_florida_assessor_url(assessor_url)
-    if "schneidercorp.com" in lower and "pagetype=search" in lower:
-        return assessor_url
+    if is_schneider_portal(assessor_url):
+        return normalize_schneider_search_url(
+            resolve_florida_assessor_url(assessor_url)
+            if is_florida_schneider(assessor_url)
+            else assessor_url
+        )
     return assessor_url
-
-
-def is_honolulu_schneider(url: str) -> bool:
-    lower = url.lower()
-    return "honolulucountyhi" in lower or "qpublic.net/hi/honolulu" in lower

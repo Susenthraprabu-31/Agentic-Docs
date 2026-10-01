@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.agents.ai_agent_coordinator import complete_pending, fail_pending
-from app.agents.openai_agent import OpenAIAgentService
+from app.agents.llm_client import llm_configured, llm_not_configured_message
 from app.agents.run_logger import RunLogger
 from app.config.settings import get_settings
 from app.db.repositories.documents_repository import DocumentsRepository

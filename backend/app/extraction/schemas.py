@@ -18,6 +18,7 @@ class RunStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class SourceType(str, Enum):
@@ -44,6 +45,7 @@ class NodeOverride(BaseModel):
     url: Optional[str] = None
     playwright_notes: Optional[str] = None
     enabled: bool = True
+    automation_mode: Optional[str] = "legacy"  # "legacy" | "ai_dynamic"
     # OpenAI Agent node fields (API key always from backend .env)
     agent_name: Optional[str] = None
     instructions: Optional[str] = None
@@ -82,6 +84,7 @@ class SearchRequest(BaseModel):
     parcel_number: Optional[str] = None
     book_number: Optional[str] = None
     page_number: Optional[str] = None
+    automation_mode: Optional[str] = "legacy"  # "legacy" | "ai_dynamic"
     pipeline_graph: Optional[PipelineGraph] = None
     node_overrides: list[NodeOverride] = Field(default_factory=list)
 
@@ -214,4 +217,12 @@ class GenerateInstructionsResponse(BaseModel):
     confidence: str
     reasoning: str
     resolved_url: str
+
+
+# Re-export Dynamic County Portal Intelligence models
+from app.drivers.dynamic_portal.schemas import (  # noqa: E402
+    BlockingType,
+    PropertySearchInput,
+    RunErrorStatus,
+)
 

@@ -16,6 +16,7 @@ export const PIPELINE_GRAPH: PipelineNodeDef[] = [
   { id: "PlatformDetectorNode", label: "Platform Detector", description: "Map URLs → platforms" },
   { id: "AssessorNode", label: "Assessor", description: "Property appraiser search", sourceKey: "assessor" },
   { id: "RecorderNode", label: "Recorder", description: "Official records search", sourceKey: "recorder" },
+  { id: "NameSearcherNode", label: "Name Searcher", description: "Party name follow-up searches", sourceKey: "recorder" },
   { id: "GISNode", label: "GIS", description: "Map screenshot capture", sourceKey: "gis" },
   { id: "TaxNode", label: "Tax", description: "Tax collector record", sourceKey: "tax_record" },
   { id: "AIAgentNode", label: "OpenAI Agent", description: "LLM analysis of collected data" },

@@ -2,9 +2,9 @@ from app.config.assessor_portals import (
     HONOLULU_LANDING_URL,
     HONOLULU_PROPERTY_SEARCH_URL,
     HONOLULU_SEARCH_URL,
-    is_honolulu_schneider,
     resolve_assessor_search_url,
 )
+from app.config.schneider_portals import is_honolulu_schneider
 from app.drivers.assessor.gila_assessor_driver import _normalize_honolulu_parcel
 
 

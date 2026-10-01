@@ -1,0 +1,562 @@
+
+
+
+
+
+
+<!doctype html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+<script async type="text/javascript"> var id = ''; 
+</script>
+<!-- Global site tag (gtag.js) - Google Analytics -->
+
+<!-- Google Analytics -->
+<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+
+
+
+	<title>Self-Service</title>
+
+
+
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="apple-touch-icon" href="/ssweb/resources/img/county-logo.png"> 
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/resources/css/themes/self-service-jquery-mobile.css?v=2025.1.32"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/resources/css/themes/jquery.mobile.icons-1.4.5.css"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/resources/jquery.mobile.structure-1.4.5.css"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/resources/jtsage-datebox-4.1.0.css"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/resources/css/materialdesignicons.css?v=2025.1.32"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/resources/css/context-menu-min.css"/>
+
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/controller/self.service.2025-1-32.css"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/controller/self.service.responsive.2025-1-32.css"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/controller/progress/circularG.2025-1-32.css"/>
+	<link rel="stylesheet" media="all" type="text/css" href="/ssweb/controller/progress/tylerProgress.2025-1-32.css"/>
+
+	
+	<link rel="stylesheet" href="/ssweb/controller/customColors.css?v=2025.1.32"/>
+	<link rel="stylesheet" href="/ssweb/controller/customColors.responsive.css?v=2025.1.32"/>
+	<link rel="stylesheet" href="/ssweb/controller/facetColors.css?v=2025.1.32"/>
+	<link rel="stylesheet" href="/ssweb/controller/customColorsLoaders.css?v=2025.1.32"/>
+	<link rel="stylesheet" href="/ssweb/resources/printjs/print.min.css?v=2025.1.32"/>
+	<script src="/ssweb/resources/modernizr.custom.03363.js"></script>
+	<script src="/ssweb/resources/jquery-1.11.0.js"></script>
+	<script src="/ssweb/resources/js/moment.min.js"></script>
+	<script src='/ssweb/controller/js/underscore.2025-1-32.js'></script>
+	<script src='/ssweb/controller/js/snap.svg.2025-1-32.js'></script>
+	<script src='/ssweb/controller/js/self.service.2025-1-32.js'></script>
+	<script src="/ssweb/controllerjs/validator.2025-1-32.js"></script>
+	<script src="/ssweb/controllerjs/util.2025-1-32.js"></script>
+	<script src="/ssweb/resources/shoppingCart.js?v=2025.1.32"></script>	
+	<script src="/ssweb/resources/printjs/print.min.js">	</script>
+	<script src="/ssweb/resources/js/context-menu-min.js"></script>
+	
+	<script>
+	$(document).bind( 'mobileinit', function(){
+		$.mobile.loader.prototype.options.html = 	'<div class="cssload-container">\n' +
+			'			<ul class="cssload-loader">\n' +
+			'				<li></li><li></li><li></li><li></li><li></li><li></li>\n' +
+			'			</ul>\n' +
+			'		</div>\n' +
+			'		<div class="modal-overlay"></div>';
+	});
+	</script>
+<!--         When we upgrade to jqm 1.5 remove the jquery tabs override script -->
+	<script src="/ssweb/resources/jquery.mobile-1.4.5.js"></script>
+<!-- 	The following script is to fix a bug with jquery mobile and should be removed when we upgrade to jquerymobile 1.5 -->
+	<script src="/ssweb/resources/js/jqueryTabsOverride.js"></script>
+
+	
+	<script src="/ssweb/controller/messageStrings.js?v=2025.1.32"></script>
+
+	<script src="/ssweb/resources/jquery.mousewheel.js?v=2025.1.32"></script>
+	<script src="/ssweb/resources/jtsage-datebox-4.1.0.js"></script>
+</head>
+<body>
+	<div class="ss-page ui-alt-icon ui-nodisc-icon" data-role="page" id="SelfService-1788971020357-page" data-dom-cache="false">
+		<script>
+		var selectedLanguage = 'en';
+		</script>
+		<!-- HEADER	-->
+		<div id="ss-header-box" class="ss-header" data-role="header" data-position="fixed" data-tap-toggle="false">
+			<div class="ss-header-stripe-top"></div>
+			<div class="ss-content">
+				
+				
+				<div class="ss-header-title">
+					<div class="ss-header-internal">
+						<h1><a href="https://occompt.com/">COMPTROLLER</a> <a href="https://occompt.com/">PHIL DIAMOND, CPA
+<br />ORANGE COUNTY, FLORIDA</a></h1>
+						
+					</div>
+				</div>
+				
+
+				<div class="ss-header-actions">
+					
+
+
+
+
+
+
+
+
+	<a href="#SelfService-1788971020357-languagePanel" class="ss-header-actions-language">
+		<span class="ss-header-labels" id="ss-general-label">Language</span>
+	</a>
+
+
+
+					<div class="ss-clear"></div>
+				</div>
+				<div class="ss-clear"></div>
+			</div>
+			<div class="ss-header-stripe-bottom">
+				<div class="ss-content">
+					<div id="ss-user-welcome" class="ss-footer-internal-small">
+						
+							
+							
+							
+							
+						
+						<span id="subscriptionTimer" class="ss-footer-internal-small-left-align"></span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- BODY -->
+		<div data-role="content">
+			<div class="ss-content">
+				
+
+
+
+
+<ul class="ss-listview ss-utility-box" data-role="listview" data-inset="true" data-theme="a" id="SelfService-1788971020357-disclaimerContent">
+	<li data-role="list-divider" data-theme="a" style="text-align: center;">Disclaimer Content</li>
+	<li class="ss-listview-internal" style="background: none; border: none;">
+		<p>
+This search site is provided as a service to our customers. We make no warranty or guarantee regarding the accuracy or reliability of the content on this site or other sites to which we are linked. All data contained herein is subject to change without notice.
+
+</p>
+
+<p>
+
+<br />
+
+</p>
+
+<p>
+By using this service, in any form, the user agrees to indemnify and hold harmless the Orange County Comptroller and anyone involved in storing, retrieving, or displaying this information for any damage of any type that may be caused by retrieving this information over the Internet.
+
+</p>
+
+<p>
+
+<br />
+
+</p>
+
+<p>
+Users should remember that the index is similar to a library card catalog. It is a guide to the information contained within the documents referenced and should not be relied upon in making any decision or determination regarding the underlying document.
+
+</p>
+
+<p>
+
+<br />
+
+</p>
+
+<p>
+The user is advised to search all possible spelling variations of names, as well as other search criteria, to maximize search results.
+
+</p>
+
+<p>
+
+<br />
+
+</p>
+
+<p>
+For additional assistance, please contact our Official Records Call Center during business hours at (407) 836-5115.
+
+</p>
+
+<p>
+
+<br />
+
+</p>
+
+<p>
+If you choose not to accept the conditions stated above, please click the Back button to exit this search application.
+
+</p>
+
+
+	</li>
+</ul>
+
+	<form class="center"  method="POST">	
+		<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+		<div class="g-recaptcha center" style="display:inline-block" data-sitekey="6LemVGAUAAAAAB_iW1wbaE4_s0Z5SoSakm6GI8St" data-callback="onReturnRecaptchaCallback"></div>
+<!-- 		<button id="submit" type="submit" class="left" style="width:10em;">Submit</button> -->
+	</form>
+	<script type="text/javascript">
+	var onReturnRecaptchaCallback = function(response) { 
+		$.ajax({ 'url' : '/ssweb/checkHuman', 
+			type: "POST",
+			data: {"g-recaptcha-response" : grecaptcha.getResponse()},
+			success: function( data  ) { 		
+				if(data == true){
+	        		$("#submitDisclaimerAccept").prop('disabled', false);					
+				}
+	         } 
+	    }); // end of $.ajax 
+	}; // end of onReturnCallback 
+	</script>
+
+<button id="submitDisclaimerAccept" type="submit" class="center" style="width:10em;">I Accept</button>
+<script>
+var disclaimerAcceptButton = $('#submitDisclaimerAccept');
+
+disclaimerAcceptButton.prop('disabled', true);
+
+disclaimerAcceptButton.on('click', function(event) {
+	event.preventDefault();
+	disclaimerAcceptButton.prop('disabled', true);
+	disclaimerAcceptButton.html('Please wait...');
+	$('.ss-validation-messages').empty();
+	var submitUrl = $('#SelfService-1788971020357-disclaimerForm').attr('action');
+	
+		
+			var redirectUrl = "/ssweb/search/DOCSEARCH2950S1";
+		
+		
+	
+	console.log("Redirect URL: " + redirectUrl);
+
+	$.ajax({
+		type: 'POST',
+		url: submitUrl,
+		dataType: 'json',
+		success: function (response) {
+			disclaimerAcceptButton.prop('disabled', false);
+			disclaimerAcceptButton.html('I Accept');
+			selfservice.redirect(redirectUrl, true);
+		},
+		error: function(jqXHR, textStatus, errorThrown) {}
+	});
+});
+</script>
+			</div>
+		</div>
+
+		<!-- POPUPS	-->
+		
+
+
+
+
+
+
+
+	
+
+
+
+
+
+<div data-role="popup" id="SelfService-1788971020357-passwordChange-popup" class="ss-password-change-popup ui-content" data-history="false" data-position-to="window" data-transition="slide">
+	<a href="#" data-rel="back" data-role="button" data-icon="delete" data-iconpos="notext" class="ui-btn-right">Close</a>
+	<div id="SelfService-1788971020357-passwordChangeInternal" class="ss-password-change-popup-internal"></div>
+</div>
+
+<script>
+
+var passwordChangeUrl = "/ssweb/user/passwordChange";
+$("#SelfService-1788971020357-passwordChange-popup").on("popupbeforeposition", function() {
+	$("#SelfService-1788971020357-passwordChangeInternal").load(passwordChangeUrl, function() {
+		$("#SelfService-1788971020357-passwordChangeInternal").trigger("create");
+		$("#SelfService-1788971020357-passwordChange-popup").trigger("updatelayout");
+		$.mobile.activePage.trigger("pagecreate");
+	});
+});
+
+$("#SelfService-1788971020357-passwordChange-popup").on("popupafteropen", function() {	
+	$("#SelfService-1788971020357-passwordChange-popup").popup("reposition", "positionTo: window");
+});
+
+$("#SelfService-1788971020357-passwordChange-popup").on("popupafterclose", function() {
+	$("#field_OldPassword").val("");
+	$("#field_NewPassword").val("");
+	$("#field_ConfirmPassword").val("");
+});	
+</script>
+
+		
+		
+
+
+
+
+
+
+<div data-role="popup" id="SelfService-1788971020357-session-popup" data-dismissible="false" data-history="false" data-position-to="window" data-overlay-theme="a"
+		class="ui-page-theme-a ui-content ui-alt-icon ui-nodisc-icon" data-transition="slide" style="background: white;">
+	<div data-role="header" class="ss-receipt-width" style="background-color: #06c; line-height: 1.3; margin: 0.9em;">
+		<h1 style="font-size: 1.3em; padding: 1em 1.5em; color: white; font-weight: normal; text-overflow: inherit; overflow: visible;">Session about to time out</h1> 
+	</div>
+	<div style="padding: 10px; background-color: white;">
+		<h2>Do you need more time? <span id="remainingTime"></span></h2>
+		<button id="SelfService-1788971020357-session-continue" type="button" class="ui-btn ui-corner-all ui-shadow ui-btn-b ui-btn-icon-left ui-icon-check">
+		Yes - Continue
+		</button>
+		<button id="SelfService-1788971020357-session-logout" type="button" class="ui-btn ui-corner-all ui-shadow ui-btn-b ui-btn-icon-left ui-icon-delete">
+		No - Start Over
+		</button>
+	</div>
+</div>
+
+<script>
+
+selfservice.countdown.continueButton = $('#SelfService-1788971020357-session-continue');
+selfservice.countdown.element = $('#remainingTime');
+selfservice.countdown.logoutButton = $('#SelfService-1788971020357-session-logout');
+selfservice.pages.check = '/ssweb/session/checkSession';
+selfservice.pages.home = '/ssweb/';
+selfservice.pages.logout = '/ssweb/user/logout';
+selfservice.pages.ping = '/ssweb/session/pingSession';
+selfservice.session.logoutError = 'An error occurred while logging out. Please try again.';
+selfservice.session.timeoutElement = $('#SelfService-1788971020357-session-popup');
+
+
+selfservice.countdown.continueButton.on('click', function (event) {
+	selfservice.countdown.continueButton.prop('disabled', true);
+	selfservice.countdown.logoutButton.prop('disabled', true);
+
+	selfservice.session.continueSession();
+
+	selfservice.countdown.continueButton.prop('disabled', false);
+	selfservice.countdown.logoutButton.prop('disabled', false);
+
+	selfservice.session.timeoutElement.popup('close');
+});
+
+selfservice.countdown.logoutButton.on('click', function (event) {
+	
+	selfservice.countdown.logoutButton.prop('disabled', true);
+	selfservice.countdown.logoutButton.html('Logging out...');
+	selfservice.countdown.continueButton.prop('disabled', true);
+
+	selfservice.session.logout();
+
+	selfservice.countdown.continueButton.prop('disabled', false);
+	selfservice.countdown.logoutButton.html('No - Start Over');
+	selfservice.countdown.logoutButton.prop('disabled', false);
+});
+
+selfservice.session.timeoutElement.on('popupafterclose', function (event) {
+	
+	selfservice.countdown.endCount();
+});
+</script>
+
+		<!-- PANELS	-->
+		
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+<div id="SelfService-1788971020357-cartPanel" class="ss-panel-cart" data-role="panel" data-position="right" data-display="overlay" data-position-fixed="true">
+	<div id="SelfService-1788971020357-cartPanelInternal" class="ss-panel-cart-internal" style="height:100%;"></div>
+</div>
+<script>
+
+$("#SelfService-1788971020357-cartPanel").on("panelcreate", function() {
+	$("#SelfService-1788971020357-cartPanelInternal").data("cartUrl", "/ssweb/cart/embedded?includeButtons=true&request=" + new Date().getTime());
+	$("#SelfService-1788971020357-cartPanelInternal").css("max-height", $( window ).height() -20);
+	reloadShoppingCart($("#SelfService-1788971020357-cartPanelInternal"));
+});
+	
+$("#SelfService-1788971020357-cartPanel").on("panelbeforeopen", function() {
+	$("#SelfService-1788971020357-cartPanelInternal").data("cartUrl", "/ssweb/cart/embedded?includeButtons=true&request=" + new Date().getTime());
+	reloadShoppingCart($("#SelfService-1788971020357-cartPanelInternal"));
+});
+	
+$("#SelfService-1788971020357-cartPanel").on("panelopen", function() {	
+	$("#shoppingCartProceedToCheckoutButton").focus();
+});	
+</script>
+  <br/>
+
+  
+
+
+
+
+
+
+<div id="SelfService-1788971020357-loginPanel" class="ss-panel-login" data-role="panel" data-position="right" data-display="overlay" data-position-fixed="true">
+	<div id="SelfService-1788971020357-loginPanelInternal" class="ss-panel-login-internal"></div>
+</div>
+
+<script>
+
+var loginUrl = "/ssweb/user/login";
+$("#SelfService-1788971020357-loginPanel").on("panelbeforeopen", function() {
+	$("#SelfService-1788971020357-loginPanelInternal").load(loginUrl + "?request=" + new Date().getTime(), function() {
+		$("#SelfService-1788971020357-loginPanelInternal").trigger("create");
+		$("#SelfService-1788971020357-loginPanel").trigger("updatelayout");
+		$.mobile.activePage.trigger("pagecreate");
+		$("#field_ForceLogoff").parent().hide();
+	});
+}).on("panelopen", function() {
+	$("#field_UserId").focus();
+});
+</script>
+  <br/>
+
+  
+
+
+
+
+
+
+<div id="SelfService-1788971020357-languagePanel" class="ss-panel-language" data-role="panel" data-position="right" data-display="overlay" data-position-fixed="true">
+	<div id="SelfService-1788971020357-languagePanelInternal" class="ss-panel-language-internal"></div>
+</div>
+
+<script>
+
+var languageUrl = "/ssweb/user/language";
+$("#SelfService-1788971020357-languagePanel").on("panelbeforeopen", function() {
+	$("#SelfService-1788971020357-languagePanelInternal").load(languageUrl + "?request=" + new Date().getTime(), function() {
+		$("#SelfService-1788971020357-languagePanelInternal").trigger("create");
+		$("#SelfService-1788971020357-languagePanel").trigger("updatelayout");
+		$.mobile.activePage.trigger("pagecreate");
+	});
+}).on("panelopen", function() {
+	$("#language-en").focus();
+});
+</script>
+  <br/>
+
+
+		<script>
+		
+		jQuery.cachedScript = function( url, options ) {
+			
+			options = $.extend( options || {}, {
+				dataType: 'script',
+				cache: true,
+				url: url
+			});
+
+			
+			return jQuery.ajax( options );
+		};
+
+		$('#SelfService-1788971020357-page').on('pageinit', function() {
+			
+			selfservice.countdown.timer();
+		});
+
+		$(document.body).on("blur", 'input[data-role="datebox"]', function(event){
+			selfservice.parseDate(event.target);
+		});
+		</script>
+
+		<!-- FOOTER -->
+		<div id="ss-footer-box" class="ss-footer" data-role="footer" data-position="fixed" data-tap-toggle="false">
+			
+<div class="ss-footer-stripe"></div>
+			<div class="ss-content">
+				<div class="ss-footer-internal-small">
+					&copy;&nbsp;Copyright 2014-2025 Tyler Technologies&nbsp;|&nbsp;Version 2025.1.32
+				</div>
+			</div>
+		</div>
+	</div>
+	<script>
+	
+	function initializeSessionTimerChecks() {
+		if (selfservice.mode.kioskMode == undefined) {
+			var test = 'false';
+			if (!test) {
+				selfservice.mode.kioskMode = false;
+			} else {
+				selfservice.mode.kioskMode = booleanValue('false');
+			}
+		}
+
+		if (selfservice.session.userLoggedIn == undefined) {
+			selfservice.session.userLoggedIn = booleanValue('false');
+		}
+
+		if (selfservice.url.homePage == undefined) {
+			selfservice.url.homePage = window.location.origin + '/ssweb/';
+		}
+		if(selfservice.setting.showDisclaimer == undefined){
+			selfservice.setting.showDisclaimer = booleanValue('true')
+		}
+	
+		if( selfservice.pages.disclaimer == undefined){
+			 selfservice.pages.disclaimer = '/ssweb/user/disclaimer';
+		}
+	}
+
+	$(document).keydown(function(e) {
+		selfservice.maybeScrollScreen(e);
+	});
+
+	$(document).on('pageinit', function(event) {
+		initializeSessionTimerChecks();
+
+		
+		selfservice.session.continueSession();
+
+		
+			var subscriptionTimerId = $('#subscriptionTimer').attr('id');
+			selfservice.subscriptionTimer.setSubscriptionTime(subscriptionTimerId, '/ssweb/subscription/getSubscriptionTime');
+		});
+
+	$( document ).ajaxComplete(function( event, request, settings ) {
+		if(request.getResponseHeader('isThresholdReached') === "true"){
+			location.reload();
+		}
+	});
+	
+	$.ajaxSetup({
+	    beforeSend: function(xhr) {
+	        xhr.setRequestHeader('ajaxRequest', true);
+	    }
+	});
+
+	function removeDisclaimerCookie(){
+		var context = "/ssweb/";
+		context = context.split('/').join('')
+		document.cookie = "disclaimerAccepted=; Path=/" + context + "; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+	}
+	
+	</script>
+</body>
+</html>

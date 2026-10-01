@@ -12,14 +12,55 @@ FLORIDA_SCRAPE_JS = """
   const data = {};
   const clean = (t) => (t || '').replace(/\\s+/g, ' ').trim();
 
+  const set = (key, val) => {
+    const v = clean(val);
+    if (key && v && v.length < 1000) data[key.toLowerCase()] = v;
+  };
+
+  const byId = (id, key) => {
+    const el = document.getElementById(id);
+    if (el) set(key || id.replace(/_/g, ' '), el.innerText || el.textContent);
+  };
+
+  // Baker PA and similar county PHP detail pages
+  byId('main_parcel', 'parcel id');
+  byId('owner_name', 'owner name');
+  byId('site_address', 'site address');
+  byId('mailing1', 'mailing address');
+  byId('legal', 'legal description');
+  byId('use_cd', 'property use');
+  byId('tax_dist', 'taxing district');
+  byId('exemptions', 'exemptions');
+  byId('mkt', 'market value');
+  byId('tax_val_co', 'assessed value');
+  byId('land_cm', 'land value');
+  byId('bld', 'building value');
+  byId('acres', 'land size');
+
+  const csz = document.getElementById('csz');
+  if (csz && data['mailing address']) {
+    data['mailing address'] = clean(data['mailing address'] + ' ' + (csz.innerText || csz.textContent || ''));
+  }
+
+  // Subhead label rows: Owner / Site Address / etc.
+  document.querySelectorAll('.subhead, .subHead').forEach((label) => {
+    const key = clean(label.innerText || label.textContent).replace(/:$/, '');
+    const row = label.closest('.row, tr, li, .mailingadd, div');
+    if (!row) return;
+    const valueEl = row.querySelector('[id], .namespan, .mailwrapper span:not(.subhead), .citystz, td:last-child, .value');
+    if (valueEl && valueEl !== label) {
+      set(key, valueEl.innerText || valueEl.textContent);
+    }
+  });
+
   // Label / value pairs in tables and definition lists
-  document.querySelectorAll('tr, dl, .row, .detail-row, .property-row, mat-row').forEach(row => {
-    const cells = row.querySelectorAll('th, td, dt, dd, label, span, div');
+  document.querySelectorAll('tr, dl, .detail-row, .property-row, mat-row').forEach(row => {
+    const cells = row.querySelectorAll('th, td, dt, dd');
     if (cells.length < 2) return;
     const key = clean(cells[0].innerText || cells[0].textContent);
     const val = clean(cells[1].innerText || cells[1].textContent);
     if (key && val && key.length < 80 && val.length < 500 && key !== val) {
-      data[key.toLowerCase()] = val;
+      set(key, val);
     }
   });
 
@@ -31,18 +72,26 @@ FLORIDA_SCRAPE_JS = """
     if (!parent) return;
     const valEl = parent.querySelector('.value, .field-value, span:not(label span), p, div:nth-child(2)');
     const val = valEl ? clean(valEl.innerText || valEl.textContent) : '';
-    if (val && val !== key) data[key.toLowerCase()] = val;
+    if (val && val !== key) set(key, val);
   });
 
-  // Headings with adjacent content (common on SPA detail pages)
   document.querySelectorAll('h1, h2, h3, h4, .card-title, .section-title').forEach(h => {
-    const key = clean(h.innerText || h.textContent).replace(/:$/, '');
+    const text = clean(h.innerText || h.textContent);
+    const parcelHeading = text.match(/Parcel\\s*ID:?\\s*([\\w.-]+)/i);
+    if (parcelHeading) set('parcel id', parcelHeading[1]);
     const sib = h.nextElementSibling;
-    if (key && sib) {
+    if (sib) {
       const val = clean(sib.innerText || sib.textContent);
-      if (val && val.length < 500) data[key.toLowerCase()] = val;
+      if (val && val.length < 500) set(text.replace(/:$/, ''), val);
     }
   });
+
+  const urlMatch = location.href.match(/[?&]parcel=([^&#]+)/i)
+    || location.href.match(/[?&]folio=([^&#]+)/i)
+    || location.href.match(/[?&]pin=([^&#]+)/i);
+  if (urlMatch && !data['parcel id']) {
+    set('parcel id', decodeURIComponent(urlMatch[1]));
+  }
 
   return data;
 }
@@ -162,6 +211,67 @@ def _pick_field(data: dict[str, Any], *keys: str) -> Optional[str]:
     return None
 
 
+def _parcel_from_url(source_url: str) -> Optional[str]:
+    if not source_url:
+        return None
+    for pattern in (
+        r"[?&]parcel=([^&#]+)",
+        r"[?&]folio=([^&#]+)",
+        r"[?&]pin=([^&#]+)",
+        r"#/?folio/([^/?&#]+)",
+    ):
+        match = re.search(pattern, source_url, re.I)
+        if match:
+            return _clean(match.group(1))
+    return None
+
+
+def _extract_labeled_detail_fields(soup: BeautifulSoup) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for el_id, key in (
+        ("main_parcel", "parcel id"),
+        ("owner_name", "owner name"),
+        ("site_address", "site address"),
+        ("mailing1", "mailing address"),
+        ("legal", "legal description"),
+        ("use_cd", "property use"),
+        ("tax_dist", "taxing district"),
+        ("exemptions", "exemptions"),
+        ("mkt", "market value"),
+        ("tax_val_co", "assessed value"),
+        ("land_cm", "land value"),
+        ("bld", "building value"),
+        ("acres", "land size"),
+    ):
+        node = soup.select_one(f"#{el_id}")
+        if node:
+            data[key] = _clean(node.get_text(" ", strip=True))
+
+    csz = soup.select_one("#csz")
+    if csz and data.get("mailing address"):
+        data["mailing address"] = _clean(f"{data['mailing address']} {csz.get_text(' ', strip=True)}")
+
+    for label in soup.select(".subhead, .subHead"):
+        key = _clean(label.get_text())
+        if not key:
+            continue
+        key = key.rstrip(":").lower()
+        row = label.find_parent(class_=re.compile(r"row|mailingadd", re.I)) or label.parent
+        if not row:
+            continue
+        value_parts: list[str] = []
+        for span in row.select("span, div"):
+            classes = " ".join(span.get("class") or [])
+            if span is label or "subhead" in classes.lower():
+                continue
+            text = _clean(span.get_text(" ", strip=True))
+            if text and text.lower() != key:
+                value_parts.append(text)
+        if value_parts:
+            data[key] = _clean(" ".join(value_parts))
+    return data
+
+
 def parcel_record_from_florida_data(data: dict[str, Any], source_url: str = "") -> ParcelRecord:
     apn = _pick_field(
         data,
@@ -175,7 +285,8 @@ def parcel_record_from_florida_data(data: dict[str, Any], source_url: str = "") 
         "property id",
         "tax id",
         "strap",
-    )
+        "main parcel",
+    ) or _parcel_from_url(source_url)
     owner = _pick_field(
         data,
         "owner",
@@ -211,6 +322,7 @@ def parcel_record_from_florida_data(data: dict[str, Any], source_url: str = "") 
         "total value",
         "land value",
         "building value",
+        "tax value",
     )
 
     sales: list[dict[str, Any]] = []
@@ -358,19 +470,25 @@ def _split_florida_pa_owner(owner_block: str) -> tuple[str | None, str | None, s
 
 
 def _florida_pa_sales_to_chain(sales: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from app.extraction.assessor_book_page import is_valid_sale_date
+
     chain: list[dict[str, Any]] = []
     for sale in sales:
         if not isinstance(sale, dict):
             continue
+        sale_date = sale.get("sale_date")
+        if not is_valid_sale_date(sale_date):
+            continue
         chain.append(
             {
-                "recording_date": sale.get("sale_date"),
+                "recording_date": sale_date,
                 "sale_price": _parse_value(sale.get("sale_price")),
                 "book_page": sale.get("book_page"),
                 "document_type": sale.get("deed_type") or "Sale",
                 "instrument_number": None,
                 "grantor": None,
                 "grantee": None,
+                "recorder_url": sale.get("recorder_url"),
             }
         )
     return chain
@@ -428,7 +546,7 @@ def parcel_record_from_florida_pa_detail(data: dict[str, Any], source_url: str =
 
 def extract_florida_parcel_from_html(html: str, source_url: str = "") -> ParcelRecord:
     soup = BeautifulSoup(html, "lxml")
-    data: dict[str, Any] = {}
+    data: dict[str, Any] = _extract_labeled_detail_fields(soup)
 
     for row in soup.select("tr"):
         cells = row.find_all(["td", "th"])
@@ -626,6 +744,35 @@ MIAMI_DADE_DETAIL_JS = """
     return null;
   };
 
+  const extractSalesDomTable = (title) => {
+    const el = findSectionElement(title);
+    if (!el) return null;
+    let container = el.parentElement;
+    for (let i = 0; i < 6 && container; i++) {
+      const table = container.querySelector('table');
+      if (table) {
+        const grid = [...table.querySelectorAll('tr')]
+          .map((tr) => [...tr.querySelectorAll('th, td')].map((c) => {
+            const link = c.querySelector('a[href]');
+            return {
+              text: norm(c.innerText),
+              href: link && link.href ? link.href : null,
+            };
+          }))
+          .filter((r) => r.some((cell) => cell.text));
+        if (grid.length >= 2) {
+          return {
+            headers: grid[0].map((c) => c.text),
+            rows: grid.slice(1).map((r) => r.map((c) => c.text)),
+            row_links: grid.slice(1).map((r) => r.map((c) => c.href)),
+          };
+        }
+      }
+      container = container.parentElement;
+    }
+    return null;
+  };
+
   const findSectionElement = (title) => {
     const target = title.toUpperCase();
     for (const el of document.querySelectorAll('div, span, h2, h3, h4, th, label, p')) {
@@ -753,7 +900,7 @@ MIAMI_DADE_DETAIL_JS = """
       for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
         if (/^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$/.test(lines[j])) break;
         if (!row[1] && /^\\$/.test(lines[j])) row[1] = lines[j];
-        else if (!row[2] && /\\d+\\s*\\/\\s*\\d+/.test(lines[j])) row[2] = lines[j];
+        else if (!row[2] && /\\d+\\s*[\\/-]\\s*\\d+/.test(lines[j])) row[2] = lines[j];
         else if (!row[3] && lines[j].length > 8 && !/^\\$/.test(lines[j]) && !/^[A-Z ]{2,15}$/.test(lines[j])) row[3] = lines[j];
         else if (!row[4] && /^[A-Z]/.test(lines[j]) && lines[j].length > 4) row[4] = lines[j];
       }
@@ -819,7 +966,7 @@ MIAMI_DADE_DETAIL_JS = """
     sectionBlocks['taxable value information'] || '',
     parseTaxableTable,
   );
-  data.sales_information_table = pickTable(
+  data.sales_information_table = extractSalesDomTable('SALES INFORMATION') || pickTable(
     'SALES INFORMATION',
     sectionBlocks['sales information'] || '',
     parseSalesTableText,
@@ -840,14 +987,20 @@ MIAMI_DADE_DETAIL_JS = """
     parseExtraFeaturesTable,
   );
 
-  data.sales_history = (data.sales_information_table.rows || []).map((row) => ({
-    sale_date: row[0] || '',
-    sale_price: row[1] || '',
-    book_page: row[2] || '',
-    qualification: row[3] || '',
-    previous_owner: row[4] || '',
-    deed_type: 'Sale',
-  }));
+  data.sales_history = (data.sales_information_table.rows || [])
+    .map((row, idx) => {
+      const links = data.sales_information_table.row_links || [];
+      return {
+        sale_date: row[0] || '',
+        sale_price: row[1] || '',
+        book_page: row[2] || '',
+        qualification: row[3] || '',
+        previous_owner: row[4] || '',
+        recorder_url: (links[idx] && links[idx][2]) || null,
+        deed_type: 'Sale',
+      };
+    })
+    .filter((entry) => /^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$/.test(entry.sale_date));
 
   const legalText = sectionBlocks['full legal description'] || '';
   if (legalText) {

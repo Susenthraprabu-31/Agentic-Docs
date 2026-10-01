@@ -31,7 +31,7 @@ import {
 import { getSidebarNode, createNodeFromCatalog } from "../../lib/nodeCatalog";
 import { serializePipelineGraph, validatePipelineGraph, PipelineGraph, NODE_ID_TO_EVENT } from "../../lib/pipelineGraph";
 import { PIPELINE_GRAPH } from "../../lib/pipelineStatus";
-import { createSearch, getReportByRun } from "../../api/client";
+import { cancelRun, createSearch, getReportByRun } from "../../api/client";
 import { useRunStream } from "../../hooks/useRunStream";
 import { PipelineNodeData } from "../../lib/defaultPipeline";
 import { WorkflowRecord, saveWorkflow, downloadWorkflowAsJson } from "../../api/workflows";
@@ -60,6 +60,7 @@ function EditorCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState(DEFAULT_NODES);
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [lastRunGraph, setLastRunGraph] = useState<PipelineGraph | null>(null);
@@ -73,7 +74,11 @@ function EditorCanvas() {
   /** Increments each time Run is clicked — signals RightConfigPanel to switch to Output tab */
   const [runTrigger, setRunTrigger] = useState(0);
 
-  const { runDetail, events, connected, liveFrame } = useRunStream(activeRunId || undefined);
+  const { runDetail, events, connected, liveFrame, refresh: refreshRun } = useRunStream(activeRunId || undefined);
+
+  const isPipelineRunning =
+    Boolean(activeRunId) &&
+    (runDetail?.run.status === "running" || runDetail?.run.status === "pending");
   const reportFetchRef = useRef<string | null>(null);
 
   // Selected node data
@@ -222,6 +227,18 @@ function EditorCanvas() {
         continue;
       }
 
+      const isStarted = events.some(
+        (e) =>
+          (e.event_type === "node_started" && (e.payload?.node === backendName || e.payload?.step_node_id === nodeId)) ||
+          (e.event_type === "pipeline_step" && (e.payload?.node === backendName || e.payload?.step_node_id === nodeId)) ||
+          (e.event_type === "source_started" && sourceKey && e.source === sourceKey)
+      );
+
+      if (runStatus === "cancelled") {
+        map[canvasId] = isStarted ? "failed" : "skipped";
+        continue;
+      }
+
       // If run itself is completed, any node that wasn't failed or skipped is done
       if (runStatus === "completed") {
         map[canvasId] = "done";
@@ -229,12 +246,6 @@ function EditorCanvas() {
       }
 
       // 3. Check if currently running / working
-      const isStarted = events.some(
-        (e) =>
-          (e.event_type === "node_started" && (e.payload?.node === backendName || e.payload?.step_node_id === nodeId)) ||
-          (e.event_type === "pipeline_step" && (e.payload?.node === backendName || e.payload?.step_node_id === nodeId)) ||
-          (e.event_type === "source_started" && sourceKey && e.source === sourceKey)
-      );
       if (isStarted) {
         map[canvasId] = "running";
         continue;
@@ -562,6 +573,20 @@ function EditorCanvas() {
     }
   }, [nodes, edges]);
 
+  const onStop = useCallback(async () => {
+    if (!activeRunId || stopping) return;
+    setStopping(true);
+    setError(null);
+    try {
+      await cancelRun(activeRunId);
+      await refreshRun();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to stop pipeline");
+    } finally {
+      setStopping(false);
+    }
+  }, [activeRunId, stopping, refreshRun]);
+
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
     setShowRightPanel(true);
@@ -709,18 +734,33 @@ function EditorCanvas() {
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={onRun}
-                disabled={loading}
-                className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold transition-colors shadow-lg shadow-violet-900/30 flex items-center gap-1.5"
-              >
-                {loading ? (
-                  <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Running...</>
-                ) : (
-                  <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg> Run Pipeline</>
-                )}
-              </button>
+              {isPipelineRunning ? (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  disabled={stopping}
+                  className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold transition-colors shadow-lg shadow-red-900/30 flex items-center gap-1.5"
+                >
+                  {stopping ? (
+                    <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Stopping...</>
+                  ) : (
+                    <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z" /></svg> Stop Pipeline</>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onRun}
+                  disabled={loading}
+                  className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold transition-colors shadow-lg shadow-violet-900/30 flex items-center gap-1.5"
+                >
+                  {loading ? (
+                    <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Starting...</>
+                  ) : (
+                    <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg> Run Pipeline</>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </header>

@@ -1,0 +1,130 @@
+
+<!DOCTYPE html>
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE9;chrome=1;" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+
+<script type="text/javascript">  
+	
+var bIE = false;
+var bIE8 = false;
+var bIE10 = false;
+
+var bOpera = false;
+var bChrome = false;
+var bAndroid = false;
+var bIpad = false;
+var bMobile = false;
+var bNarrow = false;
+var cW = 768;
+var cH = 1024;
+var minScreenWidth = 1;
+
+
+
+if (document.all) {bIE = true;}
+
+var browser = navigator.userAgent;
+var location_pathName = location.pathname;
+
+//console.log('location_pathName=' + location_pathName + ' | location_pathName.indexOf=' + location_pathName.indexOf("gisSideMenu_3_Details"));
+
+if (location_pathName.indexOf("gisSideMenu_3_Details") == -1) {
+
+
+		if (bIE) {
+		cW = document.documentElement.clientWidth;
+		cH = document.documentElement.clientHeight;
+		} 
+		else
+		{
+		cW = window.innerWidth;
+		cH = window.innerHeight;
+		} //if (bIE) {
+
+		if (cH < cW) {
+		minScreenWidth = cH;
+		} else {
+		minScreenWidth = cW;
+		}
+
+		if (minScreenWidth < 500) {
+		bNarrow = true;
+		}
+
+	//console.log('SET: cW=' + cW + '| cH=' + cH + ' | location_pathName.indexOf=' + location_pathName.indexOf("gisSideMenu_3_Details"));
+
+} //if (location_pathName.indexOf("gisSideMenu_3_Details") == 0) {
+
+if (browser.indexOf('Opera') != -1) {bOpera = true;}
+if (browser.indexOf('Chrome') != -1) {bChrome = true;}
+if (browser.indexOf('MSIE 8.0') != -1) {bIE8 = true;}
+if (browser.indexOf('MSIE 10') != -1 || browser.indexOf('MSIE 7') != -1) {bIE10 = true;}
+if (browser.indexOf('Android') != -1) {bAndroid = true; bMobile = true;} 
+if (browser.indexOf('iPad') != -1 || browser.indexOf('iPhone') != -1) {bIpad = true; bMobile = true;}
+
+//alert('cW=' + cW + '| cH=' + cH + ' | minScreenWidth='+minScreenWidth);
+//if (cW > 0 &&  cW < 500) bNarrow = true;
+//bNarrow = false;
+</script>
+
+
+
+<script type="text/javascript"> 
+	
+    var serverName = location.hostname;
+    var strCounty = 'DesotoPA'
+    var mapPath = '/www/_grizzly.gis/gis.DesotoPA.com/';
+    var countyDomain = 'DesotoPA.com';
+    var proxyURL = 'https://' + serverName + '/proxy/?'
+    
+    var directMapserverURL = 'https://gz.floridapa.com/mapserver/'
+
+    
+    var currentDomainTileServer_URL = 'https://' + serverName +  '/GIS_Server/'
+    var tileServerURL_array = ['https://www.desotopa.com/GIS_Server/'];
+    
+
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+ <title>DeSoto County Property Appraiser</title>
+ 
+
+</head>
+<BODY onload="submitForm();">
+<form name="TaxPAsearchForm" id="TaxPAsearchForm" action="https://www.desotopa.com/gis/" method="POST">
+<input type="hidden" name="clientWidth">
+<input type="hidden" name="clientHeight">
+<input type="hidden" name="clientOrientation">
+<input type="hidden" name="bHandoff" value="">
+<input type="hidden" name="bHandoff_PIN" value="">
+<input type="hidden" name="bHandoff_saleBook" value="">
+<input type="hidden" name="bHandoff_salePage" value="">
+<input type="hidden" name="requestQueryString" value="">
+</form>
+
+
+<script type="text/javascript">
+    function submitForm() {
+        if (document.all) {
+            inW = document.body.clientWidth;
+            inH = document.body.clientHeight;
+        }
+        else {
+            inW=window.innerWidth;
+            inH=window.innerHeight;
+        }
+
+        document.TaxPAsearchForm.clientWidth.value	= "inW";
+        document.TaxPAsearchForm.clientHeight.value = "inH";
+        document.TaxPAsearchForm.clientOrientation.value = "window.orientation";
+    
+        document.TaxPAsearchForm.submit();
+    } //func
+</script>
+</BODY>

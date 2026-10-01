@@ -1,0 +1,594 @@
+<!--commented dvwerne 5/25-->
+<!--<div class="container">
+    <div class="header">
+        <img src="/CDN/Banner/banner.jpg" class="img-responsive hidden-xs" alt="Miami-Dade County Property Appraiser">
+        <img src="/CDN/Banner/banner-small-device.png" class="img-responsive visible-xs" alt="Miami-Dade County Property Appraiser">
+    </div>
+    <nav class="navbar navbar-default" role="navigation">-->
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <!--<div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+        </div>-->
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <!--<div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul id="site_nav" class="nav navbar-nav">
+                <li style="width: 8%"><a href="http://www.miamidade.gov/pa/home.asp" target="_blank" class="two_line_fix">Home</a></li>
+                <li style="width: 16%"><a href="http://www.miamidade.gov/pa/exemptions.asp" target="_blank">Exemptions &amp;<br />
+                    Other Benefits</a></li>
+                <li style="width: 8%"><a href="http://www.miamidade.gov/pa/real_estate.asp" target="_blank">Real<br />
+                    Estate</a></li>
+                <li style="width: 18%"><a href="http://www.miamidade.gov/pa/property_tangible.asp" target="_blank">Tangible<br>
+                    Personal Property</a></li>
+                <li style="width: 9%"><a href="http://www.miamidade.gov/pa/public_records.asp" target="_blank">Public<br />
+                    Records</a></li>
+                <li style="width: 8.5%"><a href="http://www.miamidade.gov/pa/online_tools.asp" target="_blank">Online<br />
+                    Tools</a></li>
+                <li style="width: 16%"><a href="http://www.miamidade.gov/pa/roll-administration.asp" target="_blank">Tax Roll<br>
+                    Administration</a></li>
+                <li style="width: 8%"><a href="http://www.miamidade.gov/pa/about_us.asp" target="_blank">About<br>
+                    Us</a></li>
+                <li style="width: 8%"><a href="http://www.miamidade.gov/pa/contact.asp" target="_blank">Contact<br>
+                    Us</a></li>
+            </ul>
+        </div>-->
+        <!-- /.navbar-collapse -->
+    <!--</nav>
+</div>-->
+<!-- /.container -->
+
+<div class="container">
+	<!--by dvwerne 12/18-->
+    <!--<table style="background-color: white;width:100%">
+        <tr>
+            <td id="important-title">
+                Important Message
+            </td>
+            <td id="important-message-pa-content">
+                When buying real estate property, you should not assume that property taxes will remain the same. Whenever there is a change in ownership, the assessed value of the property may reset to full market value, which could result in higher property taxes. Please use our <a href="http://www.miamidade.gov/PAPortal/Taxes/TaxEstimator.aspx" target="_blank">Tax Estimator</a> to approximate your new property taxes.<br><br>
+
+                The Property Appraiser does not send tax bills and does not set or collect taxes. Please visit the <a href="http://www.miamidade.gov/taxcollector/" target="_blank">Tax Collector's website</a> directly for additional information.
+            </td>
+        </tr>
+    </table>-->
+    <div class="content" ng-hide="applicationOffline == true">
+        <!--[if lt IE 9]>
+<div class="alert alert-warning">Internet Explorer 8 is not fully supported in this application. Please upgrade or use a different browser to enjoy all features of the Miami-Dade County Property Search.</div>
+<![endif]-->
+        <!-- Application title -->
+        <div class="applicationName">
+
+
+            <h1>COMPARABLE SALES</h1>
+        </div>
+        <div class="search_area">
+            <!--            <div class="text-right social-buttons hidden-xs">
+                    <a ng-show="comparableSales" class="print-modal" ng-click="openReportDetailsWindow()">
+                        <img src="images/icon-print.png" alt="Print" title="Print"></a>
+                    <a href="http://www.miamidade.gov/pa/property-search-help.asp" target="_blank">
+                        <img src="images/icon-help.png" alt="Property Search Help" title="Property Search Help"></a>
+                    <a href="https://www.facebook.com/MiamiDadePA" target="_blank">
+                        <img src="images/icon-facebook.png" alt="Facebook" title="Facebook"></a>
+                    <a href="https://twitter.com/MiamiDadePA" target="_blank">
+                        <img src="images/icon-twitter.png" alt="Twitter" title="Twitter"></a>
+                </div>-->
+            <div class="text-right social-buttons hidden-xs">
+                <a ng-show="comparableSales" class="print-modal" ng-click="openReportDetailsWindow()">
+                    <img src="/CDN/Icons/icon-print.png" alt="Print" title="Print">
+                </a>
+                <a href="https://www.miamidadepa.gov/pa/real-estate/property-search-help.page" target="_blank">
+                    <img src="/CDN/Icons/icon-help.png" alt="Property Search Help" title="Property Search Help">
+                </a>
+                <!--<a href="https://www.facebook.com/MiamiDadePA" target="_blank">
+                    <img src="/CDN/Icons/icon-facebook.png" alt="Facebook" title="Facebook">
+                </a>
+                <a href="https://twitter.com/MiamiDadePA" target="_blank">
+                    <img src="/CDN/Icons/x.png" alt="Twitter" title="Twitter">
+                </a>-->
+            </div>
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs">
+                <li ng-class="{active: isActiveSearchTab('Address')}"><a ng-click="setActiveSearchTab('Address')" id="t-address">Address</a></li>
+                <li ng-class="{active: isActiveSearchTab('Folio')}"><a ng-click="setActiveSearchTab('Folio')" id="t-folio">Folio</a></li>
+            </ul>
+            <div class="row">
+                <div class="search-text col-md-1 col-sm-1 col-xs-12 ">
+                    <h2>Search:</h2>
+                </div>
+                <div class="col-md-4 col-sm-7 col-xs-12 text-right">
+                    <!-- Tab panes -->
+                    <div class="tab-content">
+                        <div class="tab-pane" ng-class="{active: isActiveSearchTab('Address')}" id="address">
+                            <div class="input-group">
+                                <input type="text" value="Address" name="" id="search_box" placeholder="111 NW 1 St" class="form-control add-main"
+                                       ng-model='address' ng-click="showError=false" ui-keypress="{13:'validateAddress()'}">
+                                <input type="text" value="" name="" id="Text1" placeholder="Suite"
+                                       class="form-control add-suite" ng-model="suite" ng-click="showError=false"
+                                       ui-keypress="{13:'validateAddress()'}">
+                            </div>
+                        </div>
+                        <div class="tab-pane" ng-class="{active: isActiveSearchTab('Folio')}" id="folio">
+                            <div>
+                                <input type="text" value="Folio" name="" id="search_box" class="form-control folio-box"
+                                       ui-mask='{{folioMask}}' ui-keypress="{13:'searchByFolio()'}" ng-model='folio'
+                                       ng-click="showError=false">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-7 col-sm-12 col-xs-12" id="search_area_yr" style="padding-left: 10px;">
+                    <!-- saleSearchYearSub-->
+                    <div class="form-inline">
+                        <label class="inputHeading"><strong>Sale Year:</strong></label>
+                        <div class="btn-group">
+                            <button id="btnYear" value="{{ defaultValues.salesYear[0] }}" type="button"
+                                    class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                                {{ defaultValues.salesYear[0] }}   <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu layer-ul" role="menu">
+                                <span ng-repeat="year in defaultValues.salesYear" class="searchAlignmentLeft">
+                                <li ng-change="changeQual(this)" </li>
+                                <li ng-click="resetYearValue(this)">{{ year }} </li>
+                                <li class="divider" ng-show="!$last"></li>
+                                </span>
+                            </ul>
+                        </div>
+                        <!-- salesSearchRadiusSub-->
+                        <label class="inputHeading" style="padding-left: 2px;"><strong>Radius:</strong></label>
+                        <div class="btn-group" style="padding-right: 2px;" id="divRadius">
+                            <button id="btnDistance" value="1320" type="button" class="btn btn-default dropdown-toggle"
+                                    data-toggle="dropdown">
+                                1/4 mile
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu layer-ul searchAlignmentLeft" role="menu">
+                                <span ng-repeat="dist in distanceDefaultArray" class="searchAlignmentLeft">
+                                <li ng-click="resetDistanceValue(this)">{{ dist.Code }} </li>
+                                <li class="divider" ng-show="!$last"></li>
+                                </span>
+                            </ul>
+                        </div>
+                        <button id="btnPropertySalesSearch" class="btn btn-default btn-primary" id="search_submit" aria-label="submit search" type="button" ng-click="validateSearch()">
+                            <span class="glyphicon glyphicon-search"></span>
+                        </button>
+                        <div class="prev-search btn-group" ng-show="previousCandidatesInfo">
+                            <a ng-click="populatePreviousCandidates()">Back to Search Results</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- end row -->
+            <!-- Advance Search -->
+            <div class="row tabular_data" style="padding-top: 10px;">
+                <div class="col-md-12">
+                    <div ng-include="'views/advanceSearch.html'"></div>
+                </div>
+            </div>
+            <!-- /.end search_area-->
+            <!-- /. end advanced search_area-->
+        </div>
+        <div class="modal fade" id="load-modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true" loading-widget>
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-body">
+                        <div id="loadingWidget" class="row-fluid ui-corner-all">
+                            <!-- loading-widget > -->
+                            <div class="loadingContent">
+                                <img alt="Loading Content" src="images/ajax-loader.gif" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- /.modal-content -->
+            </div>
+            <!-- /.modal-dialog -->
+        </div>
+        <!-- /.modal -->
+        <div class="modal fade" id="error-modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div>{{errorMsg}}</div>
+                    </div>
+                </div>
+                <!-- /.modal-content -->
+            </div>
+            <!-- /.modal-dialog -->
+        </div>
+        <!-- /.modal -->
+        <div class="modal fade" id="print-modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                        <h2 class="modal-title">Print Report</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div><span class="glyphicon glyphicon-print" style="color: #ccc"></span><a ng-click="openReportDetailsWindow()">Detailed Report</a></div>
+                        <hr style="margin: 7px 0;" />
+                        <div><span class="glyphicon glyphicon-file" style="color: #ccc"></span><a ng-click="exportData()">Export Sales Data</a></div>
+                    </div>
+                </div>
+                <!-- /.modal-content -->
+            </div>
+            <!-- /.modal-dialog -->
+        </div>
+        <!-- /.modal -->
+    </div>
+    <div class="modal fade" id="divSearchMsg-modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div>
+                        <span>Selecting a 3/4 mile or 1 mile radius may take long to process. Do you want to continue?
+                        </span>
+                    </div>
+                    <div style="padding-top: 20px;">
+                        <button ng-click="cancelSearchRequest()" type="button" class="btn btn btn-danger btn-sm">CANCEL</button>
+                        <button ng-click="continueSearchRequest()" type="button" class="btn btn-danger btn-sm">CONTINUE</button>
+                    </div>
+                </div>
+            </div>
+            <!-- /.modal-content -->
+        </div>
+        <!-- /.modal-dialog -->
+    </div>
+    <div class="modal fade" id="divIdentifyMsg-modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div>
+                        <span>Selecting a 3/4 mile or 1 mile radius may take long to process. Do you want to continue?
+                        </span>
+                    </div>
+                    <div style="padding-top: 20px;">
+                        <button ng-click="cancelSearchRequestIdentify()" type="button" class="btn btn btn-danger btn-sm">CANCEL</button>
+                        <button ng-click="continueSearchRequestIdentify()" type="button" class="btn btn-danger btn-sm">CONTINUE</button>
+                    </div>
+                </div>
+            </div>
+            <!-- /.modal-content -->
+        </div>
+        <!-- /.modal-dialog -->
+    </div>
+    <div class="content main_content_body" ng-hide="applicationOffline == true" style="padding-top: 0px;">
+        <div ng-show="comparableSales" style="padding: 0px;">
+            <div class="col-md-12 col-sm-12" id="divLegendTitle"
+                style="padding-bottom: 2px; margin-left: 0px; margin-top: 0px; font-size: 11px; width: 100%; padding-left: 0px;">
+                <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-style: none; margin-left: 0px;">
+                    <tr id="tr2" style="width: 100%; margin-left: 0px;">
+                        <td class="apps_title" style="border: 0px;">Resulting Sale Price Range:</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="row">
+                <div class="col-md-12 col-sm-12 col-xs-12" id="divLegend"
+                    style="padding-bottom: 10px; margin-left: 0px; margin-top: 0px; font-size: 11px; width: 100%; padding-left: 15px;">
+                    <div id="trSalesColors" style="width: 100%;">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row" ng-show="candidatesList">
+            <div class="col-md-12 col-sm-12">
+                <div class="property_info tabular_data">
+                    <div id="results_list" when-scrolled="fetchNextPage()" ng-style="getCandidatesHeight()" top-scroll>
+                        <div ng-include="'views/candidates.html'"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div ng-class="mapStyleState()" id="map_hook">
+                <div class="hero-unit map_container">
+                    <div class="detached-map">
+                        <p>Map Detached</p>
+                    </div>
+                    <!--class="map_area map_absolute" ng-style="mapStyle" ng-class="{map_absolute: hideMap}"-->
+                    <div id="map">
+                        <div class="lc_container">
+                            <div id="mapHeader" class="mapHeader">
+                                <span id="map_info_header"
+                                    ng-click="toggleMap($event)" class="glyphicon glyphicon-minus-sign"
+                                    title="Minimize Map"></span>
+                            </div>
+                            <span class="map-button mb-zoomin" ng-click="mapZoomIn()" data-toggle="tooltip" data-placement="top" title="Zoom in on the map"></span>
+                            <span class="map-button mb-zoomout" ng-click="mapZoomOut()" data-toggle="tooltip" data-placement="top" title="Zoom out on the map"></span>
+                            <span class="map-button mb-zoombox" ng-click="mapActivateZoomInBox()" data-toggle="tooltip" data-placement="top" title="Zoom map to a drawn area"></span>
+                            <span class="map-button mb-fullextent" ng-click="mapZoomToFullExtent()" data-toggle="tooltip" data-placement="top" title="Zoom out to full extent"></span>
+                            <span class="map-button mb-initial" ng-click="mapZoomToProperty()" data-toggle="tooltip" data-placement="top" title="Return to property" ng-hide="mapState == 'BigMap'"></span>
+                            <span class="map-button mb-detach" ng-click="detachMap()" data-toggle="tooltip" data-placement="top" title="Detach map to new window"></span>
+
+                            <div id="map_lc">
+                                <!-- Map View List  -->
+                                <div style="display: inline" ng-hide="mapState == 'BigMap'">
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-default btn-sm dropdown-toggle layer-drop" data-toggle="dropdown">Map View <span class="caret"></span></button>
+                                        <ul class="dropdown-menu keep_open layer-ul" role="menu">
+                                            <li class="dd-close"><a href="#">Close <span class="glyphicon glyphicon-remove"></span></a></li>
+                                            <li>Choose your desired view:</li>
+                                            <li class="divider"></li>
+                                            <li><span class="map-view" ng-click="mapToggleAerialOn()">Aerial Map</span></li>
+                                            <li class="divider"></li>
+                                            <li><span class="map-view" ng-click="mapToggleStreetOn()">Street Map</span></li>
+                                            <li class="divider"></li>
+                                            <li><span class="map-view"
+                                                ng-click="openPictometryWindow()">Angled Aerial Views</span></li>
+                                            <li class="divider"></li>
+                                            <li><span class="map-view" ng-click="showStreetView()">Google Street View</span></li>
+                                            <li class="divider"></li>
+                                            <li>View previous year aerials</li>
+                                            <li style="padding-top: 5px;">
+                                                <select ng-model="aerialYear" ng-options="year for year in aerialYears">
+                                                    <option value="">-- year --</option>
+                                                </select>
+                                                <button type="button" class="btn btn-default btn-xs" style="font-size: 11px; padding: 0 5px; margin-top: -2px;" ng-click="openAerialsWindow()">Go</button>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <!-- Layer List  -->
+                                <div style="display: inline" class="layers-list"
+                                    ng-hide="mapState == 'BigMap'">
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-default btn-sm dropdown-toggle layer-drop" data-toggle="dropdown">Layers <span class="caret"></span></button>
+                                        <ul class="dropdown-menu keep_open layer-ul" role="menu">
+                                            <li class="dd-close"><a href="#">Close <span class="glyphicon glyphicon-remove"></span></a></li>
+                                            <li>Toggle layers by checking the options below.</li>
+                                            <li class="divider"></li>
+                                            <li ng-repeat="layer in layers">
+                                                <input type="checkbox" ng-model="layer.value" ng-change="turnLayerOnOff(layer)">
+                                                {{layer.label}}</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- end map_lc -->
+                        </div>
+                        <div class="active-layers" ng-show="showLayerData()">
+                            <span id="layer-muni"
+                                ng-show="layerData.Municipality">MUNICIPALITY: {{layerData.Municipality}}</span>
+                            <span id="layer-zip" ng-show="layerData['Zip Code']">ZIP: {{layerData['Zip Code']}}</span>
+                            <span id="layer-district" ng-show="layerData['Commission District']">COMMISSION DISTRICT: {{layerData['Commission District']}}</span>
+                            <span id="layer-lots" ng-show="layerData['Lots']">Township-Range-Section: {{layerData['Lots']}}</span>
+
+                        </div>
+                        <div class="north-icon" id="mapDirection">
+                            <div class="img-container">
+                                <img src="images/north.png" width="31" height="26" alt="North">
+                            </div>
+                            <div id="scale-container">
+                                <span>{{ defaultValues.orthoAerialYear }} Aerial Photography</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end map_area -->
+                </div>
+            </div>
+        </div>
+        <div class="other_apps" ng-show="comparableSales" style="margin-top: 20px;">
+            <div class="apps_title">Featured Online Tools</div>
+            <!--<ul class="row">
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a class="hover_pointer" href="/propertysearch/#/?folio={{property.folio}}" aria-label="View Property Search" target="_blank">Property Search</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="https://www.miamidadepa.gov/pa/about/glossary.page" aria-label="View Glossary" target="_blank">Glossary</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PaOnlineTools/Taxes/NonAdvalorem.aspx?folio={{property.folio}}" aria-label="View Non-Advelorem taxes" target="_blank">Non-Ad Valorem Assessments</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="https://www.miamidadepa.gov/pa/online-services.page" aria-label="View additional tools" target="_blank">PA Additional Online Tools</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PaOnlineTools/PRC/CreatePRCmain.aspx?folio={{property.folio}}" aria-label="View property cards" target="_blank">Property Record Cards</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="https://miamidade.county-taxes.com/public/real_estate/parcels/{{property.folio}}" aria-label="View property taxes" target="_blank">Property Taxes</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PAOnlineTools/ContactForm/ContactFormMain.aspx" aria-label="Report Discrepancies" target="_blank">Report Discrepancies</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PaOnlineTools/HomesteadFraud/HomesteadFraud.aspx" aria-label="Report Homestead Fraud" target="_blank">Report Homestead Fraud</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PaOnlineTools/Taxes/TaxComparison.aspx?folio={{property.folio}}" aria-label="View Tax Comparison" target="_blank">Tax Comparison</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PaOnlineTools/Taxes/TaxEstimator.aspx" aria-label="View Tax Estimator" target="_blank">Tax Estimator</a>
+        </li>
+        <li class="col-md-3 col-sm-4 col-xs-6">
+            <a href="/PaOnlineTools/trimpdf/MakeTrim.aspx?FolSrch={{property.folio}}" aria-label="View TRIM Notice" target="_blank">TRIM Notice</a>
+        </li>
+    </ul>-->
+            <ul class="row">
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" class="hover_pointer" href="/propertysearch/#/?folio={{property.folio}}" aria-label="view property search" target="_blank">Property Search</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="https://www.miamidadepa.gov/pa/about/glossary.page" aria-label="view glossary" target="_blank">Glossary</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="/paonlinetools/taxes/nonadvalorem.aspx?folio={{property.folio}}" aria-label="view non-advelorem taxes" target="_blank">Non-Ad Valorem Assessments</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="https://www.miamidadepa.gov/pa/online-services.page" aria-label="view additional tools" target="_blank">PA Additional Online Tools</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="/paonlinetools/prc/createprcmain.aspx?folio={{property.folio}}" aria-label="view property cards" target="_blank">Property Record Cards</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="https://miamidade.county-taxes.com/public/real_estate/parcels/{{property.folio}}" aria-label="view property taxes" target="_blank">Property Taxes</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="/paonlinetools/contactform/contactformmain.aspx" aria-label="report discrepancies" target="_blank">Report Discrepancies</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="/paonlinetools/homesteadfraud/homesteadfraud.aspx" aria-label="report homestead fraud" target="_blank">Report Homestead Fraud</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="/paonlinetools/taxes/taxcomparison.aspx?folio={{property.folio}}" aria-label="view tax comparison" target="_blank">Tax Comparison</a>
+                </li>
+                <li class="col-md-3 col-sm-4 col-xs-6">
+                    <a style="text-decoration: underline;" href="/paonlinetools/taxes/taxestimator.aspx" aria-label="view tax estimator" target="_blank">Tax Estimator</a>
+                </li>
+            </ul>
+        </div>
+        <script>
+            $(document).ready(function () {
+                $('body').on('click', function (e) {
+                    if ($(e.target).hasClass('pop-icon')) {
+                        var current_popover = $(e.target).attr('id');
+                        if ($(e.target).next('.popover').is(':visible')) {
+                            $('span.pop-icon').popover('destroy');
+                        } else {
+                            $('span.pop-icon').popover('destroy');
+                            $('#' + current_popover + '').popover('show');
+                        };
+
+                    } else {
+                        $('span.pop-icon').popover('destroy');
+                    };
+                });
+
+
+                placeholderSupport = ("placeholder" in document.createElement("input")); // test placeholder support
+                if (!placeholderSupport) {
+
+                    //initialize placeholders onload for IE - only works if setTimeout function is there
+                    setTimeout(function () {
+                        $('.input-group input[type=text]').each(function () {
+                            $(this).addClass('placeholder').val($(this).attr('placeholder'));
+                        });
+                    }, 500);
+
+                    $(function () {
+                        $('[placeholder]')
+                            .focus(function () {
+                                var input = $(this);
+                                if (input.val() === input.attr('placeholder')) {
+                                    input.val('').removeClass('placeholder');
+                                }
+                            })
+                            .blur(function () {
+                                var input = $(this);
+                                if (input.val() === '' || input.val() === input.attr('placeholder')) {
+                                    input.addClass('placeholder').val(input.attr('placeholder'));
+                                }
+                            })
+                            .blur()
+                            .parents('form').submit(function () {
+                                $(this).find('[placeholder]').each(function () {
+                                    var input = $(this);
+                                    if (input.val() === input.attr('placeholder')) {
+                                        input.val('');
+                                    }
+                                });
+                            });
+                    });
+
+                };
+
+
+                $('body').on('click', '.dropdown-menu', function (e) {
+                    $(this).hasClass('keep_open') && e.stopPropagation(); // This replace if conditional.
+                });
+
+                //Added for Previous Year Aerials
+                $('.dd-close a').on('click', function (e) {
+                    $(this).closest('div.btn-group').removeClass('open');
+                    e.preventDefault()
+                });
+
+                //radius search message                
+                //close button for modal
+                $('.close-modalSearch').on('click', function () {
+                    $('#divSearchMessage').modal('hide');
+                });
+
+
+                //print button for modal
+                $('.print-modal').on('click', function () {
+                    // $('#print-modal').modal('show');
+                });
+
+                //close button for modal
+                $('.close-modal').on('click', function () {
+                    $('#error-modal').modal('hide');
+                });
+
+                //focus input on tab switch
+                $('#t-address').on('click', function () {
+                    setTimeout(
+                       function () { $('.add-main').focus() }, 300
+                    );
+                });
+
+                $('#t-owner').on('click', function () {
+                    setTimeout(
+                       function () { $('.owner-box').focus() }, 300
+                    );
+                });
+
+                $('#t-folio').on('click', function () {
+                    setTimeout(
+                       function () { $('.folio-box').focus() }, 300
+                    );
+                });
+
+
+                //fix for gingerbread
+                var start = navigator.userAgent.indexOf("Android ");
+                var majorversion = navigator.userAgent.substr(start + 8, 1);
+                if (majorversion < 3) {
+                    //alert('This is an android device running an OS < 3')
+                    document.querySelector("meta[name=viewport]").setAttribute(
+                      'content',
+                      'width=700px, initial-scale=0.45, maximum-scale=1.0, user-scalable=1');
+                }
+            });
+        </script>
+        <!-- Comparable Sales Report Container -->
+        <div class="row tabular_data" ng-hide="showSalesInformation == 'False'">
+            <div class="col-md-12">
+                <div ng-show="comparableSales" ng-include="'views/comparableSalesInformation.html'"></div>
+            </div>
+        </div>
+        <!-- /.end Comparable Sales Report Container -->
+        <div ng-include="'views/disclaimer.html'"></div>
+    </div>
+    <!-- Comparable Sales Offline Report -->
+    <div class="content main_content_body" ng-show="applicationOffline == true">
+        <div class="row">
+            <div class="col-md-12" style="text-align: center; font-size: 14px; font-weight: bold; height: 250px;">
+                <p>
+                    <br />
+                    This website is temporarily unavailable. Please try again later.
+                </p>
+                <p>
+                    Sorry for the inconvenience.
+                </p>
+            </div>
+        </div>
+    </div>
+    <!-- /. end Comparable Sales Offline Report -->
+    <!--<div ng-include="'views/footer.html'"></div>-->
+
+</div>
+<!-- /.container -->

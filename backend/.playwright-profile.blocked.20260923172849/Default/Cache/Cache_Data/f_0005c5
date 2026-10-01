@@ -1,0 +1,2114 @@
+/*
+	TYLER BLUE: #4465A1
+	TYLER GREEN: #949C51
+	
+	BG: #f0f0f0
+*/
+
+/* GLOBAL */
+ol.ui-listview > li > .ui-btn:first-child:before {
+	padding-right: 0;
+}
+
+.placeholder {
+	color: #aaa !important;
+}
+
+/* makes read only text a little darker */
+.ui-state-disabled{
+	opacity: .6;
+}
+
+.ui-search-result-table {
+	table-layout:fixed;
+}
+
+.ui-search-result-column {
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+
+/* Correct the margins for collapsible lists within dialogs */
+.ss-popup-inner .ui-collapsible {
+	margin: 0 1em;
+	border-left: 1px solid #bbbbbb;
+	border-right: 1px solid #bbbbbb;
+}
+
+.ss-popup-inner a.ui-collapsible-heading-toggle.ui-btn {
+	background: #949C51;
+	color: #fff;
+	font-weight: normal;
+}
+
+.ss-popup-inner a.ui-collapsible-heading-toggle.ui-icon-minus:after {
+	/* Replacing black minus icon with white minus icon */
+	background-image: url("data:image/svg+xml;charset=US-ASCII,%3C%3Fxml%20version%3D%221.0%22%20encoding%3D%22iso-8859-1%22%3F%3E%3C!DOCTYPE%20svg%20PUBLIC%20%22-%2F%2FW3C%2F%2FDTD%20SVG%201.1%2F%2FEN%22%20%22http%3A%2F%2Fwww.w3.org%2FGraphics%2FSVG%2F1.1%2FDTD%2Fsvg11.dtd%22%3E%3Csvg%20version%3D%221.1%22%20id%3D%22Layer_1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20x%3D%220px%22%20y%3D%220px%22%20%20width%3D%2214px%22%20height%3D%2214px%22%20viewBox%3D%220%200%2014%2014%22%20style%3D%22enable-background%3Anew%200%200%2014%2014%3B%22%20xml%3Aspace%3D%22preserve%22%3E%3Crect%20y%3D%225%22%20style%3D%22fill%3A%23FFFFFF%3B%22%20width%3D%2214%22%20height%3D%224%22%2F%3E%3C%2Fsvg%3E");
+}
+
+
+.ss-popup-inner a.ui-collapsible-heading-toggle.ui-icon-plus:after {
+	/* Replacing black plus icon with white plus icon */
+	background-image: url("data:image/svg+xml;charset=US-ASCII,%3C%3Fxml%20version%3D%221.0%22%20encoding%3D%22iso-8859-1%22%3F%3E%3C!DOCTYPE%20svg%20PUBLIC%20%22-%2F%2FW3C%2F%2FDTD%20SVG%201.1%2F%2FEN%22%20%22http%3A%2F%2Fwww.w3.org%2FGraphics%2FSVG%2F1.1%2FDTD%2Fsvg11.dtd%22%3E%3Csvg%20version%3D%221.1%22%20id%3D%22Layer_1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20x%3D%220px%22%20y%3D%220px%22%20%20width%3D%2214px%22%20height%3D%2214px%22%20viewBox%3D%220%200%2014%2014%22%20style%3D%22enable-background%3Anew%200%200%2014%2014%3B%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpolygon%20fill%3D%22%23FFF%22%20points%3D%2214%2C5%209%2C5%209%2C0%205%2C0%205%2C5%200%2C5%200%2C9%205%2C9%205%2C14%209%2C14%209%2C9%2014%2C9%20%22%2F%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+}
+
+/* Styles to place ellipses after a two-line block of text that exceeds that length */ 
+.two-line-block-with-text {
+	/* hide text if it more than N lines  */
+	overflow: hidden;
+	/* for set '...' in absolute position */
+	position: relative;
+	/* use this value to count block height */
+	line-height: 1.2em;
+	/* max-height = line-height (1.2) * lines max number (3) */
+	max-height: 2.4em;
+	/* fix problem when last visible word doesn't adjoin right side  */
+	text-align: justify;
+	/* place for '...' */
+	margin-right: -1em;
+	padding-right: 1em;
+}
+/* create the ... */
+.two-line-block-with-text:before {
+	/* points in the end */
+	content: '...';
+	/* absolute position */
+	position: absolute;
+	/* set position to right bottom corner of block */
+	right: 0;
+	bottom: 0;
+}
+/* hide ... if we have text, which is less than or equal to max lines */
+.two-line-block-with-text:after {
+	/* points in the end */
+	content: '';
+	/* absolute position */
+	position: absolute;
+	/* set position to right bottom corner of text */
+	right: 0;
+	/* set width and height */
+	width: 1em;
+	height: 1em;
+	margin-top: 0.2em;
+	/* bg color = bg color under block */
+	background: white;
+}
+
+/* Styles to place ellipses after a five-line block of text that exceeds that length */ 
+.five-line-block-with-text:not(.selfServiceSearchResultCollapsed) {
+	/* hide text if it more than N lines  */
+	overflow: hidden;
+	/* for set '...' in absolute position */
+	position: relative; 
+	/* use this value to count block height */
+	line-height: 1.2em;
+	/* max-height = line-height (1.2) * lines max number (3) */
+	max-height: 8.0em;
+	/* fix problem when last visible word doesn't adjoin right side  */
+	text-align: justify;
+	/* place for '...' */
+	margin-right: -1em;
+	padding-right: 1em;
+}
+/* create the ... */
+.five-line-block-with-text:not(.selfServiceSearchResultCollapsed):before {
+	/* points in the end */
+	content: '...';
+	/* absolute position */
+	position: absolute;
+	/* set position to right bottom corner of block */
+	right: 0;
+	bottom: 0;
+}
+/* five ... if we have text, which is less than or equal to max lines */
+.five-line-block-with-text:not(.selfServiceSearchResultCollapsed):after {
+	/* points in the end */
+	content: '';
+	position: absolute;
+	right: 0;
+	width: 2em;
+	height: 2.4em;
+	margin: -1.2em;
+	background: white;
+}
+
+.ss-recentSearchList {
+	overflow:auto;
+	max-height: 20em;
+}
+
+a.recentSearch > h2 {
+	white-space: normal;
+	width: 30em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Color the block with the ellipsis to match row styling */
+a.recentSearch > h2.two-line-block-with-text:after {
+	background: #eeeeee;
+}
+
+/* When hovering over the row, color the block with the ellipsis to match row hover styling */
+a.recentSearch > h2.two-line-block-with-text:hover:after, a.recentSearch:hover h2.two-line-block-with-text:after {
+	background: #dfdfdf;
+}
+
+.advancedSearch {
+	vertical-align: bottom;
+}
+
+.advancedSearchInstructions {
+	overflow: auto;
+	max-height: 50em;
+}
+
+.autoCompleteList {
+	padding-bottom: 0.1em;
+	position:relative;
+	display:inline-block;
+	width:100%;
+}
+.autoCompleteList.noBorder {
+	border: none;
+}
+
+.autoCompleteList ul {
+	max-height: 30em;
+	overflow: auto;
+	margin: 0;
+	position: absolute; 
+	cursor: default;
+	z-index:30 !important;
+	background-color:white;
+	width:99.5%;
+}
+
+.autoCompleteList .ui-input-search {
+	border:none;
+	margin:0px;
+	display:inline-block;
+	padding:0px;
+	width:100%;
+}
+
+.ss-utility-box .autoCompleteList .ui-input-search.ui-focus {
+	box-shadow:none;
+}
+
+.ui-content .autoCompleteList .ui-listview-inset {
+	margin-top: 2px;
+	margin-bottom: 0;
+	-webkit-box-shadow: 2px 2px 5px 3px rgba(0,0,0,0.25);
+	-moz-box-shadow: 2px 2px 5px 3px rgba(0,0,0,0.25);
+	box-shadow: 2px 2px 5px 3px rgba(0,0,0,0.25);
+}
+
+.acbutton {
+	height: 3em;
+	margin-bottom: 0.01em;
+	margin-left: 0.12em;
+	margin-top: 0.2em;
+	width: 99.5%;
+}
+
+.selfServiceSearchResultList {
+	cursor: pointer;
+}
+
+.selfServiceSearchResultHeaderLeft {
+	width: 33%;
+	float: left;
+	vertical-align: top;
+	font-size: 1.2em;
+	font-weight: bold;
+	overflow: visible;
+	white-space: normal;
+}
+
+.selfServiceSearchResultHeaderLeft:first-child {
+	width: 5%;
+}
+
+.selfServiceSearchResultHeaderLeft:NTH-CHILD(2) {
+	width: 33%;
+}
+
+.selfServiceSearchResultHeaderLeft:NTH-CHILD(3) {
+	width: 50%;
+}
+
+.ss-search-row > .selfServiceSearchRowLeft {
+	width: 5%;
+	float: left;
+	padding-top: 1em;
+}
+
+.ss-search-row > .selfServiceSearchRowRight {
+	width: 94%;
+	float: left;
+}
+
+.selfServiceSearchResultList a.ui-btn.selfServiceSearchFullResult {
+	display: none;
+	width: 95%;
+}
+
+.selfServiceSearchFullResult {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.selfServiceSearchResultList.ui-listview > li {
+	border-top: 1px solid #ebccd1;
+}
+
+.selfServiceSearchResultList ul {
+	list-style-type: none;
+	padding-left: 0;
+}
+
+.selfServiceSearchResultList ul > li {
+	overflow: hidden;
+	text-align: left;
+}
+
+.selfServiceSearchResultList ul > li:first-child {
+	margin-bottom: 0.3em;
+}
+
+.selfServiceSearchResultList > li h1 {
+	font-size: 1.5em;
+	font-weight: normal;
+	width: 100%;
+	display: inline-block;
+}
+
+.dashed-box {
+	height: 18px;
+	width: 18px;
+	margin: -5px auto;
+	position: relative;
+	border-radius: 3px;
+}
+
+.dashed-box:after {
+	content: "";
+	position: absolute;
+	top: 0px;
+	left: -4px;
+	right: -4px;
+	bottom: -6px;
+	z-index: 1;
+	background: linear-gradient(left, black 50%, transparent 50%), linear-gradient(left, black 50%, transparent 50%), linear-gradient(top, black 50%, transparent 50%), linear-gradient(top, black 50%, transparent 50%);
+	background: -webkit-linear-gradient(left, black 50%, transparent 50%), -webkit-linear-gradient(left, black 50%, transparent 50%), -webkit-linear-gradient(top, black 50%, transparent 50%), -webkit-linear-gradient(top, black 50%, transparent 50%);
+	background: -ms-linear-gradient(left, black 50%, transparent 50%), -ms-linear-gradient(left, black 50%, transparent 50%), -ms-linear-gradient(top, black 50%, transparent 50%), -ms-linear-gradient(top, black 50%, transparent 50%);
+	background: -moz-linear-gradient(left, black 50%, transparent 50%), -moz-linear-gradient(left, black 50%, transparent 50%), -moz-linear-gradient(top, black 50%, transparent 50%), -moz-linear-gradient(top, black 50%, transparent 50%);
+	background-size: 18px 3px, 18px 3px, 3px 18px, 3px 18px;
+	background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+	background-position: 0 0px, left bottom, 0 0, right 0px;
+	border-radius: inherit;
+}
+
+
+.bordered-icon:before {
+	border: 3px dashed;
+	line-height: .7em;
+	padding-top: 3px;
+	padding-bottom: 3px;
+}
+
+div.ss-facet-entry, .ss-historical-index{
+	background: #fff;
+	border: 1px solid #4465A1;
+	padding-left: 10px;
+	padding-right: 10px;
+}
+
+.ss-facet-entry > h2 {
+	font-size: 1.5em;
+	font-weight: normal;
+	width: 90%;
+}
+
+.ss-hidden-facet-entry, .ui-page-theme-a .ss-view-less {
+	display: none;
+}
+
+.ui-page-theme-a .ss-view-more, .ui-page-theme-a .ss-view-less {
+	text-align: left;
+	font-size: 1.2em;
+}
+
+.ss-facet-entry .ss-left {
+	border: 0px;
+	padding: 5px;
+	font-weight: bold;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	width: 75%;
+	display: block;
+	overflow: hidden;
+}
+
+.ss-facet-entry .ss-right {
+	border: 0px;
+	background-color: #d7d7d7;
+	border-radius: 45%;
+	padding: 5px;
+	max-width: 24%;
+	display: block;
+}
+
+.ss-facet-avatar,.ss-facet-avatar-noselect {
+	border-radius: 50%;
+	padding: 5px;
+	color: #ffffff;
+	text-align: center;
+	width: 15px;
+}
+
+.ss-search-row:hover .ss-facet-avatar {
+	display: none;
+}
+
+.ss-facet-select {
+	display: none;
+}
+
+.ss-search-row:hover .ss-facet-select {
+	display: block;
+}
+
+.ss-recent-searches {
+	max-height: 98%;
+}
+.ss-recent-search-date {
+	float: right;
+	font-size: smaller;
+	font-weight: normal;
+}
+
+#ss-recent-searches-description {
+	margin-bottom: 0.2em;
+	max-height: 10em;
+	overflow: auto;
+}
+
+#no-recent-searches:before,
+#no-favorite-searches:before {
+	content: none;
+}
+
+#recent-searches-container,
+#favorite-searches-container {
+	margin-left: 0;
+	min-width: 53em;
+}
+
+.selfServiceSearchResultColumn > li.selfServiceSearchResultExpanded:nth-child(odd)
+{
+	background-color: #eeeeee;
+}
+
+.selfServiceSearchResultColumn .selfServiceSearchResultCollapsed {
+    display: block;
+    white-space: normal;
+}
+
+.selfServiceSearchResultColumn .selfServiceSearchResultExpanded {
+    display: block;
+    white-space: normal;
+}
+
+
+.selfServiceSearchResultColumn {
+	padding-bottom: 0.25em;
+}
+
+.selfServiceSearchResultList table {
+	width: 100%;
+	display: block;
+	overflow: hidden;
+}
+
+.selfServiceSearchResultList tr > th {
+	vertical-align: top;
+	font-weight: normal;
+	text-overflow: ellipsis;
+}
+
+.selfServiceSearchResultList tr > td {
+	vertical-align: top;
+	font-weight: bold;
+	text-overflow: ellipsis;
+}
+
+.searchResultFourColumn {
+	width: 25%;
+	text-overflow: ellipsis;
+	float: left;
+	vertical-align: top;
+}
+
+.searchResultThreeColumn {
+	width: 33%;
+	text-overflow: ellipsis;
+	float: left;
+	vertical-align: top;
+}
+
+.searchResultTwoColumn {
+	width: 50%;
+	text-overflow: ellipsis;
+	float: left;
+	vertical-align: top;
+}
+
+.searchResultOneColumn {
+	width: 100%;
+	text-overflow: ellipsis;
+	float: left;
+	vertical-align: top;
+}
+
+.selfServiceSearchResultList p.selfServiceSearchResultNavigation {
+	text-align: right;
+	vertical-align: middle;
+	font-size: medium;
+	font-weight: bold;
+	background: #eeeeee;
+	border-color: #cccccc;
+	display: none;
+	float: left;
+	clear: left;
+	width: 100%;
+	margin-top: 1em;
+	padding-right: 1em;
+}
+
+.selfServiceSearchResultList p.selfServiceSearchResultNavigation span, .selfServiceSearchResultList p.selfServiceSearchResultNavigation > span:before {
+	vertical-align: middle !important;
+}
+
+.ss-search-related {
+	clear: left;
+}
+
+.ui-listview .ui-li-aside a, .ui-listview .ui-li-aside a:visited {
+	color: #333333;
+	text-decoration: none;
+}
+
+.ss-search-row p.ui-li-aside.ss-search-actions {
+	display: none;
+	right: 1.3em;
+}
+
+.ss-search-row:hover p.ui-li-aside.ss-search-actions {
+	display: block;
+}
+
+.selfServiceSort h1, .selfServiceExport h1 {
+	font-size: medium;
+	font-weight: normal;
+}
+
+.selfServiceSort ul, .selfServiceExport ul {
+	border-top: 1px solid #ebccd1;
+	list-style-type: none;
+	padding-left: 10px;
+	padding-right: 10px;
+}
+
+.selfServiceSort li, .selfServiceExport {
+	padding-top: 10px;
+	line-height: 2em;
+	cursor: pointer;
+}
+
+.selfServiceExport a, .selfServiceExport a:visited {
+	text-decoration: none;
+	font-style: normal;
+	font-weight: normal;
+	color: black;
+}
+
+.ss-progress {
+	max-height: 1.5em;
+	padding-top: 5px;
+	padding-bottom: 5px;
+	display: inline;
+	overflow: hidden;
+	text-overflow: initial;
+	position: absolute;
+	right: 10em;
+	top: 1em;	
+}
+
+.ss-oval-button, .ss-oval-button-highlight {
+	margin-left: 10px;
+	margin-top: -5px;
+	margin-bottom: -5px;
+	border: 0px;
+	border-radius: 45%;
+	padding: 10px;
+	font-size: small;
+	font-weight: bold;
+}
+
+.ss-oval-button {
+	background-color: #d7d7d7;
+}
+
+.ui-alt-icon.ui-btn.wip {
+	background: transparent; /* non-RGBA fallback  */
+}
+/* icon for password information */
+.my-tooltip-btn.ui-btn.wip {
+	background: transparent; /* non-RGBA fallback  */
+	box-shadow: none;
+}
+/* icon for password information */
+.my-tooltip-btn.ui-btn.wip:hover:after {
+	background-color: black;
+	background-image: url("data:image/svg+xml;charset=US-ASCII,%3C%3Fxml%20version%3D%221.0%22%20encoding%3D%22iso-8859-1%22%3F%3E%3C!DOCTYPE%20svg%20PUBLIC%20%22-%2F%2FW3C%2F%2FDTD%20SVG%201.1%2F%2FEN%22%20%22http%3A%2F%2Fwww.w3.org%2FGraphics%2FSVG%2F1.1%2FDTD%2Fsvg11.dtd%22%3E%3Csvg%20version%3D%221.1%22%20id%3D%22Layer_1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20x%3D%220px%22%20y%3D%220px%22%20%20width%3D%2214px%22%20height%3D%2214px%22%20viewBox%3D%220%200%2014%2014%22%20style%3D%22enable-background%3Anew%200%200%2014%2014%3B%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpath%20fill%3D%22%23FFF%22%20d%3D%22M7%2C0C3.134%2C0%2C0%2C3.134%2C0%2C7s3.134%2C7%2C7%2C7s7-3.134%2C7-7S10.866%2C0%2C7%2C0z%20M7%2C2c0.552%2C0%2C1%2C0.447%2C1%2C1S7.552%2C4%2C7%2C4S6%2C3.553%2C6%2C3%20S6.448%2C2%2C7%2C2z%20M9%2C11H5v-1h1V6H5V5h3v5h1V11z%22%2F%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3C%2Fsvg%3E");} ;
+}
+
+.ui-alt-icon.ui-btn.wip:hover {
+	background: inherit; /*non-RGBA fallback */
+}
+
+/* This is the "normal" transparent info icon from jQuery Mobile. For hover this is a lot more visible */
+.ui-alt-icon.ui-btn.wip:hover:after {
+	background-image: url("data:image/svg+xml;charset=US-ASCII,%3C%3Fxml%20version%3D%221.0%22%20encoding%3D%22iso-8859-1%22%3F%3E%3C!DOCTYPE%20svg%20PUBLIC%20%22-%2F%2FW3C%2F%2FDTD%20SVG%201.1%2F%2FEN%22%20%22http%3A%2F%2Fwww.w3.org%2FGraphics%2FSVG%2F1.1%2FDTD%2Fsvg11.dtd%22%3E%3Csvg%20version%3D%221.1%22%20id%3D%22Layer_1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20x%3D%220px%22%20y%3D%220px%22%20%20width%3D%2214px%22%20height%3D%2214px%22%20viewBox%3D%220%200%2014%2014%22%20style%3D%22enable-background%3Anew%200%200%2014%2014%3B%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpath%20fill%3D%22%23FFF%22%20d%3D%22M7%2C0C3.134%2C0%2C0%2C3.134%2C0%2C7s3.134%2C7%2C7%2C7s7-3.134%2C7-7S10.866%2C0%2C7%2C0z%20M7%2C2c0.552%2C0%2C1%2C0.447%2C1%2C1S7.552%2C4%2C7%2C4S6%2C3.553%2C6%2C3%20S6.448%2C2%2C7%2C2z%20M9%2C11H5v-1h1V6H5V5h3v5h1V11z%22%2F%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3Cg%3E%3C%2Fg%3E%3C%2Fsvg%3E");}
+}
+
+.ui-alt-icon.ui-btn.wip:nth-child(odd) {
+	background: transparent; /* non-RGBA fallback  */
+}
+
+.ui-alt-icon.ui-btn.wip:nth-child(odd):hover {
+	background: inherit; /* non-RGBA fallback  */
+}
+
+/* For drop downs, the field that needs styling are divs directly below .ui-select classes. */
+.ui-select > div {
+	height: .75em;
+	text-align: left;
+	font-size: 1em;
+	font-weight: normal;
+}
+
+.ui-select {
+	margin-left: 0em !important;
+	margin-bottom: .55em !important;
+}
+
+.ui-radio > label {
+	text-align: left;
+	font-size: 1em;
+}
+
+html head + body .ui-checkbox .ui-btn.ui-btn-a {
+	background-color: white;
+}
+
+.ui-checkbox > label, .ui-checkbox a.ui-link {
+	font-weight: normal;
+}
+
+body {
+	font-size: 12px;
+}
+
+.ss-clear {
+	clear: both;
+	height: 0px;
+	overflow: hidden;
+}
+
+.ui-margins {
+	vertical-align: bottom;
+	display: inline-table;
+	padding: 0.5em 0 0 0.5em;
+	margin: -2px;
+	float: none;
+}
+
+.ui-margin-prep {
+	vertical-align: bottom;
+	display: inline-table;
+	float: none;
+}
+
+.ui-wrap-elements {
+	white-space: normal;
+}
+
+.ui-unbulleted-list {
+	list-style-type: none;
+	padding-left: 0;
+}
+
+.ui-inner-list {
+	list-style-type: none;
+	padding-left: 2em;
+}
+
+.ui-inner-list li + li{
+	padding-top: 0em;
+}
+
+.ui-unbulleted-list li + li{
+	padding-top: 1em;
+}
+
+.ui-table-reflow.ui-responsive { display: table !important; }
+
+.ui-icon-material-add-cart:after {
+	background-image: url("../resources/img/ic_add_shopping_cart_black_24px.svg");
+}
+
+.ui-nosvg .ui-icon-material-add-cart:after {
+	background-image: url("../resources/img/ic_add_shopping_cart_black_24dp_1x.png");
+}
+
+.ui-icon-material-save:after {
+	background-image: url("../resources/img/ic_save_black_24px.svg");
+}
+
+.ui-nosvg .ui-icon-material-save:after {
+	background-image: url("../resources/img/ic_save_black_24dp_1x.png");
+}
+
+.ui-icon-material-star:after {
+	background-image: url("../resources/img/ic_star_black_24px.svg");
+}
+
+.ui-nosvg .ui-icon-material-star:after {
+	background-image: url("../resources/img/ic_star_black_24dp_1x.png");
+}
+
+.ui-icon-material-star-border:after {
+	background-image: url("../resources/img/ic_star_border_black_24px.svg");
+}
+
+.ui-nosvg .ui-icon-material-star-border:after {
+	background-image: url("../resources/img/ic_star_border_black_24dp_1x.png");
+}
+
+.ss-left {
+	float: left;
+}
+
+.ss-right {
+	float: right;
+}
+.ss-right.ss-remove-padding {
+	padding: 0;
+}
+.ss-strong {
+	font-weight: bold;
+}
+
+inline-header-bolded {
+	display: inline;
+	font-size: 1.2em;
+	font-weight: bold;
+	margin: 0px;
+	line-height: 1.2em;
+	padding: 15px 15px 15px 5px;
+}
+
+/**
+ *	Content panel for large monitors
+ *	TODO: Once the 'max-width: 1024px;' rule is removed we should search for and clean up all rules
+ *	that reference '.ss-content' since several of them are overriding this rule. This includes
+ *  some JavaScript that is adding the 'full-screen' class to elements.
+ */
+.ss-content {
+	margin: 0.2px auto 0.2px auto;
+	max-width: 1024px;
+	padding: 0px;
+}
+.ss-content.full-screen {
+  max-width: none;
+}
+
+.ss-utility-box div.full-screen{
+	overflow:visible;
+}
+.ss-content.full-screen > .ui-grid-a > .ui-block-a {
+	width: 36%;
+	max-width: 512px;
+}
+.ss-content.full-screen > .ui-grid-a > .ss-image-margins {
+	width: 64%;
+}
+
+div.ss-page,
+div.ui-panel-content-wrap {
+	background: #f0f0f0 !important; /* This is hack-ish but we need to ensure that our BG color is correct */
+}
+
+/* REQUIRED STYLES */
+legend.required,
+legend.error,
+label.required,
+label.error {
+	font-weight: bold !important;
+}
+legend.required:after,
+label.required:after {
+  content: " *";
+}
+.ui-checkbox label.required:after{
+	content:"";
+}
+
+legend.error,
+label.error {
+	color: #E80C13 !important;
+}
+
+div.error {
+	background-color: #f2dede !important;
+	border-color: #ebccd1 !important;
+}
+
+label.ui-btn.error {
+	background-color: #f2dede !important;
+	border-color: #ebccd1 !important;
+}
+
+.no-bullets > li {
+	list-style-type: none;
+}
+
+.ss-validation-messages ul {
+	color: #E80C13;
+	background-color: #f2dede;
+	border-color: #ebccd1;
+	border-style: solid;
+	border-width: 1px;
+	padding: .7em 15px;
+	font-weight: bold;
+	margin: 1em 1em 1em 0em !important;
+}
+
+.ss-passwordValidation-messages li,
+.ss-validation-messages li,
+.ss-info-message li,
+.ss-success-message li {
+	list-style-position: inside;
+}
+
+.ss-info-message ul {
+	color: #8a6d3b;
+	background-color: #fcf8e3;
+	border-color: #faebcc;
+	border-style: solid;
+	border-width: 1px;
+	padding: .7em 15px;
+	font-weight: bold;
+	margin: 1em 1em 1em 0;
+}
+
+.ss-success-message ul {
+	color: #3c763d;
+	background-color: #dff0d8;
+	border-color: #d0e9c6;
+	border-style: solid;
+	border-width: 1px;
+	padding: .7em 15px;
+	font-weight: bold;
+	margin: 1em 1em 1em 0;
+}
+
+.ss-account-history.bigger {
+	font-size: 1.4em;
+	margin: 1em 0.2em 1.5em 0.3em;
+}
+
+.ss-pre-purchased-message.ss-warning-message {
+	font-size: 1.17em;
+	font-weight: bold;
+	-webkit-margin-before: 1em;
+	-webkit-margin-after: 1em;
+	-webkit-margin-start: 0px;
+	-webkit-margin-end: 0px;
+	margin: 0.8em 0.25em 0.25em 0;
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+}
+
+ul.ss-account-history {
+	padding-left: 0.8em;
+}
+.ss-account-history > li {
+	font-size: larger;
+	padding-top: 0.5em;
+}
+.ss-account-history > li > span {
+	font-weight: bold;
+}
+.ss-account-history > span.more-space {
+	margin-right: 1.5em;
+}
+.ss-date-range {
+	width: 25%;
+	float: left;
+	margin-right: 8px
+}
+.ss-date-range + div {
+	width: 54%;
+	float: left;
+	margin-top: 1.4px;
+}
+.ss-date-range + div > div {
+	float: left;
+	max-width: 46%;
+}
+.ss-date-range select option {
+	margin: 2px 0;
+}
+.ss-date-range > div > div > span {
+	margin-top: -1px;
+}
+
+/* info box for changing/creating passwords with strong passwords enabled*/
+.ss-passwordValidation-messages ul{
+	color: #31708f;
+	background-color: #d9edf7;
+	border-color: #bcdff1;
+	border-style: solid;
+	border-width: 1px;
+	padding: .7em 15px;
+	font-weight: bold;
+	margin: 1em 1em 1em 0em !important;
+}
+
+/* ICONS */
+
+/* PANEL */
+.ui-panel {
+	width: 40em;
+}
+
+.ui-panel-position-right {
+	right: -39em;
+}
+
+/* Panel right closed animated */
+/* NOTE: if one of the numeric values gets changed within this block, ALL of the other
+values must be changed to the same value ************************************************************/
+.ui-panel-animate.ui-panel-position-right.ui-panel-display-overlay {
+	-webkit-transform: translate3d(39em,0,0);
+	-moz-transform: translate3d(39em,0,0);
+	transform: translate3d(39em,0,0);
+}
+
+.ui-panel-page-content-position-right {
+	left: -39em;
+	right: 39em;
+}
+
+.ui-panel-animate.ui-panel-page-content-position-right {
+	-webkit-transform: translate3d(-39em,0,0);
+	-moz-transform: translate3d(-39em,0,0);
+	transform: translate3d(-39em,0,0);
+}
+
+.ui-panel-dismiss-position-right.ui-panel-dismiss-open {
+	left: -39em;
+	right: 39em;
+}
+/****************************************************************************************************/
+
+.ss-panel-cart {
+	background: #fff;
+	border-left: 5px solid #949C51 !important;
+	margin-left: -5px;
+}
+
+.ss-panel-cart .ui-panel-inner {
+	background: #fff;
+	margin: 0px;
+	padding: 10px;
+}
+
+.ss-cart-item-desc {
+	float:left;
+	max-width: 100%;
+}
+
+.ss-cart-item-table {
+	margin: 0;
+}
+
+.ss-cart-item-cost {
+	text-align: right;
+	font-size: .75em;	
+}
+
+#field_PayMethod-button {
+	font-weight: bold;
+	padding-bottom: 1em;
+}
+
+.ss-excess-cart-items {
+	background-color: #EEE;
+	border-bottom: 1px solid #4465A1;
+	border-left: 1px solid #4465A1;
+	border-right: 1px solid #4465A1;
+	font-size: larger;
+	padding: 0.5em 0 0.5em 1em; 
+}
+
+.ss-cart-total {
+	font-size: 1.5em;
+	font-weight: bold;
+	margin-top: 0.7em;
+	padding-right: 3em;
+	text-align: right;
+}
+
+.ss-side-panel-cart-total {
+	background-color: #EEE;
+	border-bottom: 1px solid #4465A1;
+	border-left: 1px solid #4465A1;
+	border-right: 1px solid #4465A1;
+	font-size: 1.5em;
+	font-weight: bold;
+	margin-right: 0;
+	padding: 0.5em 2.7em 0.5em 0;
+	text-align: right;
+}
+
+.ss-cart-paymethod {
+	margin-top: 1.3em;
+	text-align: right;
+	padding-right: 0.5em;
+}
+
+.ss-checkout-table {
+	max-height: 21em;
+	overflow: auto;
+}
+
+/* Additional grid for 25/75% split */
+.ui-grid-a-uneven, .ui-grid-a-uneven-reverse { 
+	overflow: hidden; 
+}
+
+.ui-block-a-uneven, .ui-block-b-uneven, .ui-block-c-uneven, .ui-block-d-uneven, .ui-block-e-uneven, .ui-block-a-uneven-reverse, .ui-block-b-uneven-reverse { 
+	margin: 0; 
+	padding: 0; 
+	border: 0; 
+	float: left; 
+	min-height: 1px; 
+	-webkit-box-sizing: border-box; 
+	-moz-box-sizing: border-box; 
+	-ms-box-sizing: border-box; 
+	box-sizing: border-box; 
+}
+
+.ui-grid-a-uneven .ui-block-a-uneven {
+	width: 25%;
+}
+
+.ui-grid-a-uneven .ui-block-b-uneven { 
+	width: 74.95%; 
+}
+
+.ui-grid-a-uneven > :nth-child(2n) { 
+	width: 75%; 
+	margin-right: -.5px; 
+}
+
+.ui-grid-a-uneven .ui-block-a-uneven { 
+	clear: left; 
+}
+
+.ui-grid-a-uneven-reverse .ui-block-a-uneven-reverse {
+	width: 80%;
+	white-space: normal;
+}
+
+.ui-grid-a-uneven-reverse .ui-block-b-uneven-reverse { 
+	width: 19.95%; 
+}
+
+.ui-block-b-uneven-reverse {
+	white-space: normal;
+	word-wrap: break-word;
+	text-align: right;
+}
+
+.ui-grid-a-uneven-reverse > :nth-child(2n) { 
+	width: 20%; 
+	margin-right: -.5px; 
+}
+
+.ui-grid-a-uneven-reverse .ui-block-a-uneven-reverse { 
+	clear: left; 
+}
+
+/* Fix datepicker behind radio buttons */
+.ui-controlgroup-controls {
+	opacity: 0.9;
+	padding-bottom: 1em;
+}
+
+.ui-datepicker {
+	z-index: 3 !important;
+}
+
+/* Input fixes for HTML 5 displays */
+input[type=text],
+input[type=url],
+input[type=tel],
+input[type=number],
+input[type=color],
+input[type=email],
+input[type=date], 
+input[type=datetime], 
+input[type=datetime-local], 
+input[type=month], 
+input[type=number], 
+input[type=password], 
+input[type=time], 
+input[type=week]
+{
+	height: 2.2em !important;
+}
+
+/* MOBILE LIST VIEW */
+.ss-listview {
+	background: #fff;
+	border: 1px solid #4465A1;
+}
+
+.ss-listview .ui-li-static,
+.ss-listview .ui-li-divider {
+	border: none;
+}
+
+.ss-listview
+.ss-listview-internal {
+	background: #fff;
+	border: none;
+	border-top: 1px solid #4465A1;
+	white-space: normal !important;
+}
+
+li.ss-listview-internal{
+	overflow: visible !important;
+}
+
+li.ss-listview-internal p {
+	white-space: normal;
+	word-wrap: break-word;
+	font-size: inherit;
+}
+
+.ss-simplelistview {
+	border: none !important;
+	vertical-align: top !important;
+}
+
+/* UTILITY */
+.ss-utility-box {
+	margin: 1em 1em 1em 0em;
+}
+.ss-utility-box.ui-listview {
+	margin: 1em 1em 1em 0em;
+}
+.ss-utility-box-vertical {
+	margin-top: 1em !important;
+	margin-bottom: 1em !important;
+}
+.ss-utility-box-horizontal {
+	margin-right: 1em !important;
+}
+
+.ss-form-divide {
+	border-bottom: 1px solid #4465A1;
+	margin: 10px 0px 10px 0px;
+}
+
+.ss-header-subheader h1 {
+	color: #4465A1;
+	font-size: 1.5em;
+	margin: 0px;
+	line-height: 1.5em;
+	padding: 0px;
+}
+
+.ss-header-subheader h4 {
+	color: #949C51;
+	font-size: 1.2em;
+	margin: 0px;
+	line-height: 1.2em;
+	padding: 0px;
+}
+
+.ss-group-title {
+	color: #949C51;
+	font-size: 1.2em;
+	border-bottom: 1px solid #949C51;
+	margin: 10px 0px 10px 0px;
+	padding: 0px;
+}
+
+.ss-unbordered-message h1 {
+	color: #4465A1;
+	font-size: 1.2em;
+	margin: 0px;
+	line-height: 1.2em;
+	padding: 0px;
+}
+.ss-alert-message,
+.ss-important-message,
+.ss-warning-message,
+.ss-serious-message {
+	border-style: solid;
+	border-width: 1px;
+	padding: .7em 15px;
+}
+.ss-alert-message h1,
+.ss-important-message h1,
+.ss-warning-message h1,
+.ss-serious-message h1 {
+	font-size: 1.2em;
+	margin: 0px;
+	line-height: 1.2em;
+	padding: 0px;
+}
+.ss-alert-message h2,
+.ss-important-message h2,
+.ss-warning-message h2,
+.ss-serious-message h2 {
+	font-size: 1.1em;
+	margin: 0px;
+	line-height: 1.1em;
+	padding: 0px;
+}
+.ss-alert-message {
+	color: black;
+	background-color: #f9b12e;
+	border-color: #f9b12e;
+}
+.ss-important-message {
+	color: #31708f;
+	background-color: #d9edf7;
+	border-color: #bce8f1;
+}
+
+.ss-warning-message {
+	color: #8a6d3b;
+	background-color: #fcf8e3;
+	border-color: #faebcc;
+}
+
+.ss-serious-message, .ss-highlight {
+	color: #a94442;
+	background-color: #f2dede;
+	border-color: #ebccd1;
+}
+.ss-alert-search {
+	color: #f9b12e;
+	display:inline-block;
+}
+/*	HEADER */
+.ss-header {
+	background: #fff !important; /* This is hack-ish but we need to ensure that our BG color is correct (due to a change in jQueryMobile 1.4) */
+	border: none !important; /* This is hack-ish but we need to ensure that our border color is correct (due to a change in jQueryMobile 1.4) */
+}
+
+.ss-header h1 {
+	color: #4465A1;
+	font-size: 1.5em;
+	margin: 0px;
+	line-height: 1.5em;
+	padding: 0px;
+}
+
+.ss-header h4 {
+	color: #949C51;
+	font-size: 1.2em;
+	margin: 0px;
+	line-height: 1.2em;
+	padding: 0px;
+}
+
+.ss-header-stripe-top {
+	background: #949C51;
+	height: 5px;
+	margin: 0px;
+	padding: 0px;
+}
+
+.ss-header-stripe-bottom {
+	background: #4465A1;
+	break: both;
+	margin: 0px;
+	min-height: 5px;
+	padding: 0px;
+}
+
+.ss-header-internal {
+	color: #4465A1;
+	margin: 10px 10px 10px 10px;
+	padding: 0px 0px 0px 70px;
+	min-height: 60px;
+	text-shadow: none;
+}
+
+.ss-header-title {
+	float: left;
+	margin: 0px;
+	padding: 0px;
+	width: 50%;
+}
+.ss-receipt-width {
+	min-width: 40em;
+}
+.ss-header-actions {
+	float: right;
+	margin: 0px;
+	padding: 0px;
+	width: 50%;
+}
+
+.ss-header-actions a {
+	display: block;
+	float: right;
+	height: 60px;
+	margin: 10px 10px 10px 0px;
+	width: 60px;
+	text-decoration: none;
+}
+
+.ss-header-actions-cart {
+	background: #4465A1 center center no-repeat url("../img/appbar.cart-medium.png");
+}
+
+.ss-header-actions-home {
+	background: #4465A1 center center no-repeat url("../img/appbar.home-medium.png");
+}
+
+.ss-header-actions-user {
+	background: #4465A1 center center no-repeat url("../img/appbar.user-medium.png");
+}
+
+.ss-header-actions-language {
+	background: #4465A1 center center no-repeat url("../img/Language-Icon-Transparent-medium.png");
+}
+
+.ss-header-actions-docs {
+	background: #4465A1 center center no-repeat url("../img/appbar.content-save-medium.png");
+}
+
+.ss-header-actions a:hover {
+	background-color: #508BF7;
+}
+
+.ss-header-actions a *{
+	visibility: hidden;
+}
+
+/* Button Labels */
+.ss-header-labels {
+	color: #ffffff;
+	font-size: 10px;
+	text-align: center;
+	text-shadow: 0 0 0 #ffffff;
+	display: block;
+}
+
+#ss-general-label {
+	visibility: visible;
+	padding-top: 4.5em;
+}
+
+#ss-cart-label {
+	visibility: visible;
+	padding-top: 0.41cm;
+}
+
+#ss-cart-count-label {
+	visibility: visible;
+	font-size: 16px;
+	padding-left: 0.05cm;
+	padding-top: 0.25cm;
+	position: relative;
+}
+
+/* FOOTER */
+.ss-footer {
+	background: #4465A1;
+	border: none !important; /* (due to a change in jQueryMobile 1.4) */
+	border-top: 1px solid #fff !important; /* (due to a change in jQueryMobile 1.4) */
+	padding: 0px;
+}
+
+.ss-footer-stripe {
+	background: #949C51;
+	margin: 0px;
+	min-height: 5px;
+	padding: 0 0.5em;
+}
+
+.ss-footer-internal {
+	background: right center no-repeat url("../img/tyler-logo-small.png");
+	color: #fff;
+	font-size: 0.8em;
+	margin: 10px 10px 10px 10px;
+	padding: 0px 100px 0px 0px;
+	min-height: 30px;
+	text-align: right;
+	text-shadow: none;
+}
+
+.ss-footer-internal-small {
+	color: #fff;
+	font-size: 0.8em;
+	padding: 5px 5px 5px 5px;
+	text-align: right;
+	text-shadow: none;
+}
+
+.ss-footer-internal-small-left-align {
+	color: #fff;
+	padding: 5px 5px 5px 5px;
+	text-align: left;
+	text-shadow: none;	
+	float: left;
+	margin-top: -5px;
+}
+
+/* ACTION */
+.ss-action {
+	background: #4465A1 left center no-repeat;
+	border: 1px solid #4465A1;
+	display: block;
+	font-weight: normal !important;
+	padding: 0px 0px 0px 76px;
+	text-decoration: none !important;
+}
+
+.ss-action:hover {
+	background-color: #508BF7;
+}
+
+.ss-action-checkmark-pencil {
+	background-image: url("../img/appbar.checkmark.pencil.png");
+}
+
+.ss-action-page-copy {
+	background-image: url("../img/appbar.page.copy.png");	
+}
+
+.ss-action-page-search {
+	background-image: url("../img/appbar.page.search.png");	
+}
+
+.ss-action-page-subscription {
+	background-image: url("../img/appbar.calendar.dollar.png");
+}
+
+.ss-action-fraudGuard {
+	background-image: url("../img/appbar.page.fraudGuard.png");
+}
+
+.ss-action-internal {
+	background: #fff;
+	margin: 0px;
+	min-height: 56px;
+	padding: 10px;
+}
+
+.ss-action-internal p {
+	color: #000;
+}
+
+.ss-action-internal h1 {
+	color: #4465A1;
+	font-size: 1.2em;
+	margin: 0px;
+	line-height: 1.2em;
+	padding: 0px;
+}
+
+.ss-action-internal h4 {
+	color: #949C51;
+	font-size: 1em;
+	margin: 0px;
+	line-height: 1em;
+	padding: 0px;
+}
+
+.ss-action2 {
+	background: #4465A1 left center no-repeat url("../img/appbar.page.file.pdf.png");
+	border: 1px solid #4465A1;
+	color: #fff !important;
+	display: block;
+	font-weight: bold !important;
+	min-height: 40px;
+	padding: 10px 10px 10px 40px;
+	text-decoration: none !important;
+	text-shadow: none;
+}
+
+.ss-action2:hover {
+	background-color: #508BF7;
+}
+
+/* OTHER BOX */
+.ss-generic-box {
+	background: #fff;
+	border: 1px solid #4465A1;
+	padding: 10px;
+}
+
+/* This is taking the place of a ui-block-b for images */
+.ss-image-margins {
+	vertical-align: bottom;
+	display: inline-table;
+	padding: 0em 0.5em;
+	width: 48%;
+	margin-top: 0.5em; 
+	border: 0 none;
+	box-sizing: border-box;
+	float: left;
+	min-height: 1px;
+	overflow: visible;
+}
+
+.center {
+	margin-left: auto;
+	margin-right: auto;
+	text-align: center;
+}
+
+.ss-image {
+	min-height: 500px; 
+	overflow: visible;
+	-webkit-overflow-scrolling: touch;
+}
+.ss-pdfjs-viewer {
+	width: 100%;
+	height: 775px;
+	min-height: 550px;
+}
+.ss-pdfjs-lviewer {
+	width: 100%;
+	height: 1055px;
+	min-height: 550px;
+}
+.ss-purchase-button {
+	margin-right: 0;
+}
+
+.scrollable {
+	overflow: scroll;
+}
+
+.ss-image div {
+	background-: #fff;
+	-webkit-box-shadow: 5px 5px 5px 0px rgba(0,0,0,0.25);
+	-webkit-overflow-scrolling: touch;
+	-moz-box-shadow: 5px 5px 5px 0px rgba(0,0,0,0.25);
+	box-shadow: 5px 5px 5px 0px rgba(0,0,0,0.25);
+}
+
+.ss-image img {
+	align: center;
+	overflow: visible;
+}
+.ss-loading {
+	background-image: url("themes/images/ajax-loader.gif");
+	background-position: center;
+	background-repeat: no-repeat;
+}
+
+.ss-text-box {
+	white-space: normal;
+}
+
+.ss-row td {
+	vertical-align: middle;
+}
+
+/* HOVER ROW */
+.ss-row:hover, li.ss-row:hover{
+	background-color: #508BF7;
+	color:#FFFFFF;
+	cursor: pointer;
+}
+.table-stripe tbody tr:hover:nth-child(odd) td {
+	background-color: #508BF7;
+	color:#FFFFFF;
+	cursor: pointer;
+}
+
+.ss-table thead th,
+.ss-table tbody tr:last-child {
+	border-bottom: 1px solid #d6d6d6; /* non-RGBA fallback */
+	border-bottom: 1px solid rgba(0,0,0,.1);
+}
+.ss-table tbody th,
+.ss-table tbody td,
+ul[id$="savedItemsView"] li:not(:first-child).ss-row{
+	border-bottom: 1px solid #e6e6e6; /* non-RGBA fallback  */
+	border-bottom: 1px solid rgba(0,0,0,.05);
+}
+.ss-table tbody tr:last-child th,
+.ss-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+.ss-table tbody tr:nth-child(odd) td,
+.ss-table tbody tr:nth-child(odd) th,
+ul[id$="savedItemsView"] li:nth-child(odd){
+	background-color: #eeeeee; /* non-RGBA fallback  */
+	background-color: rgba(0,0,0,.04);
+}
+.ss-table tbody tr:hover:nth-child(odd) td,
+.ss-table tbody tr:hover:nth-child(odd) th {
+	background-color: #508BF7;
+	color:#FFFFFF;
+	cursor: pointer;
+}
+/* DOCUMENT VIEWER */
+.doc-viewer table {
+	table-layout: fixed;
+}
+.doc-viewer th {
+	margin: 0;
+	padding: 0;
+}
+
+.doc-viewer tbody tr:nth-child(odd) td,
+.doc-viewer tbody tr:nth-child(odd) th {
+	background-color: #eeeeee; /* non-RGBA fallback  */
+	background-color: rgba(0,0,0,.04);
+}
+.ss-supplemental-title{
+	display: block;
+	text-shadow: 0 0 0 #ffffff;
+	font-size: 14px;
+	width: 100%;
+	padding: .25em
+}
+
+.ss-button-holder {
+	min-height: 5em;
+	text-shadow: none;
+	box-shadow: none;
+}
+
+/* Receipt Items */
+.receipt-item-table table {
+	table-layout: fixed;
+}
+.receipt-item-table th {
+	margin: 0;
+	padding: 0;
+}
+
+.receipt-item-table tbody tr:nth-child(odd) td {
+	background-color: #eeeeee; /* non-RGBA fallback  */
+	background-color: rgba(0,0,0,.04);
+}
+
+.receipt-item-table tbody tr td:nth-child(even),
+.receipt-item-table thead tr th:nth-child(even) {
+	text-align: right;
+}
+
+.related-table-row td {
+	padding-top: 0em;
+	padding-bottom: 0em;
+}
+
+.ss-small-popup {
+	height: 400px;
+	overflow-y: scroll;
+}
+
+.ss-popup-inner {
+	padding-left: 1.0em;
+}
+
+.ss-popup-inner > form{
+	padding-right: 1.0em;
+}
+
+.ss-popup-button {
+	margin: 0.5em 0.25em;
+}
+
+.ss-text-wrap p, .ss-text-wrap {
+	white-space: normal !important;
+	word-wrap: break-word;
+}
+
+.ss-text-overlay {
+	background-color: #333333;
+	float: right;
+	border-style: solid;
+	border-width: 1px;
+	padding: 0.1em;
+	margin-top: -1.9em;
+	margin-right: 0.1em;
+	z-index: 3;
+	color: #FFFFFF;
+	opacity: 0.9;
+	filter: alpha(opacity=90);
+	-moz-opacity: 0.9;
+}
+
+.ss-datacount {
+	float: right;
+	border-style: solid;
+	border-width: 1px;
+	border-color: #cccccc;
+	z-index: 3;
+	opacity: 0.9;
+	filter: alpha(opacity=90);
+	-moz-opacity: 0.9;
+	padding-right: 3px;
+	padding-left: 3px;
+	margin-top: -1px;
+	background-color: #eeeeee;
+	color: #005599;
+}
+
+.ss-hidden {
+	visibility: hidden;
+	display: none;
+}
+
+.popup-center {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	min-width: 500px;
+}
+
+.ss-link {
+	font-size: 1.3em;
+}
+
+/*Used to hide spinners from input fields of type=number [ER-4247]*/
+input[type=number].nospinners { 
+	-moz-appearance: textfield; 
+}
+
+input[type=number].nospinners::-webkit-inner-spin-button,
+input[type=number].nospinners::-webkit-outer-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+/* Classes for the drop-down of the Multi-select */
+li.acSeparator.ui-li-static.ui-body-inherit {
+	background-color: #fff;
+	border: 1px solid #e6e6e6; /* non-RGBA fallback  */
+	border: 1px solid rgba(0,0,0,.05);
+	border-left: 1px solid #8496ba;
+	border-right: 1px solid #8496ba;
+	font-weight: bold;
+	font-size: medium;
+}
+
+li.acItem.ui-li-static.ui-body-inherit {
+	cursor: pointer;
+	background-color: #fff;
+	border: 1px solid #e6e6e6; /* non-RGBA fallback  */
+	border: 1px solid rgba(0,0,0,.05);
+	border-left: 1px solid #8496ba;
+	border-right: 1px solid #8496ba;
+}
+
+li.acItem.ui-li-static.ui-body-inherit:first-child {
+	border-top: 1px solid #8496ba;
+}
+
+li.acItem.ui-li-static.ui-body-inherit.ui-last-child, li.acFinal.ui-li-static.ui-body-inherit.ui-last-child {
+	border-bottom: 1px solid #8496ba;
+}
+
+li.acFinal.ui-li-static.ui-body-inherit {
+	border: 1px solid #e6e6e6; /* non-RGBA fallback  */
+	border: 1px solid rgba(0,0,0,.05);
+	border-left: 1px solid #8496ba;
+	border-right: 1px solid #8496ba;
+	cursor: pointer;
+	background-color: #eeeeee;
+	font-weight: bold;
+}
+
+li.acFinal.ui-li-static.ui-body-inherit:hover {
+	background-color: #508BF7;
+	color:#FFFFFF;
+	cursor: pointer;
+}
+
+li.acItem.ui-li-static.ui-body-inherit:hover {
+	background-color: #508BF7;
+	color:#FFFFFF;
+	cursor: pointer;
+}
+
+li.acItem.ui-li-static.ui-body-inherit:nth-child(odd),
+li.acItem.ui-li-static.ui-body-inherit:nth-child(odd) {
+	background-color: #eeeeee; /* non-RGBA fallback  */
+	background-color: rgba(0,0,0,.04);
+}
+li.acItem.ui-li-static.ui-body-inherit:hover:nth-child(odd),
+li.acItem.ui-li-static.ui-body-inherit:hover:nth-child(odd) {
+	background-color: #508BF7;
+	color:#FFFFFF;
+	cursor: pointer;
+}
+li.acItem.ui-li-static.ui-body-inherit.acItem-selected {
+	background-color: #508BF7;
+	color:#FFFFFF;
+}
+
+li.acFinal.error {
+	background-color: #508BF7;
+	color: #E80C13 !important;
+	font-weight: bold;
+	cursor: pointer;
+}
+
+/* Classes for the multi-select portion of the autocomplete list */
+ul.cblist-input-list {
+	background-color: #fff;
+	clear: left;
+	cursor: text;
+	font-family: Verdana;
+	font-size: 12px;
+	list-style-type: none;
+	margin: 6px 0px 6px 0px;
+	min-height: 1px;
+	padding: 0;
+	overflow: visible;
+	position:relative;
+}
+
+li.cblist-input-list {
+	background-color: #eff2f7;
+	border: 1px solid #ccd5e4;
+	border-radius: 5px;
+	color: #000;
+	cursor: default;
+	float: left;
+	font-size: 11px;
+	height: auto !important;
+	margin: 3px;
+	overflow: hidden;
+	padding: 1px 3px;
+}
+
+li.cblist-input-toggle {
+	background-color: #eeeeee;
+	border: 1px solid #ccd5e4;
+	border-radius: 5px;
+	color: #000;
+	cursor: pointer;
+	float: left;
+	font-size: 12px;
+	height: auto !important;
+	margin: 3px;
+	overflow: hidden;
+	padding: 1px 3px;
+}
+
+li.cblist-input-toggle:hover{
+	background-color: #cccccc;
+}
+
+li.cblist-input-list p, li.cblist-input-toggle p {
+	display: inline;
+	margin: 0;
+	padding: 0;
+}
+
+li.cblist-input-list {
+	cursor:pointer;	
+}
+
+li.cblist-input-list p:before{
+	content: '\2716  \0000a0';
+}
+
+li.cblist-input-list:hover{
+	color:gray;
+}
+
+.ui-responsive.doc-viewer.ui-table.ui-table-reflow {
+	white-space: normal;
+}
+
+td.ss-external-doc {
+	padding-top: 1.7em;
+	padding-bottom: 1.7em;
+}
+
+/* Don't cut off the right side of fields on search screens when they are in the 3rd of 3 columns */
+.ui-block-c > .autoCompleteList > .ui-input-search.ui-body-a.ui-corner-all.ui-shadow-inset.ui-input-has-clear {
+	padding-right: 0;
+	width: 98.5%;
+}
+
+div.ss-utility-box span .facetFilterButtons > a{
+	text-align: center;
+}
+
+/* embedded cart tiles with two buttons */
+.split-cart-button-controller{
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	width: 40px;
+	overflow: hidden;
+	height: 100%;
+	min-height: 100%;
+	margin: 0px;
+}
+.split-cart-button-controller > .ui-controlgroup-controls 
+{
+	height:100%;
+	padding:0px;
+}
+.split-cart-button-controller > .ui-controlgroup-controls >  .spilt-cart-double-button:first-child
+{
+	height:50%;
+	border-bottom: none;
+}
+.split-cart-button-controller > .ui-controlgroup-controls >  .spilt-cart-double-button:last-child
+{
+	height:50%;
+	border-top: none;
+	border-bottom: none;
+}
+
+.split-cart-button-controller > .ui-controlgroup-controls >  .spilt-cart-single-button
+{
+	height:100%;
+}
+
+div[id$=savedItemsPrint]{
+	display:inline;
+}
+
+html body div[id$=savedItemsPrint] > a, div[id$=savedItemsPrint] > a:visited, html body div[id$=savedItemsPrint] > a:hover
+{
+	float:right;
+	color:white;
+}
+.truncate
+{
+	text-overflow: ellipsis;
+	overflow: hidden;
+	white-space: nowrap;
+}
+/*css override for default jquery mobile loader */
+.ui-loader-default {
+	margin:0px;
+	top:0px !important;
+	left:0px;
+	width:100%;
+	height:100%;
+	opacity: 1;
+}
+
+.modal-overlay
+{
+	background-color: #7d7d7d;
+	opacity: .8;
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	top: 0px;
+	z-index: 3;
+}
+
+.cssload-container {
+	left: 0px !important; 
+	right: 0px !important; 
+	margin-top: 0px !important; 
+	top: calc(50% - 39px);
+}
+
+.cssload-loader{
+	padding-left: 35px;
+}
+
+.ss-utility-box.ss-facet-entry>div {
+	max-height: 200px;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.ss-utility-box.ss-facet-entry>div>div {
+	padding-bottom: 0px;
+}
+
+.ss-facet-entry div a {
+	text-align: left;
+}
+
+.ss-listview.ss-utility-box .filtered-by-row{
+	vertical-align: top;
+	font-size: 1em;
+	font-weight: bold;
+	overflow: auto;
+	white-space: normal;
+	padding:10px;
+}
+
+.filtered-by-row .ss-search-pill {
+	margin: 3px;
+	border: 0px;
+	background-color: #afafaf;
+	padding: 5px;
+	border-radius: 5px;
+	display: inline-block;
+	max-width: 200px;
+	text-decoration: none;
+	font-weight: bold;
+	color: #2f3e46;
+	cursor:pointer;
+	vertical-align: middle;
+}
+
+.filtered-by-row .ss-search-pill:hover {
+	color: white;
+	font-weight: bold;
+}
+
+.too-many-results-message {
+	border-radius: 5px;
+	padding: 5px;
+	background-color: rgb(238, 238, 238);
+	font-family: Helvetica, Arial, sans-serif;
+	font-size: 12.5px;
+	font-weight: bold;
+	color: #2f3e46;
+}
+
+.ss-facet-entry.selected-facet{
+	background-color: #afafaf;
+}
+
+.ss-facet-entry.selected-facet > span:first-child:before{
+	content: '\2714 \0000a0';
+}
+
+.transition-background{
+	-webkit-transition-property:background; 
+	-webkit-transition-duration: .3s; 
+	-webkit-transition-timing-function: ease-in;
+}
+
+/* End don't cut off the right side */
+
+.ss-subscription-price {
+	float: right;
+	margin-right:30px;
+}
+
+/* below is for autocomplete loader */
+.acloader {
+	height: 4px;
+	width: 100%;
+	position: relative;
+	overflow: hidden;
+	background-color: #ddd;
+}
+.acloader:before{
+	display: block;
+	position: absolute;
+	content: "";
+	left: -200px;
+	width: 200px;
+	height: 4px;
+	animation: loading 2s linear infinite;
+}
+
+.filter-header{
+	display: none;
+}
+
+#filters{
+	display:block;
+}
+
+/* Error page styles */
+.error-box {
+	width: 50%;
+	height: 300px;
+	margin: 0 auto;
+	margin-top: 10%;
+	background-image: url('../resources/img/gears.png');
+	background-size: contain;
+	background-repeat: no-repeat;
+	background-position: center;
+	color: #6f6f6f;
+}
+
+.error-description {
+	font-size: 8pt;
+	text-transform: uppercase;
+	margin-top: 70px;
+	display: inline-block;
+}
+
+.error-code {
+	border-bottom: 1px solid silver;
+}
+
+.error-message {
+	font-size: 32pt;
+	font-weight: bold;
+}
+
+.docNotes {
+	text-overflow: ellipsis;
+	overflow: hidden;
+	width: 425px;
+	white-space: nowrap;
+}
+.docNotes:hover {
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-all;
+}
+
+.ecertify-container {
+	display: flex;
+	flex-direction: column;
+}
+
+.ecertify-error-panel {
+	color: rgb(255,0,0);
+    font-weight: bolder;
+    background-color: rgb(255 91 0 / 20%);
+}
+
+@keyframes loading {
+	from {left: -200px; width: 30%;}
+	50% {width: 30%;}
+	70% {width: 70%;}
+	80% { left: 50%;}
+	95% {left: 120%;}
+	to {left: 100%;}
+}
+/* ---above is for autocomplete loader----- */

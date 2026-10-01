@@ -114,6 +114,40 @@ export const SIDEBAR_NODES: SidebarNodeDef[] = [
 
   {
 
+    catalogId: "portal_gate",
+
+    type: "pipelineNode",
+
+    label: "Portal Gate",
+
+    description: "Pass Cloudflare & save county portal session",
+
+    category: "pipeline",
+
+    defaultData: {
+
+      label: "Portal Gate",
+
+      nodeId: "portal_gate",
+
+      enabled: true,
+
+      portalType: "assessor",
+
+      url: "",
+
+      playwrightNotes:
+
+        "Opens the county portal and waits for you to complete Cloudflare in Live Browser. " +
+
+        "Session cookies are saved per county host — add once before Assessor/Recorder/Tax nodes.",
+
+    },
+
+  },
+
+  {
+
     catalogId: "assessor",
 
     type: "pipelineNode",
@@ -165,6 +199,41 @@ export const SIDEBAR_NODES: SidebarNodeDef[] = [
 
       playwrightNotes:
         "Search by grantor name, click Search, expand first result row",
+
+    },
+
+  },
+
+  {
+
+    catalogId: "name_searcher",
+
+    type: "pipelineNode",
+
+    label: "Name Searcher",
+
+    description: "Search recorder by party names from prior documents",
+
+    category: "pipeline",
+
+    defaultData: {
+
+      label: "Name Searcher",
+
+      nodeId: "name_searcher",
+
+      enabled: true,
+
+      expandVariations: false,
+
+      partyType: "both",
+
+      searchLimit: 0,
+
+      maxNames: 0,
+
+      playwrightNotes:
+        "Extracts grantor/grantee names from the Recorder node and runs follow-up party name searches.",
 
     },
 

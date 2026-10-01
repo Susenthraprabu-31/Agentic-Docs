@@ -1,0 +1,1584 @@
+'use strict';
+
+angular.module('propertySalesApp')
+  .controller('MainCtrl', ['$scope', '$q', '$window', '$routeParams', '$log', 'localStorageService', 'utils', 'propertySearchService', 'esriGisService', 'esriGisGeometryService', 'candidate', 'paConfiguration', 'comparableSalesDefault', 'searchParam', 'paComparableSalesService', 'defaultService', function ($scope, $q, $window, $routeParams, $log, localStorageService, utils, propertySearchService, esriGisService, esriGisGeometryService, candidate, paConfig, comparableSalesDefault, searchParam, paComparableSalesService, defaultService) {
+      $scope.embedPropertySearch = false;
+      $scope.graphicLayerClickedFlag = false;
+      $scope.mapIdentifyMapPoint = null;
+      // IMPORTANT - Do not move
+      $scope.mapClicked = function (event) {
+          if (event.graphic && event.graphic._graphicsLayer && event.graphic._graphicsLayer.id == "circleResultLayer") {
+              return;
+          }
+          clearResults();
+          $scope.mapIdentifyMapPoint = null;
+          if ($scope.distanceValueSearch == "3/4 mile" || $scope.distanceValueSearch == "1 mile") {
+              $scope.mapIdentifyMapPoint = event.mapPoint;
+              $('#load-modal').modal('hide');
+              $('#divIdentifyMsg-modal').modal('show');
+          }
+          else {
+              //$scope.loader = true; //Aug 20
+              $('#load-modal').modal('show');                  
+              $log.debug("mapClicked: Map has been clicked:", event.mapPoint.x, event.mapPoint.y);
+              $scope.getPropertyByXY(event.mapPoint.x, event.mapPoint.y);
+          }
+      };
+
+      // IMPORTANT - Do not move
+      $scope.drawEndHandler = function (geometry) {
+          $log.debug("DrawEndHandler: completed.");
+          $scope.drawToolBar.deactivate();
+          $scope.map.setExtent(geometry);
+      };
+
+     //function added to minimize and maximize the map control
+      $scope.toggleMap = function (event) {
+          if ($("#map_info_header").hasClass('glyphicon glyphicon-minus-sign')) {
+              $("#map_info_header").removeClass('glyphicon glyphicon-minus-sign').addClass('glyphicon glyphicon glyphicon-plus-sign');
+              $("#mapDirection").css("display", "none");
+              $("#divLegendTitle").css("display", "none");
+              $("#divLegend").css("display", "none");              
+              $("#map").css("height", "40px");           
+              $("#scale-container").css("display", "none");
+              $("#map_info_header").attr('title', "Maximize Map");
+          }
+          else {
+              $("#map_info_header").removeClass('glyphicon glyphicon-plus-sign').addClass('glyphicon glyphicon glyphicon-minus-sign');
+              $("#tableComparableSales tr").not('thead tr').removeClass('hideTableRows'); 
+              $("#divLegendTitle").css("display", "block");
+              $("#divLegend").css("display", "block");
+              $("#map").css("height", "648px");
+              $scope.map.resize();             
+              $("#mapDirection").css("display", "block");
+              $("#scale-container").css("display", "block");
+              $("#map_info_header").attr('title', "Minimize Map");
+          };
+      };
+
+      ///validation functions
+      var isUndefinedOrNull = function (val) { return _.isUndefined(val) || _.isNull(val) };
+
+      var isNumber = function (val) { return eval('/^\\d+$/').test(val); };
+
+      var isAlphabetic = function (val) {
+          var expr = new RegExp("^[a-zA-Z-' ]*$");
+          return expr.test(val);
+      };
+
+      
+
+      // IMPORTANT - Do not move
+      function initMap() {         
+          //Property Sales - Changes
+          //Added to include proxy file
+          //Setting to use proxy file
+          esri.config.defaults.io.proxyUrl = "proxy.ashx";        
+         esriConfig.defaults.io.alwaysUseProxy = false;
+          esriConfig.defaults.io.timeout = 300000;
+          var map = new esri.Map('map', {
+                    extent: new esri.geometry.Extent(paConfig.initialExtentJson),
+                    logo: false,
+                    showAttribution: false
+                }
+          );
+          var scalebar = new esri.dijit.Scalebar({ map: map, scalebarStyle: "line" }, dojo.byId("scale-container"));
+          $scope.attachedMap = map;
+          $scope.map = $scope.attachedMap;
+          map.on('load', function () {
+              $log.debug("OnLoad is called");
+              map.enableRubberBandZoom();
+              map.disableScrollWheelZoom();
+              map.hideZoomSlider();
+              map.disableDoubleClickZoom();
+              $scope.navToolBar = new esri.toolbars.Navigation(map);
+              $scope.attachedDrawToolBar = new esri.toolbars.Draw(map);
+              $scope.drawToolBar = $scope.attachedDrawToolBar;
+              dojo.connect($scope.drawToolBar, "onDrawEnd", $scope.drawEndHandler);                                    
+              //Add events to map.
+              map.on("click", $scope.mapClicked);              
+              map.on('extent-change', function (extent) {
+                  map.resize();
+                  map.reposition();
+              });
+              //get default values
+              $scope.getDefaultValues();
+              map.resize();      
+          });
+          
+          //added for advance search header and footer
+          $scope.showAdvanceSearchHeader = false;
+          $scope.showAdvanceSearchFooter = false;
+          $scope.applicationOffline = false;
+          $scope.distanceValueSearch = "1/4 mile";     
+
+          // urls for the map.
+          var urlAerial = paConfig.urlAerialMap;
+          var urlStreet = paConfig.urlStreetMap;          
+          var urlDynamicLayer = paConfig.urlDynamicMap;
+
+          //Add layers.
+          var aerialLayer = new esri.layers.ArcGISTiledMapServiceLayer(urlAerial, { id: "aerial" });
+          var streetLayer = new esri.layers.ArcGISTiledMapServiceLayer(urlStreet, { id: "street" });
+          var dynamicLayer = new esri.layers.ArcGISDynamicMapServiceLayer(urlDynamicLayer, { "id": "dynamic", "opacity": 0.8, "visible": true });
+          var urlParcelLayer = paConfig.urlParcelLayer;
+         
+          var layers = new esri.layers.GraphicsLayer({ id: "layers" });
+          var parcelPoint = esri.layers.GraphicsLayer({ id: "parcelPoint" });
+          var parcelBoundary = esri.layers.GraphicsLayer({ id: "parcelBoundary", minScale: 50000 });
+          //Added graphics layers for Buffer and Sales PRoperty
+          var bufferBoundary = esri.layers.GraphicsLayer({ id: "bufferBoundary" });
+          var salesBoundary = esri.layers.GraphicsLayer({ id: "salesBoundary" });
+          //add circle layer to sit underneath the number symbol on the resultLayer
+          var circleResultLayer = new esri.layers.GraphicsLayer({ id: "circleResultLayer" });
+          map.addLayer(aerialLayer);
+          map.addLayer(streetLayer);
+          map.addLayer(dynamicLayer);         
+          map.addLayer(layers);
+          //Property Sales changes
+          //Added graphics layers for Buffer and Sales Property
+          map.addLayer(salesBoundary);
+          map.addLayer(bufferBoundary);
+          map.addLayer(parcelBoundary);
+          map.addLayer(parcelPoint);          
+          map.addLayer(circleResultLayer);
+          $scope.map.getLayer("circleResultLayer").on("click", $scope.graphicCircleClicked);
+          streetLayer.hide();
+      };
+
+      // Init url params.
+      $scope.$on('$routeChangeSuccess', function (event, routeData) {
+          $scope.folioParam = routeData.params.folio;                 
+          // Initialize the map.
+          dojo.ready(initMap);         
+      });
+
+      $scope.$watch('showError', function () { });
+
+      $scope.$watch('mapState', function () {
+          if ($scope.map) {
+              if ($scope.mapState == "BigMap") {
+                  clearResults();
+                  $scope.map.resize();
+                  $scope.map.reposition();
+                  $window.setTimeout(function () { $scope.map.setExtent(new esri.geometry.Extent(paConfig.initialExtentJson)); }, 1000);
+              }
+              if ($scope.mapState == "SmallMap") {            
+                  $scope.map.reposition();
+              }
+          }
+      });
+
+
+      $scope.version = paConfig.version;
+      $scope.mapState = "BigMap";
+
+      //Property Sales changes
+      $scope.showSalesInformation = "True";
+      $scope.hideSalesInformation = function () {
+          $scope.showSalesInformation = "False";
+      };
+
+      $scope.mapStyleState = function () {
+          if ($scope.mapState === "BigMap") {
+              return "col-md-12 col-sm-12";
+          }
+          if ($scope.mapState === "SmallMap") {              
+              return "col-md-12 col-sm-12";
+          }
+          if ($scope.mapState === "NoMap") {
+              return "no_map";
+          }
+      }
+
+      $scope.mapActivateZoomInBox = function () {
+          $scope.drawToolBar.activate(esri.toolbars.Draw.EXTENT);
+      };
+
+      $scope.mapZoomIn = function () {
+          var extent = $scope.map.extent;
+          $scope.map.setExtent(extent.expand(0.5));
+      };
+
+      $scope.mapZoomOut = function () {
+          var extent = $scope.map.extent;
+          $scope.map.setExtent(extent.expand(2));
+          var mapLevel = $scope.map.getLevel();
+          if (mapLevel == 8)
+              $scope.map.setLevel(mapLevel - 1);
+      };
+
+      $scope.mapZoomToProperty = function () {
+          if (!isUndefinedOrNull($scope.property))              
+          $scope.map.setExtent($scope.salesBufferGeometry.getExtent().expand(1.0), true);
+          $scope.map.centerAt($scope.property.location.point);
+      };
+
+      $scope.mapZoomToFullExtent = function () {
+          $scope.map.setExtent(new esri.geometry.Extent(paConfig.initialExtentJson));
+          if (!isUndefinedOrNull($scope.property.location)) {
+              $scope.map.centerAt($scope.property.location.point);
+          }
+      };
+
+      $scope.mapToggleAerialOn = function () {
+          $scope.map.getLayer("aerial").show();
+          $scope.map.getLayer("street").hide();
+      }
+
+      $scope.mapToggleStreetOn = function () {
+          $scope.map.getLayer("street").show();
+          $scope.map.getLayer("aerial").hide();
+      }
+
+      $scope.aerialYears = _.keys(paConfig.aerials);
+      $scope.aerialYear = "";
+      $scope.defaultValues = null;
+      $scope.folio = "";
+      $scope.salesQualiArr = [];
+      //Added for search parameters
+      $scope.searchParameter = null;
+      $scope.property = null;
+      //Added for Comparable sales information
+      $scope.onlyNumbers = /^\d+$/;
+      $scope.comparableSales = null;
+      $scope.comparableSalesLegend = null;
+      $scope.propertySalesInformation = null;
+      $scope.subjectPropertyInformation = null;
+      $scope.salesBufferGeometry = null;
+      $scope.propertyFeatureSet = null;
+      ///////////////////////////////
+      $scope.propertySiteAddress = "";
+      $scope.showError = false;
+      $scope.errorMsg = "";
+      $scope.subDivision = "";
+      $scope.ownerName = "";
+      $scope.candidatesList = null;
+      $scope.previousCandidatesInfo = null;
+      $scope.isOwnerCandidates = false;
+      $scope.isAddressCandidates = false;
+      $scope.isPartialFolioCandidates = false;
+      $scope.isSubDivisionCandidates = false;
+      $scope.fromPage = 1;
+      $scope.toPage = 200;
+      $scope.itemsPerFetch = 200;
+      $scope.isEndOfResults = false;
+      $scope.address = "";
+      $scope.suite = "";
+      $scope.folioMask = "9?9-9999-999-9999";
+      $scope.legendColors = null;
+      $scope.uniqueSalesValues = null;
+
+      $scope.activeSearchTab = "Address";
+      $scope.isActiveSearchTab = function (tab) {
+          return $scope.activeSearchTab == tab;
+      };
+      $scope.setActiveSearchTab = function (tab) {
+          $scope.activeSearchTab = tab;
+      };
+      
+      $scope.layers = paConfig.layers;
+      $scope.resetLayers = function () {
+          _.each($scope.layers, function (layer) {
+              layer.value = false;
+          });
+      };
+
+      $scope.layerData = {};
+      $scope.showLayerData = function () {
+          return !_.isEqual($scope.layerData, {})
+      }
+
+      $scope.turnLayerOnOff = function (layer) {
+          if (layer.value === true) {
+              var featurePromise = esriGisService.getFeatureFromPointLayerIntersection($scope, layer, $scope.property.location.x, $scope.property.location.y);
+              featurePromise.then(function (feature) {
+				  //console.log("feature", feature);
+                  var myPolygon = { "geometry": feature.geometry, "symbol": layer.layerSymbol, "attributes": layer };
+                  var gra = new esri.Graphic(myPolygon);
+                  $scope.map.getLayer("layers").add(gra);
+                  $scope.layerData[layer.label] = feature.attributes[layer.attributes[0]];
+              });
+          } else {
+              _.each($scope.map.getLayer("layers").graphics, function (graphicLayer) {
+                  if (graphicLayer.attributes !== null)
+                      if (graphicLayer.attributes.label === layer.label) {
+                          $scope.map.getLayer("layers").remove(graphicLayer);
+                          delete $scope.layerData[layer.label];
+                      }
+              });
+          }
+      };
+
+
+      function clearResults() {
+          $scope.showError = false;
+          $scope.propertySiteAddress = "";
+          $scope.candidatesList = null;
+          $scope.isOwnerCandidates = false;
+          $scope.isAddressCandidates = false;
+          $scope.isPartialFolioCandidates = false;
+          $scope.isSubDivisionCandidates = false;
+          $scope.fromPage = 1;
+          $scope.toPage = 200;
+          $scope.isEndOfResults = false;
+
+          // Clear the layers
+          $scope.map.graphics.clear();
+          $scope.map.getLayer("layers").clear();
+          $scope.map.getLayer("parcelBoundary").clear();
+          $scope.map.getLayer("parcelPoint").clear();
+          //Added for sales
+          $scope.map.getLayer("bufferBoundary").clear();
+          $scope.map.getLayer("salesBoundary").clear();
+          $scope.map.getLayer("circleResultLayer").clear();          
+          $("#trSalesColors").find('div').remove();
+          $scope.showSalesInformation = true;
+          $scope.comparableSales = null;
+          $scope.comparableSalesLegend = null;
+          //delete it later
+          $scope.propertySalesInformation = null;
+          $scope.propertyFeatureSet = null;
+          $scope.salesBufferGeometry = null;
+      };
+
+      $scope.showErrorDialog = function (message) {
+          $scope.errorMsg = message;
+          $scope.showError = true;
+          $('#error-modal').modal('show');
+      };
+
+      $scope.showPropertyFolioStatus = function () {
+          if ($scope.property != null) {
+              if ($scope.property.propertyInfo.status != null && $scope.property.propertyInfo.status != "AC Active") {
+                  return "(" + $scope.property.propertyInfo.status.substr(2).trim() + ")";
+              }
+              else
+                  return "";
+          }
+          else
+              return "";
+      };
+
+      $scope.showFolioStatus = function (status) {
+          return candidate.getFolioStatus(status);
+      };
+
+      $scope.getRenamedMunicipality = function (municipality) {
+          return candidate.getRenamedMunicipality(municipality);
+      };
+
+      $scope.isCountryUSA = function (country) {
+          if (country != undefined && (country.toUpperCase() === 'USA' || country.toUpperCase() === 'US'))
+              return true;
+          else
+              return false;
+      };
+
+
+
+     $scope.getCandidateFolio = function (folio, savePrevious) {
+          $scope.folio = folio;
+          if (isUndefinedOrNull(savePrevious)) {
+              $scope.previousCandidatesInfo = {
+                  'candidatesList': $scope.candidatesList,
+                  'isEndOfResults': $scope.isEndOfResults,
+                  'fromPage': $scope.fromPage,
+                  'toPage': $scope.toPage,
+                  'isOwnerCandidates': $scope.isOwnerCandidates,
+                  'isAddressCandidates': $scope.isAddressCandidates,
+                  'isPartialFolioCandidates': $scope.isPartialFolioCandidates,
+                  'isSubDivisionCandidates': $scope.isSubDivisionCandidates
+              };
+          }
+          $scope.searchByFolio();
+      };
+
+      $scope.populatePreviousCandidates = function () {
+          $scope.isEndOfResults = $scope.previousCandidatesInfo.isEndOfResults;
+          $scope.fromPage = $scope.previousCandidatesInfo.fromPage;
+          $scope.toPage = $scope.previousCandidatesInfo.toPage;
+          $scope.candidatesList = $scope.previousCandidatesInfo.candidatesList;
+          $scope.isOwnerCandidates = $scope.previousCandidatesInfo.isOwnerCandidates;
+          $scope.isAddressCandidates = $scope.previousCandidatesInfo.isAddressCandidates;
+          $scope.isPartialFolioCandidates = $scope.previousCandidatesInfo.isPartialFolioCandidates;
+          $scope.isSubDivisionCandidates = $scope.previousCandidatesInfo.isSubDivisionCandidates;
+          $scope.previousCandidatesInfo = null;
+          $scope.property = null;
+          $scope.mapState = "NoMap";
+          //Added for comparable sales
+          $scope.comparableSales = null;
+          $scope.showMapTools = "Hide"; //Added May 21st,14
+      };
+
+      var validateFolio = function (folio) {
+          var validateFolioPromise = propertySearchService.getValidateFolio($scope, folio); 
+          return validateFolioPromise.then(function (property) {
+              if (property.candidates.length == 0) {                
+                  $('#load-modal').modal('hide');
+                  $scope.mapState = "BigMap";
+                  $scope.showErrorDialog(property.message);
+                  return null;
+              }
+              else {
+                  $scope.setSearchParametersValue();
+                  var folioPolygon = "";
+                  $scope.folio = folio;
+                  $log.debug("validate folio", folio, property);
+                  $scope.property = property.candidates[0];                   
+                  if ($scope.property && $scope.property.folio) {
+                      $scope.searchParam.SelectedFolio = $scope.property.folio;
+                  }
+                  return $scope.property.folio;
+              }
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error("validateFolio:validateFolio error", error);
+              $scope.property = null;
+              $scope.mapState = "BigMap";
+              $scope.showErrorDialog(error.message);
+              return $q.reject(error);
+          });
+      }
+
+      
+      $scope.searchByFolio = function () {          
+          var folio = $scope.folio;
+          clearResults();
+          if (folio != undefined && folio.length < 6) {
+              $scope.property = null;
+              //Added for comparable sales
+              $scope.comparableSales = null;
+              $scope.comparableSalesLegend = null;
+              $scope.propertyFeatureSet = null;
+              $scope.salesBufferGeometry = null;
+              $scope.mapState = "BigMap";
+              $scope.showMapTools = "Hide";                 
+              $scope.showErrorDialog("Please enter at least 6 digits for Folio");
+          }
+          else if (folio != undefined && folio.length >= 6 && folio.length < 13) {
+              $scope.property = null;
+              //Added for comparable sales
+              $scope.comparableSales = null;
+              $scope.comparableSalesLegend = null;
+              //delete it later
+              $scope.propertySalesInformation = null;
+              $scope.propertyFeatureSet = null;
+              $scope.salesBufferGeometry = null;
+              $scope.property = null;
+              $scope.mapState = "NoMap";
+              $scope.showMapTools = "Hide"; //Added May 21st,14            
+              $scope.getCandidatesByPartialFolio(folio);
+          }
+          else if (folio != undefined && folio.length == 13) {             
+              if ($scope.distanceValueSearch == "3/4 mile" || $scope.distanceValueSearch == "1 mile") {
+                  $('#load-modal').modal('hide');
+                  $('#divSearchMsg-modal').modal('show');
+              }
+              else {
+                  if (isUndefinedOrNull($scope.folioParam) || $scope.folioParam == "") {
+                      $scope.mapState = "NoMap";
+                  }
+                  $('#load-modal').modal('show');
+                  validateFolio(folio)
+                  .then($scope.getPropertyByFolio);
+              }
+          }
+      };
+
+      var getProperty = function (folio) {         
+          var propertyPromise = propertySearchService.getPropertySalesByFolio($scope, folio); //Modified, passed $scope parameter
+          return propertyPromise.then(function (property) {
+              //$log.debug("getProperty:property with folio", folio, property);            
+              $scope.mapState = "SmallMap";
+              $scope.showMapTools = "Show";
+              // When parent folio exists use it to get the polygon.
+              var folioPolygon = "";
+              if ($scope.property.parentFolio !== ""){
+                  folioPolygon = $scope.property.parentFolio;
+                  $log.debug("getProperty:Parent folio is", folioPolygon);
+              }
+              else
+                  folioPolygon = folio;
+
+              $log.debug("getProperty:Folio to search for polygon", folioPolygon);
+              return folioPolygon;
+
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error("getProperty:propertyPromise error", error);
+              $scope.property = null;
+              $scope.comparableSales = null;
+              $scope.comparableSalesLegend = null;
+              $scope.propertyFeatureSet = null;
+              $scope.salesBufferGeometry = null
+              $scope.mapState = "BigMap";
+              $scope.showErrorDialog(error.message);
+              return $q.reject(error);
+          });
+      };
+
+
+      var getPolygon = function (folio) {
+          var polygonPromise = esriGisService.getPolygonFromFolio($scope, folio);
+          return polygonPromise.then(function (polygon) {
+              // add polygon
+              $scope.property.location = { polygon: polygon };
+              var polygonGraphic = esriGisService.getGraphicMarkerFromPolygon(polygon);
+              $scope.map.getLayer("parcelBoundary").add(polygonGraphic);
+              // add point 
+              var coords = {
+                  x: polygon.getExtent().getCenter().x,
+                  y: polygon.getExtent().getCenter().y
+              };
+              var pointGraphic = esriGisService.getGraphicMarkerFromXY(coords.x, coords.y);
+              $scope.map.getLayer("parcelPoint").add(pointGraphic);
+              $scope.property.location.x = coords.x;
+              $scope.property.location.y = coords.y;
+              $scope.property.location.point = {
+                  "x": $scope.property.location.x,
+                  "y": $scope.property.location.y,
+                  "spatialReference": { "wkid": 2236 }
+              };             
+              $log.debug("getPolygon:center coords in polygon", coords);
+              return (coords);
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error("getPolygon:error- ", error);
+              $scope.mapZoomToFullExtent();
+              var message = "Map could not be displayed.";
+              $scope.showErrorDialog(message);
+              return $q.reject(error);
+          });
+      };
+
+
+      var getLatitudeLongitude = function (coords) {
+          var latLongPromise = esriGisGeometryService.xyToLatitudeLongitude(coords.x, coords.y);
+          return latLongPromise.then(function (location) {
+              $log.debug("getLatitudeLongitude: latitude longitude", location);
+              $scope.property.location.latitude = location.latitude;
+              $scope.property.location.longitude = location.longitude;
+
+          });
+      };
+
+      var getCondoFlgAndFolioFromXY = function (x, y) {
+          var gisPropertyPromise = esriGisService.getCondoFlgAndFolioFromXY($scope, x, y);
+          return gisPropertyPromise.then(function (gisProperty) {
+              if (gisProperty.folio !== "") {
+                  return gisProperty;
+              }
+              else {
+                  var message = "getCondoFlgAndFolioFromXY: no folio found for x,y"
+                  return $q.reject({ "error": null, "message": message })
+              }
+          }, function (error) {
+              $log.error("getCondoFlgAndFolioFromXY", error);
+              $scope.showErrorDialog(error.message);
+              return $q.reject(error);
+          });
+      };
+
+      var getGeometryAndFolioFromXY = function (x, y) {
+          var gisPropertyPromise = esriGisService.getGeometryAndFolioFromXY($scope, x, y);
+          return gisPropertyPromise.then(function (gisProperty) {
+              if (gisProperty.folio !== "") {
+                  clearResults();
+                  var validateFolioPromise = validateFolio(gisProperty.folio);
+                  return validateFolioPromise.then(function (gisFolio) {
+                      return gisProperty;
+                  });                  
+              }
+              else {
+                  var message = "getGeometryAndFolioFromXY: no folio found for x,y"
+                  return $q.reject({ "error": null, "message": message })
+              }
+          }, function (error) {
+              $log.error("getGeometryAndFolioFromXY", error);
+              $scope.showErrorDialog(error.message);
+              return $q.reject(error);
+          });
+      };
+
+      var getPropertyAndAddPolygon = function (gisProperty) {         
+          return getProperty(gisProperty.folio).then(function (folio) {
+              // add polygon
+              var polygon = gisProperty.geometry;
+              $scope.property.location = { polygon: polygon };
+              var polygonGraphic = esriGisService.getGraphicMarkerFromPolygon(polygon);
+              $scope.map.getLayer("parcelBoundary").add(polygonGraphic);
+              // add point 
+              var coords = {
+                  x: polygon.getExtent().getCenter().x,
+                  y: polygon.getExtent().getCenter().y
+              };
+              var pointGraphic = esriGisService.getGraphicMarkerFromXY(coords.x, coords.y);
+              $scope.map.getLayer("parcelPoint").add(pointGraphic);
+              $scope.property.location.x = coords.x;
+              $scope.property.location.y = coords.y;
+              $scope.property.location.point = {
+                  "x": $scope.property.location.x,
+                  "y": $scope.property.location.y,
+                  "spatialReference": { "wkid": 2236 }
+              };
+              $scope.mapZoomToProperty();
+              $log.debug("getPolygon:center coords in polygon", coords);
+              return (coords);
+          });
+      };
+
+      $scope.getPropertyByXY = function (x, y) {
+          getGeometryAndFolioFromXY(x, y)
+            .then(getPropertyAndAddPolygon)
+            .then(getLatitudeLongitude)
+            .then(function () {                
+                $('#load-modal').modal('hide');
+                $('#btnPropertySalesSearch').removeClass('disabled');
+                _.each($scope.layers, function (layer) {
+                    $scope.turnLayerOnOff(layer);
+                });
+                //set address and folio
+                $scope.folio = $scope.property.folio;
+                if ($scope.property.siteAddress) {
+                    $scope.address = $scope.property.siteAddress;
+                }
+            })['catch'](function (error) {
+                $('#load-modal').modal('hide');
+                //  $scope.map.disableMapNavigation();
+                $('#btnPropertySalesSearch').removeClass('disabled');
+                $log.error("getPropertyByXY:catch", error);
+            });
+
+      };
+
+
+      $scope.getPropertyByFolio = function (folio) {
+         // $('#load-modal').modal('show');
+          // Clear previous data.
+          if (folio == null) {
+              return;
+          }
+          clearResults();          
+          getProperty(folio)
+            .then(getPolygon)
+            .then(getLatitudeLongitude)
+            .then(function () {
+                $('#load-modal').modal('hide');
+                $scope.scrollToLegend();
+                $('#btnPropertySalesSearch').removeClass('disabled');
+                _.each($scope.layers, function (layer) {
+                    $scope.turnLayerOnOff(layer);
+                });
+                $scope.map.reposition();
+            })['catch'](function (error) {
+                $('#load-modal').modal('hide');                
+                $('#btnPropertySalesSearch').removeClass('disabled');
+                $log.error("getPropertyByFolio:catch", error);
+            });
+      };
+
+
+      $scope.getCandidatesHeight = function () {
+          if ($scope.isGingerbread()) return { height: 'auto' };
+          if ($scope.candidatesList == null)
+              return { height: '560px' };
+          else if ($scope.candidatesList != null && $scope.candidatesList.candidates.length <= 2)
+              return { height: '225px' };
+          else if ($scope.candidatesList != null && $scope.candidatesList.candidates.length <= 4)
+              return { height: '360px' };
+          else if ($scope.candidatesList != null && $scope.candidatesList.candidates.length <= 6)
+              return { height: '490px' };
+          else if ($scope.candidatesList != null && $scope.candidatesList.candidates.length >= 7)
+              return { height: '560px' };
+          else
+              return { height: '560px' };
+      };
+
+
+
+      $scope.candidatesPaginationSuccess = function (result) {
+          $scope.candidatesList.candidates = _.union($scope.candidatesList.candidates, result.candidates);
+          $log.debug("candidates updated", $scope.candidatesList);
+      };
+
+      $scope.candidatesPaginationFailure = function (error) {
+          $scope.fromPage = $scope.fromPage - $scope.itemsPerFetch;
+          $scope.toPage = $scope.toPage - $scope.itemsPerFetch;
+          $log.error("error when fetching nextPage of candidates", error);
+      };
+
+      $scope.fetchNextPage = function () {
+          if ($scope.isEndOfResults || _.isNull($scope.candidatesList)) {
+              return true;
+          }
+          if ($scope.toPage >= $scope.candidatesList.total) {
+              $scope.isEndOfResults = true;
+              $scope.showErrorDialog("You have reached the end of the results of your search");
+          }
+          else {
+              $scope.fromPage = $scope.fromPage + $scope.itemsPerFetch;
+              $scope.toPage = $scope.toPage + $scope.itemsPerFetch;
+              if ($scope.isAddressCandidates === true) {
+                  propertySearchService.getCandidatesByAddress($scope.address, $scope.suite, $scope.fromPage, $scope.toPage)
+                    .then($scope.candidatesPaginationSuccess, $scope.candidatesPaginationFailure);
+              }
+              if ($scope.isPartialFolioCandidates === true) {
+                  propertySearchService.getCandidatesByPartialFolio($scope.folio, $scope.fromPage, $scope.toPage)
+                    .then($scope.candidatesPaginationSuccess, $scope.candidatesPaginationFailure);
+              }
+              if ($scope.isSubDivisionCandidates === true) {
+                  propertySearchService.getCandidatesBySubDivision($scope.subDivision, $scope.fromPage, $scope.toPage)
+                    .then($scope.candidatesPaginationSuccess, $scope.candidatesPaginationFailure);
+              }
+          }
+      };
+
+      $scope.validateSearch = function () {          
+          if ($scope.activeSearchTab == "Address") {
+              $scope.validateAddress();
+          }
+          if ($scope.activeSearchTab == "Folio") {
+              $scope.searchByFolio();
+          }
+      };
+
+
+      $scope.cancelSearchRequest = function () {
+          $('#divSearchMsg-modal').modal('hide');
+          $('#divRadius').focus();          
+      };
+
+      $scope.continueSearchRequest = function () {
+          $('#divSearchMsg-modal').modal('hide');
+          $('#btnPropertySalesSearch').addClass('disabled');
+          $('#load-modal').modal('show');
+          $scope.mapState = "NoMap";
+          validateFolio($scope.folio)
+          .then($scope.getPropertyByFolio);
+      };
+
+      $scope.cancelSearchRequestIdentify = function () {
+          $('#divIdentifyMsg-modal').modal('hide');
+          $('#divRadius').focus();
+      };
+
+      $scope.continueSearchRequestIdentify = function () {
+          $('#divIdentifyMsg-modal').modal('hide');
+          $('#btnPropertySalesSearch').addClass('disabled');
+          $('#load-modal').modal('show');
+          $log.debug("mapClicked: Map has been clicked:", $scope.mapIdentifyMapPoint.x, $scope.mapIdentifyMapPoint.y);
+          $scope.getPropertyByXY($scope.mapIdentifyMapPoint.x, $scope.mapIdentifyMapPoint.y);
+      };
+
+      $scope.validateAddress = function () {
+          clearResults();
+          if (_.isEmpty($scope.address)) {
+              $scope.property = null;
+              $scope.mapState = "BigMap";
+              $scope.showErrorDialog("Please enter a valid Address");
+              return true;
+          }
+          else if (isNumber($scope.address)) {
+              $scope.property = null;
+              $scope.mapState = "BigMap";
+              $scope.showErrorDialog("Please enter a valid Address, only numeric characters is an invalid Address");
+              return true;
+          }
+          else if ($scope.address.indexOf('-') > 0) {
+              var regex = new RegExp("-", 'g');
+              var replacedAddr = $scope.address.replace(regex, '');
+              if (isNumber(replacedAddr)) {
+                  $scope.property = null;
+                  $scope.setActiveSearchTab('Folio');
+                  $scope.getCandidateFolio(replacedAddr, false);
+              }
+              else if (isAlphabetic($scope.address))
+                  $scope.getHasValidStreetName($scope.address);
+              else
+                  $scope.getCandidatesByAddress();
+          }
+          else if ($scope.address.toUpperCase().indexOf("APT") >= 0 || $scope.address.toUpperCase().indexOf("APARTMENT") >= 0 ||
+                  $scope.address.toUpperCase().indexOf("UNIT") >= 0 || $scope.address.toUpperCase().indexOf("SUITE") >= 0 ||
+              $scope.address.indexOf("#") >= 0) {
+              $scope.property = null;
+              $scope.mapState = "BigMap";
+              $scope.showErrorDialog("Please enter Apt/Apartment/Unit/Suite/# in the field for Suite");
+              return true;
+          }
+          else if (isAlphabetic($scope.address)) {
+              $scope.getHasValidStreetName($scope.address);
+          }
+          else
+              $scope.getCandidatesByAddress();
+      };
+
+      $scope.getHasValidStreetName = function (address) {
+          propertySearchService.getHasValidStreetName(address).then(function (result) {
+              if (result.completed == true) {
+                  if (result.valid == true)
+                      $scope.getCandidatesByAddress();
+                  else {
+                      $scope.ownerName = address;
+                      $scope.setActiveSearchTab('Owner');
+                      $('[name="ownerName"]').removeClass('placeholder'); //Temp Fix
+                      $scope.getCandidatesByOwner();
+                  }
+              }
+              else {
+                  $scope.showErrorDialog(result.message);
+              }
+          }, function (error) {
+              $scope.showErrorDialog("The request failed. Please try again later");
+              return true;
+          });
+      };
+
+
+      $scope.getCandidatesByAddress = function () {
+          $scope.isAddressCandidates = true;
+          $('#load-modal').modal('show');
+          $scope.property = null;
+          $scope.mapState = "NoMap";
+          propertySearchService.getCandidatesByAddress($scope.address, $scope.suite, $scope.fromPage, $scope.toPage).then(function (result) {
+             if (result.candidates.length == 0) {
+                  $('#load-modal').modal('hide');
+                  $scope.mapState = "BigMap";
+                  $scope.showErrorDialog(result.message);
+              }
+              else if (result.candidates.length == 1) {
+                  $scope.mapState = "SmallMap";
+                  $scope.getCandidateFolio(result.candidates[0].folio, false);
+              }
+              else if (result.candidates.length > 1) {
+                  if (result.candidates[0].status === "RO Reference") {
+                      $scope.getCandidateFolio(result.candidates[0].folio, false);
+                  }
+                  else {
+                      $('#load-modal').modal('hide');
+                      $scope.mapState = "NoMap";
+                      $scope.candidatesList = result;
+                  }
+              }
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $scope.mapState = "BigMap";
+              $scope.showErrorDialog(error.message);
+          });
+
+      };
+
+      $scope.getCandidatesByPartialFolio = function (folio) {
+          $scope.mapState = "NoMap";
+          clearResults();
+          $scope.loader = true; //flag hackeysack //Aug 20
+          $scope.isPartialFolioCandidates = true;
+          propertySearchService.getCandidatesByPartialFolio(folio, $scope.fromPage, $scope.toPage).then(function (result) {
+              if (result.completed == true) {
+                  if (result.candidates.length == 0) {
+                      $scope.property = null;
+                      $scope.mapState = "BigMap";
+                      $scope.showErrorDialog(result.message);
+                  }
+                  else if (result.candidates.length == 1) {
+                      $scope.isPartialFolioCandidates = false;                    
+                      $scope.getCandidateFolio(result.candidates[0].folio, false);
+                  }
+                  else if (result.candidates.length > 1) {
+                      $scope.previousCandidatesInfo = null;
+                      $scope.property = null;
+                      $scope.mapState = "NoMap";
+                      $scope.candidatesList = result;
+                  }
+              }
+              else {
+                  $scope.property = null;
+                  $scope.mapState = "BigMap";
+                  $scope.showErrorDialog(result.message);
+              }
+
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $scope.property = null;
+              $scope.mapState = "BigMap";
+              $log.error("getCandidatesByPartialFolio error ", error);
+              $scope.showErrorDialog("The request failed. Please try again later");
+          });
+      };
+
+
+      $scope.detachMap = function () {
+          var url = '#/detachmap';
+          $window.windowScope = $scope;
+          $scope.detachedMapWindow = $window.open(url, 'detached', 'height=760, width=1020, location=0, resizable=yes, toolbar=yes');
+          $('.detached-map').show();
+      };
+
+      $scope.attachMap = function () {
+          var level = $scope.map.getLevel();
+          $scope.map = $scope.attachedMap;
+          $scope.map.setLevel(level);
+          if (!utils.isUndefinedOrNull($scope.property)) {
+              if (!_.isUndefined($scope.property.location)) {
+                  $scope.map.centerAt($scope.property.location.point);
+                  // Clear the layers
+                  $scope.map.getLayer("parcelBoundary").clear();
+                  $scope.map.getLayer("parcelPoint").clear();
+
+                  var polygon = $scope.property.location.polygon;
+                  var polygonGraphic = esriGisService.getGraphicMarkerFromPolygon(polygon);
+                  $scope.map.getLayer("parcelBoundary").add(polygonGraphic);
+
+                  var pointGraphic = esriGisService.getGraphicMarkerFromXY($scope.property.location.x,
+                                                                           $scope.property.location.y);
+                  $scope.map.getLayer("parcelPoint").add(pointGraphic);                  
+                  if ($scope.salesBufferGeometry) {
+                     $scope.map.getLayer("bufferBoundary").clear();
+                      var polygonGraphic = esriGisService.getGraphicMarkerFromBufferPolygon($scope.salesBufferGeometry);
+                      $scope.map.getLayer("bufferBoundary").add(polygonGraphic);
+                  }
+                  if ($scope.comparableSales) {
+                      esriGisService.getAddSalesPropertytoMap($scope, $scope.propertyFeatureSet, $scope.comparableSales.salesInformationArr, $scope.comparableSales.subjectPropertyArr);
+                  }
+              }
+          }
+          $scope.drawToolBar = $scope.attachedDrawToolBar;
+          $('.detached-map').hide();
+      };
+
+      $window.onunload = function () {
+          if ($scope.detachedMapWindow) {
+              $scope.detachedMapWindow.close();
+          }
+      };
+
+
+      $scope.openAerialsWindow = function () {
+          var url = '#/aerials/' + $scope.aerialYear;
+          localStorageService.add('property', $scope.property);
+          localStorageService.add('map', { level: $scope.map.getLevel(), extent: $scope.map.extent });
+          if (!_.isEmpty($scope.aerialYear) && !utils.isUndefinedOrNull($scope.property)) {
+              $window.open(url, $scope.aerialYear + 'Aerials', 'height=760, width=1020, location=0, resizable=yes,toolbar=yes');
+          };
+      };
+
+      $scope.openPictometryWindow = function () {
+          console.log("location", $scope.property);
+          //var url = "views/pictometry/pictometry.html?latitude=" + $scope.property.location.latitude + "&longitude=" + $scope.property.location.longitude;
+          var url = "views/pictometry/pictometry.html?latitude=" + $scope.property.location.latitude + "&longitude=" + $scope.property.location.longitude + "&address=" + $scope.property.siteAddress;
+          $window.open(url);
+      };
+
+      $scope.openReportDetailsWindow = function () {
+          var url = '#/report/details';
+          localStorageService.add('property', $scope.property);
+          localStorageService.add('comparableSales', $scope.comparableSales);
+          localStorageService.add('comparableSalesLegend', $scope.comparableSalesLegend);
+          localStorageService.add('propertySalesInformation', $scope.propertySalesInformation);//delete it later
+          localStorageService.add('salesBufferGeometry', $scope.salesBufferGeometry);
+          localStorageService.add('propertyFeatureSet', $scope.propertyFeatureSet);
+          localStorageService.add('orthoAerialYear', $scope.defaultValues.orthoAerialYear);
+          localStorageService.add('searchParameter', $scope.searchParam);
+          localStorageService.add('legendColors', $scope.legendColors);
+          localStorageService.add('map', { level: $scope.map.getLevel(), extent: $scope.map.extent });
+          $window.open(url, 'name', 'height=800,width=840, location=0, scrollbars=yes, resizable=yes, toolbar=yes');
+      };
+
+      $scope.setPropertySiteAddress = function (property) {
+          if (property != null && property.siteAddresses.length > 0 && !_.isEmpty(property.siteAddresses[0].address.trim())) {
+              $scope.propertySiteAddress = property.siteAddresses[0].streetNumber + " " + property.siteAddresses[0].streetPrefix.trim() + " " +
+                property.siteAddresses[0].streetName.trim() + " " + property.siteAddresses[0].streetSuffix.trim();
+          }
+          else
+              $scope.propertySiteAddress = "";
+      };
+
+      $scope.showStreetView = function () {
+          var url = "views/streetview/streetview.html?latitude=" + $scope.property.location.latitude + "&longitude=" + $scope.property.location.longitude;
+          $window.open(url, '_blank'); //Opens in new tab
+      };
+
+      $scope.isGingerbread = function () {
+          var start = navigator.userAgent.indexOf("Android ");
+          var majorversion = navigator.userAgent.substr(start + 8, 1);
+          if (majorversion < 3)
+              return true;
+          else
+              return false;
+      };
+
+      //Property sales functions/methods
+
+      //property sales - added method to call default web service
+      $scope.getDefaultValues = function () {          
+          if (isUndefinedOrNull($scope.folioParam) || $scope.folioParam == "") {
+              $('#load-modal').modal('show'); //Aug 20
+          }
+          var compSalesDefaultPromise = comparableSalesDefault.getComparableSalesDefaultValue($scope);
+          return compSalesDefaultPromise.then(function (defaultValues) {
+              $scope.defaultValues = defaultValues;
+              $scope.showAdvanceSearchHeader = $scope.defaultValues.getShowHeaderMessage;
+              $scope.showAdvanceSearchFooter = $scope.defaultValues.getShowFooterMessage;
+              $scope.advanceSearchFooterMsg = $scope.defaultValues.footerMessage;
+              $scope.applicationOffline = $scope.defaultValues.offline;
+              //var salesQualiArr = [{ description: "All", code: null, qualified: null, year: null }, { description: "Qualified", code: "Q", qualified: "Q", year: "2015" }, { description: "Unqualified", code: "U", qualified: "U", year: "2015" }];
+          	  var salesQualiArr = [{ description: "All", code: null, qualified: null, year: null }];
+          	  for (var loop = 0; loop < $scope.defaultValues.salesQualifications.length; loop++) {
+              //console.log("year", getSalesQualCode[loop].year);
+              	if ($scope.defaultValues.salesQualifications[loop].year == "2019"){
+              		salesQualiArr.push($scope.defaultValues.salesQualifications[loop]);
+              	}
+          	  }
+          	  //console.log("salesQualiArr1", salesQualiArr);
+          	  $scope.salesQualiArr = salesQualiArr;
+          	  //console.log("salesQualiArr2",  $scope.salesQualiArr);
+              $('#load-modal').modal('hide');
+              if (!isUndefinedOrNull($scope.folioParam) && $scope.folioParam != "") {                 
+                  $scope.folio = $scope.folioParam;
+                  $scope.activeSearchTab = "Folio";                  
+                  $scope.searchByFolio();
+              }
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error("defaultValues:defaultValuesPromise error", error);
+              $scope.applicationOffline = true;             
+              return $q.reject(error);
+          });
+      };
+
+
+      //Comparable Sales Added functions
+      $scope.clearSalesGraphicLayers = function () {
+          if ($scope.map.getLayer("circleResultLayer")) {
+              $scope.map.getLayer("circleResultLayer").clear();
+          }
+          if ($scope.map.getLayer("salesBoundary")) {
+              $scope.map.getLayer("salesBoundary").clear();
+          }
+      };
+
+
+      $scope.addBufferGeometrytoMap = function (bufferGeom) {
+          if (bufferGeom) {
+              try {
+                  if ($scope.map.getLayer("bufferBoundary")) {
+                      $scope.map.getLayer("bufferBoundary").clear();
+                      var polygonGraphic = esriGisService.getGraphicMarkerFromBufferPolygon(bufferGeom);
+                      $scope.map.getLayer("bufferBoundary").add(polygonGraphic);
+                  }
+                  $scope.salesBufferGeometry = bufferGeom;
+                  
+              }
+              catch(error){
+                  $scope.showErrorDialog("An error has occurred while adding the buffer. ");
+              }
+             
+          }
+      };
+
+      $scope.addParcelGeometrytoMap = function (polyGeom) {
+          $scope.map.getLayer("parcelBoundary").clear();
+          if (polyGeom) {
+              try {
+                  $scope.map.getLayer("parcelBoundary").add(polyGeom);
+              }
+              catch(error){
+                  $scope.showErrorDialog("An error has occurred while adding the Parcel Boundary. ");
+              }
+          }
+      };
+
+      $scope.exportData = function () {
+          var salesExportTable = "";
+          if ($scope.comparableSales.subjectPropertyArr.length > 0) {
+              salesExportTable = "Selected Property@@#,Folio,Address,Property Use, PA Zoning, Year Built,Actual Area Sq.Ft,Living Area Sq.Ft,Adj Area Sq.Ft,Lot Size Sq.Ft,#Beds,#Baths,Sale Month,Amount,Qualification Description";
+              _.each($scope.comparableSales.subjectPropertyArr, function (saleExp) {
+                  //console.log("saleExp", saleExp);
+                  var saleInfo = saleExp.salesNumber;
+                  saleInfo += "," + saleExp.folioNumber;
+                  if (saleExp.siteAddress !== null) {
+                      saleInfo += "," + saleExp.siteAddress;
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                 
+                  if (saleExp.DORDescriptionCurrent) {
+                      saleInfo += "," + saleExp.DORDescriptionCurrent.replace(/,/g, ";");
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  if (saleExp.primaryZoneDescription) {
+                      saleInfo += "," + saleExp.primaryZoneDescription.replace(/,/g, ";");
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  
+                  saleInfo += "," + saleExp.yearBuilt;
+                  if (saleExp.buildingGrossArea !== null) {
+                      saleInfo += ',"' + formatNumber(saleExp.buildingGrossArea) + '"';
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  if (saleExp.buildingHeatedArea !== null) {
+                      saleInfo += ',"' + formatNumber(saleExp.buildingHeatedArea) + '"';
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  if (saleExp.buildingEffectiveArea !== null) {
+                      saleInfo += ',"' + formatNumber(saleExp.buildingEffectiveArea) + '"';
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  saleInfo += ',"' + formatNumberLot(saleExp.lotSize) + '"';
+                  saleInfo += "," + saleExp.bedroomCount;
+                  saleInfo += "," + saleExp.bathroomCount;
+                  if (saleExp.dateOfSale) {
+                      var saleDate = new Date(saleExp.dateOfSale);
+                      saleInfo += "," + saleDate.getMonth() + 1 + "/" + saleDate.getFullYear();
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  if (saleExp.salePrice) {
+                      saleInfo += ',"$' + formatNumber(saleExp.salePrice) + '"';
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  if (saleExp.qualificationDescription) {
+                      saleInfo += ',"' + saleExp.qualificationDescription + '"';
+                  }
+                  else {
+                      saleInfo += "," + " ";
+                  }
+                  salesExportTable += "@@" + saleInfo;
+              });
+              salesExportTable += "@@";
+          }
+          salesExportTable = salesExportTable + "Sales Information@@#,Folio,Address,Property Use,PA Zoning,Year Built,Actual Area Sq.Ft,Living Area Sq.Ft,Adj Area Sq.Ft,Lot Size Sq.Ft,#Beds,#Baths,Sale Month,Amount,Qualification Description";
+          _.each($scope.comparableSales.salesInformationArr, function (saleExp) {
+              var saleInfo = saleExp.salesNumber;
+              saleInfo += "," + saleExp.folioNumber;
+              if (saleExp.siteAddress !== null) {
+                  saleInfo += "," + saleExp.siteAddress;
+              }
+              else {
+                  saleInfo += "," + " ";
+              }             
+              saleInfo += "," + saleExp.DORDescriptionCurrent.replace(/,/g, ";");
+              if (saleExp.primaryZoneDescription) {
+                      saleInfo += "," + saleExp.primaryZoneDescription.replace(/,/g, ";");
+              }
+              else {
+                      saleInfo += "," + " ";
+              }
+                  
+              saleInfo += "," + saleExp.yearBuilt;
+              if (saleExp.buildingGrossArea !== null) {
+                  saleInfo += ',"' + formatNumber(saleExp.buildingGrossArea) + '"';
+              }
+              else {
+                  saleInfo += "," + " ";
+              }
+              if (saleExp.buildingHeatedArea !== null) {
+                  saleInfo += ',"' + formatNumber(saleExp.buildingHeatedArea) + '"';
+              }
+              else {
+                  saleInfo += "," + " ";
+              }
+              if (saleExp.buildingEffectiveArea !== null) {
+                  saleInfo += ',"' + formatNumber(saleExp.buildingEffectiveArea) + '"';
+              }
+              else {
+                  saleInfo += "," + " ";
+              }
+              saleInfo += ',"' + formatNumberLot(saleExp.lotSize) + '"';
+              saleInfo += "," + saleExp.bedroomCount;
+              saleInfo += "," + saleExp.bathroomCount;
+              if (saleExp.dateOfSale) {
+                  var saleDate = new Date(saleExp.dateOfSale);
+                  var saleMonth = saleDate.getMonth() + 1;
+                  var saleYear = saleDate.getFullYear();
+                  var saleDateStr = "";
+                  saleDateStr = saleMonth + "/" + saleYear;
+                  saleInfo += ',"' + saleDateStr + '"';
+              }
+              else {
+                  saleInfo += "," + " ";
+              }
+              saleInfo += ',"$' + formatNumber(saleExp.salePrice) + '"';
+              saleInfo += ',"' + saleExp.qualificationDescription + '"';
+             // saleInfo += "," + saleExp.qualificationDescription.replace(/,/g, ";");
+              salesExportTable += "@@" + saleInfo;
+          });
+   
+          //Create FORM object
+          var salesForm = document.createElement("form");
+          salesForm.method = "post";
+          salesForm.target = "_blank";          
+          salesForm.action = paConfig.exportReportURL;
+          //Append Input
+          //Folio
+          var folioInput = document.createElement("input");
+          folioInput.setAttribute("name", "SalesExportTable");
+          folioInput.setAttribute("value", salesExportTable);
+          salesForm.appendChild(folioInput);
+          //Append Sales Form
+          document.body.appendChild(salesForm);
+          //Submit the Form
+          salesForm.submit();
+          document.body.removeChild(salesForm);
+      };
+
+      //Format Number
+      function formatNumber(n) {
+          if (n == undefined || n == 0) {
+              return "0";
+          }
+         // return n;
+          return n.toLocaleString().split(".")[0];
+      }
+
+      //Format number for Lot size
+      function formatNumberLot(n) {
+          if (n == undefined || n == 0) {
+              return "0";
+          }
+          n = roundNumber(n, 2);
+          if (n.toLocaleString().split(".")[1] == "00") {
+              return n.toLocaleString().split(".")[0];
+          }
+          return n.toLocaleString();
+      }
+
+      //Round number
+      function roundNumber(n, dec) {
+          n = parseFloat(n);
+          if (!isNaN(n)) {
+              if (!dec) dec = 0;
+              var factor = Math.pow(10, dec);
+              return Math.floor(n * factor + ((n * factor * 10) % 10 >= 5 ? 1 : 0)) / factor;
+          } else {
+              return n;
+          }
+      }
+
+
+      $scope.toggleAdvanceSearch = function (event) {
+          if ($("#adv_search_header").hasClass('glyphicon glyphicon-minus-sign')) {
+              $("#adv_search_header").removeClass('glyphicon glyphicon-minus-sign').addClass('glyphicon glyphicon glyphicon-plus-sign');
+              $("#tableAdvancedSearch tr").not('thead tr').addClass('hideTableRows');
+              $("#adv_search_header").attr('title', "Maximize Advance Search");
+          }
+          else {
+              $("#adv_search_header").removeClass('glyphicon glyphicon-plus-sign').addClass('glyphicon glyphicon glyphicon-minus-sign');
+              $("#tableAdvancedSearch tr").not('thead tr').removeClass('hideTableRows');
+              $("#adv_search_header").attr('title', "Minimize Advance Search");
+          };
+      };
+
+      //Added for distance dropdown 
+      $scope.distanceDefaultArray = [{ "Code": "100 Ft.", "Value": "100" },
+                                     { "Code": "1/8 mile", "Value": "660" },
+                                     { "Code": "1/4 mile", "Value": "1320" },
+                                     { "Code": "1/2 mile", "Value": "2640" },
+                                     { "Code": "3/4 mile", "Value": "3960" },
+                                     { "Code": "1 mile", "Value": "5280" }];
+
+      $scope.resetDistanceValue = function (event) {
+          var distValue = this.dist.Code;
+          $("#btnDistance").html(distValue + ' <span class="caret"></span>');
+          $("#btnDistance").attr('value', this.dist.Value);
+          $scope.distanceValueSearch = distValue;
+      };
+
+
+      $scope.resetYearValue = function (event) {
+          var yearValue = this.year;
+          //console.log("this", yearValue);
+          $("#btnYear").html(yearValue + ' <span class="caret"></span>');
+          $("#btnYear").attr('value', this.year);
+          
+          //var salesQualiArr = [{ description: "All", code: null, qualified: null, year: null }, { description: "Qualified", code: "Q", qualified: "Q", year: "2015" }, { description: "Unqualified", code: "U", qualified: "U", year: "2015" }];
+          var salesQualiArr = [{ description: "All", code: null, qualified: null, year: null }];        
+          for (var loop = 0; loop < $scope.defaultValues.salesQualifications.length; loop++) {
+              //console.log("year", $scope.defaultValues.salesQualifications[loop].year);
+			  //console.log("yearValue", yearValue);
+              if ($scope.defaultValues.salesQualifications[loop].year == yearValue){
+				//console.log("got here");
+              	salesQualiArr.push($scope.defaultValues.salesQualifications[loop]);
+              }
+          }
+          //console.log("salesQualiArr3", salesQualiArr);
+          $scope.salesQualiArr = salesQualiArr;
+          //console.log("salesQualiArr4",  $scope.salesQualiArr);
+      };
+
+      $scope.changeQual = function (event) {
+          var yearValue = this.year;
+		  //console.log("selected year", yearValue);
+      };
+
+      $scope.resetPropertyTypeValue = function (event) {
+          var propertyTypeValue = this.dorCodeVal;
+          $("#btnPropertyType").html(propertyTypeValue + ' <span class="caret pull-right" style="margin-top:10px;"></span>');
+          $("#btnPropertyType").attr('value', this.dorCodeVal);
+      };
+
+      $scope.resetSalesQualValue = function (event) {
+          var salesQualValue = this.saleQualiVal.description;
+          //console.log("mainjsSalesQ", $("#btnYear").attr('value'));
+          if (this.saleQualiVal.code !== null) {
+              salesQualValue = this.saleQualiVal.code + " - " + salesQualValue;
+          }          
+          salesQualValue = salesQualValue.trimString(40);
+          $("#btnSalesQual").html(salesQualValue + ' <span class="caret pull-right" style="margin-top:10px;"></span>');
+          
+          $("#btnSalesQual").attr('value', this.saleQualiVal.code);
+      };
+
+     
+      $scope.resetZoneCodeValue = function (event) {
+          var zoneCodeValue = this.zoneCodeVal.shortDescription;
+          if (this.zoneCodeVal.code !== null) {
+             // Just Description zoneCodeValue = this.zoneCodeVal.code + " - " + zoneCodeValue;
+          }
+          zoneCodeValue = zoneCodeValue.trimString(40);
+          $("#btnPrimaryZoning").html(zoneCodeValue + ' <span class="caret pull-right" style="margin-top:10px;"></span>');
+
+          $("#btnPrimaryZoning").attr('value', this.zoneCodeVal.code);
+      };
+
+
+     
+
+
+
+     var keyPressProp = "";
+     $scope.gotoSelectedSales = function (event) {
+         var keyValue = String.fromCharCode(event.keyCode);
+         var keyPress = keyValue.toLowerCase(); //event.key
+         keyPressProp += keyPress;
+         var foundValue = false;
+         $('#ulPropertyType').find("li").each(function (idx, item) {             
+             if (($(item).text().toLowerCase()).search(keyPressProp.toLowerCase()) == 0) {
+                  $('#ulPropertyType').scrollTop(0);
+                  var offset = $(item).position().top;
+                  $('#ulPropertyType').scrollTop(offset);
+                  foundValue = true;
+                  return false;
+              }
+         });
+         if (!foundValue) {
+             keyPressProp = keyPress;
+             $('#ulPropertyType').find("li").each(function (idx, item) {
+                 if ($(item).text().charAt(0).toLowerCase() == keyPress) {
+                     $('#ulPropertyType').scrollTop(0);
+                     var offset = $(item).position().top;
+                     $('#ulPropertyType').scrollTop(offset);
+                     foundValue = true;
+                     return false;
+                 }
+             });
+         }
+      };
+
+     var keyPressSales = "";
+     $scope.gotoSelectedProperty = function (event) {
+         var keyValue = String.fromCharCode(event.keyCode);
+         var keyPress = keyValue.toLowerCase();
+         keyPressSales += keyPress
+         var foundValue = false;
+         $('#ulSaleQual').find("li").each(function (idx, item) {
+             if (($(item).text().toLowerCase()).search(keyPressSales.toLowerCase()) == 0) {
+                 $('#ulSaleQual').scrollTop(0);
+                 var offset = $(item).position().top;
+                 $('#ulSaleQual').scrollTop(offset);
+                 foundValue = true;
+                 return false;
+             }
+         });
+         if (!foundValue) {
+             keyPressSales = keyPress;
+             if (keyPress == "a") {
+                 $('#ulSaleQual').scrollTop(0);
+             }
+             else {
+                 $('#ulSaleQual').find("li").each(function (idx, item) {
+                     if ($(item).text().charAt(0).toLowerCase() == keyPress) {
+                         $('#ulSaleQual').scrollTop(0);
+                         var offset = $(item).position().top;
+                         $('#ulSaleQual').scrollTop(offset);
+                         foundValue = true;
+                         return false;
+                     }
+                 });
+             }
+         }
+     };
+
+      // Primary ZOning Code   to select by key 
+     var keyPressPriZoning = "";
+     $scope.gotoPrimaryZoning = function (event) {
+         var keyValue = String.fromCharCode(event.keyCode);
+         var keyPress = keyValue.toLowerCase(); //event.key
+         keyPressPriZoning += keyPress
+         var foundValue = false;
+         $('#ulPrimaryZoning').find("li").each(function (idx, item) {
+             if (($(item).text().toLowerCase()).search(keyPressProp.toLowerCase()) == 0) {
+                 $('#ulPrimaryZoning').scrollTop(0);
+                 var offset = $(item).position().top;
+                 $('#ulPrimaryZoning').scrollTop(offset);
+                 foundValue = true;
+                 return false;
+             }
+         });
+         if (!foundValue) {
+             keyPressProp = keyPress;
+             $('#ulPrimaryZoning').find("li").each(function (idx, item) {
+                 if ($(item).text().charAt(0).toLowerCase() == keyPress) {
+                     $('#ulPrimaryZoning').scrollTop(0);
+                     var offset = $(item).position().top;
+                     $('#ulPrimaryZoning').scrollTop(offset);
+                     foundValue = true;
+                     return false;
+                 }
+             });
+         }
+     };
+
+
+
+
+      //Function to append ... for a string
+      String.prototype.trimString = function (len) {
+          return (this.length > len) ? this.substring(0, len) + "..." : this;
+      }
+
+      $scope.setSearchParametersValue = function () {
+          // $scope.searchParam.ClientAppName = "ComparableSalesSearch";
+          $scope.searchParam = new searchParam.SearchParameter;
+          if ($scope.property && $scope.property.folio) {
+              $scope.searchParam.SelectedFolio = $scope.property.folio;
+          }
+          $scope.searchParam.Folios = [];
+          if ($("#btnYear").text()) {
+              $scope.searchParam.SalesYearMin = ($("#btnYear").text()).trim();
+              $scope.searchParam.SalesYearMax = ($("#btnYear").text()).trim();
+          }
+          if ($("#input_min_sales").val()) {
+              $scope.searchParam.SalesAmountMin = $("#input_min_sales").val();
+          }
+          if ($("#input_max_sales").val()) {
+              $scope.searchParam.SalesAmountMax = $("#input_max_sales").val();
+          }
+          if ($("#input_min_bedroom").val()) {
+              $scope.searchParam.BedroomMin = $("#input_min_bedroom").val();
+          }
+          if ($("#input_max_bedroom").val()) {
+              $scope.searchParam.BedroomMax = $("#input_max_bedroom").val();
+          }
+          if ($("#input_min_bathrooms").val()) {
+              $scope.searchParam.BathMin = $("#input_min_bathrooms").val();
+          }
+          if ($("#input_max_bathrooms").val()) {
+              $scope.searchParam.BathMax = $("#input_max_bathrooms").val();
+          }
+          if ($("#input_min_lotsize").val()) {
+              $scope.searchParam.LotSizeMin = $("#input_min_lotsize").val();
+          }
+          if ($("#input_max_lotsize").val()) {
+              $scope.searchParam.LotSizeMax = $("#input_max_lotsize").val();
+          }
+          if ($("#input_min_actualsqft").val()) {
+              $scope.searchParam.AreaActualMin = $("#input_min_actualsqft").val();
+          }
+          if ($("#input_max_actualsqft").val()) {
+              $scope.searchParam.AreaActualMax = $("#input_max_actualsqft").val();
+          }
+          if ($("#input_min_livingsqft").val()) {
+              $scope.searchParam.AreaLivingMin = $("#input_min_livingsqft").val();
+          }
+          if ($("#input_max_livingsqft").val()) {
+              $scope.searchParam.AreaLivingMax = $("#input_max_livingsqft").val();
+          }
+          if ($("#input_min_adj_area").val()) {
+              $scope.searchParam.AreaAdjustedMin = $("#input_min_adj_area").val();
+          }
+          if ($("#input_max_adj_area").val()) {
+              $scope.searchParam.AreaAdjustedMax = $("#input_max_adj_area").val();
+          }
+          if ($("#input_min_yearbuilt").val()) {
+              $scope.searchParam.YearBuiltMin = $("#input_min_yearbuilt").val();
+          }
+          if ($("#input_max_yearbuilt").val()) {
+              $scope.searchParam.YearBuiltMax = $("#input_max_yearbuilt").val();
+          }
+          if ($("#btnPropertyType").attr('value') !== "" && $("#btnPropertyType").attr('value') !== "All") {
+              $scope.searchParam.DORDescription = $("#btnPropertyType").attr('value');
+          }
+          if ($("#btnSalesQual").attr('value') !== "" && $("#btnSalesQual").attr('value') !== null) {
+              $scope.searchParam.SalesQualified = $("#btnSalesQual").attr('value');
+              $scope.searchParam.SalesQualifiedDesc = $("#btnSalesQual")[0].innerText;
+          }
+
+          if ($("#btnPrimaryZoning").attr('value') !== "" && $("#btnbtnPrimaryZoning").attr('value') !== null) {
+              $scope.searchParam.ZoneCode = $("#btnPrimaryZoning").attr('value');
+            
+          }
+          
+
+          $scope.searchParam.Improved = null;
+          $scope.searchParam.ZipCode = null;
+          if ($("#btnDistance").text()) {
+              $scope.searchParam.Distance = $("#btnDistance")[0].value;
+              $scope.searchParam.DistanceCode = $scope.distanceValueSearch;            
+          }
+
+          if ($("#cbMunicipality").is(':checked')) {
+              $scope.searchParam.MunicipalityFlag = true;
+          }
+          if ($("#cbZipcode").is(':checked')) {
+              $scope.searchParam.ZipCodeFlag = true;
+          }
+          if ($("#cbSubDiv").is(':checked')) {
+              $scope.searchParam.SubDivFlag = true;
+          }
+          return true;
+      };
+
+      $scope.scrollToLegend = function () {
+          $("html, body").animate({ scrollTop: $("#divLegendTitle").offset().top - 30});
+      };
+
+
+      $scope.graphicCircleClicked = function (event) {          
+          //$scope.comparableSales.highLightSalesParentFolio("tdSales" + event.graphic.attributes.salesNumber, event.graphic.attributes.salesNumber, event.graphic.attributes.parentFolio, $scope);
+          var rowIdArray = [];
+          _.each($scope.comparableSales.salesInformationArr, function (sale) {
+              if (sale.parentFolio === event.graphic.attributes.parentFolio) {
+                  sale.highlightRow = true;
+                  rowIdArray.push(sale.salesNumber);
+              }
+              else {
+                  sale.highlightRow = false;
+              }
+          });
+          if (rowIdArray.length > 0) {
+              $scope.comparableSales.scrolltoSalesNumber("tdSales" + rowIdArray[0], rowIdArray[0], $scope);
+          }
+          else {
+              $scope.comparableSales.scrolltoSalesNumber("tdSales" + event.graphic.attributes.salesNumber, event.graphic.attributes.salesNumber, $scope);
+          }
+          $scope.$apply();
+      };
+     
+  }]);
+
+

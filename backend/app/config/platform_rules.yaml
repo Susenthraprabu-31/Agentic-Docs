@@ -12,6 +12,8 @@ assessor:
     platform: miami_dade
   - fragment: bcpa.net
     platform: broward
+  - fragment: bcpao.us
+    platform: brevard_bcpao
   - fragment: hcpafl.org
     platform: hillsborough
   - fragment: leepa.org
@@ -85,6 +87,7 @@ assessor_search_overrides:
   ocpaweb.ocpafl.org: https://ocpaweb.ocpafl.org/parcelsearch
   ocpafl.org: https://ocpaweb.ocpafl.org/parcelsearch
   miamidadepa.gov: https://apps.miamidadepa.gov/propertysearch/#/
+  bcpao.us: https://www.bcpao.us/PropertySearch/#/nav/Search
   miamidade.gov/pa: https://apps.miamidadepa.gov/propertysearch/#/
   qpublic.net/hi/honolulu: https://qpublic.schneidercorp.com/Application.aspx?App=HonoluluCountyHI&PageType=Search
   honolulucountyhi: https://qpublic.schneidercorp.com/Application.aspx?App=HonoluluCountyHI&PageType=Search

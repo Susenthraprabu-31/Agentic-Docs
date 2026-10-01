@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import Home from "./pages/Home";
 import RunDetail from "./pages/RunDetail";
 import ReportView from "./pages/ReportView";
+import DocumentViewer from "./pages/DocumentViewer";
 import BatchDashboard from "./pages/BatchDashboard";
 import BatchDetailView from "./pages/BatchDetailView";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -12,6 +13,7 @@ import ThemeToggle from "./components/common/ThemeToggle";
 function Layout() {
   const location = useLocation();
   const isEditor = location.pathname === "/";
+  const isDocumentViewer = /\/reports\/run\/[^/]+\/documents\//.test(location.pathname);
 
   if (isEditor) {
     // Full-screen — PipelineEditor handles all chrome
@@ -36,23 +38,6 @@ function Layout() {
               </span>
               Docs
             </a>
-            <nav className="flex items-center gap-1 text-xs">
-              <a
-                href="/"
-                className="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/40 transition-colors font-medium"
-              >
-                Pipeline Canvas
-              </a>
-              <a
-                href="/batches"
-                className="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/40 transition-colors font-medium flex items-center gap-1.5"
-              >
-                Batch Orders
-                <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 font-bold">
-                  New
-                </span>
-              </a>
-            </nav>
           </div>
 
           <div className="flex items-center gap-3">
@@ -61,11 +46,12 @@ function Layout() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 w-full">
+      <main className={isDocumentViewer ? "w-full" : "max-w-6xl mx-auto px-6 py-8 w-full"}>
         <Routes>
           <Route path="/batches" element={<BatchDashboard />} />
           <Route path="/batches/:batchId" element={<BatchDetailView />} />
           <Route path="/runs/:runId" element={<RunDetail />} />
+          <Route path="/reports/run/:runId/documents/:docId" element={<DocumentViewer />} />
           <Route path="/reports/run/:runId" element={<ReportView />} />
         </Routes>
       </main>

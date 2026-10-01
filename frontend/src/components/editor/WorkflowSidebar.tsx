@@ -20,6 +20,7 @@ const NODE_COLORS: Record<string, string> = {
   platform: "#06b6d4",
   assessor: "#14b8a6",
   recorder: "#8b5cf6",
+  name_searcher: "#d946ef",
   gis: "#22c55e",
   tax: "#f97316",
   normalizer: "#a855f7",

@@ -214,7 +214,8 @@ def generate_chain_sheet_excel(
 
     ws1["A10"] = "Search Type:"
     ws1["A10"].font = font_bold
-    ws1["B10"] = "20S"
+    search_scope = str(report_data.get("search_scope") or "full").lower()
+    ws1["B10"] = "Current Search" if search_scope == "current" else "Full Search"
     ws1["B10"].font = font_regular
     ws1["D10"] = f"Parcel (or one of Parcels for reference only): {parcel}"
     ws1["D10"].font = font_regular

@@ -456,6 +456,32 @@
   {% endif %}
 
   <!-- ═══════════════════════════════
+       3b. NAME SEARCHES
+       ═══════════════════════════════ -->
+  <h2>Name Searches</h2>
+  <p class="meta">Party names searched by the Name Searcher node during this run.</p>
+  {% if name_searches %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Sources</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in name_searches %}
+      <tr>
+        <td>{{ entry.name }}</td>
+        <td>{{ entry.source or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#64748b;">No name searches were run for this report.</p>
+  {% endif %}
+
+  <!-- ═══════════════════════════════
        4. CHAIN OF TITLE
        ═══════════════════════════════ -->
   <h2>Chain of Title</h2>

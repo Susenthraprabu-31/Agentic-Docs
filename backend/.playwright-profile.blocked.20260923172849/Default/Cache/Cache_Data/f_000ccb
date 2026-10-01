@@ -1,0 +1,1204 @@
+
+
+<!DOCTYPE html>
+
+
+
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>
+	Columbia County - Property Detail
+</title><script src="/bundles/modernizr?v=wBEWDufH_8Md-Pbioxomt90vm6tJN2Pyy9u9zHtWsPo1"></script>
+<link href="/Content/css?v=Rr7aK0sHg5isr9kbLDhZZip823bgYAuLC3znWXOIn_s1" rel="stylesheet"/>
+<link id="myFavicon" href="Columbia%20favicon%201.ico" rel="shortcut icon" type="image/x-icon" />
+        <style>
+            :root {
+                --navbar-bg-color: #0854a4 !important;
+                --navbar-highlight-color: #66ccff !important;
+                --dropdown-menu-highlight-color: #3399ff !important;
+            }
+            
+            /* Override dropdown open state background with rgba version of top menu color */
+            .navbar-inverse .navbar-nav .dropdown.open > a,
+            .navbar-inverse .navbar-nav .dropdown.open > a:hover,
+            .navbar-inverse .navbar-nav .dropdown.open > a:focus {
+                background-color: rgba(102, 204, 255, 0.15) !important;
+            }
+            
+            /* Additional overrides to ensure colors apply */
+            .navbar-inverse {
+                background-color: #0854a4 !important;
+            }
+            
+            .navbar-inverse .navbar-nav > li > a:hover,
+            .navbar-inverse .navbar-nav > li > a:focus,
+            .navbar-inverse .navbar-nav .dropdown-toggle:hover,
+            .navbar-inverse .navbar-nav .dropdown-toggle:focus,
+            .navbar-inverse .navbar-nav.navbar-right > li > a:hover,
+            .navbar-inverse .navbar-nav.navbar-right > li > a:focus {
+                color: #66ccff !important;
+            }
+            
+            .navbar-inverse .dropdown-menu > li > a:hover,
+            .navbar-inverse .dropdown-menu > li > a:focus {
+                background-color: #3399ff !important;
+                color: #ffffff !important;
+            }
+        </style>
+            
+
+    <style>
+        /* ── CSS Variables for Dynamic Theming ────────────────────── */
+        :root {
+            --navbar-bg-color: #222222;
+            --navbar-highlight-color: #ffbf47;
+            --dropdown-menu-highlight-color: #005fa3;
+        }
+        /* ── Skip Navigation ──────────────────────────────────────── */
+        .skip-nav {
+            position: absolute;
+            top: -100%;
+            left: 0;
+            background: #005fa3;
+            color: #ffffff;
+            padding: 10px 20px;
+            z-index: 10000;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 0 0 4px 0;
+            text-decoration: none;
+            transition: top 0.15s ease;
+        }
+
+            .skip-nav:focus {
+                top: 0;
+                outline: 3px solid var(--navbar-highlight-color);
+                outline-offset: 2px;
+            }
+
+        /* ── Focus Visible (global) ───────────────────────────────── */
+        /* Ensure every focusable element has a visible focus ring     */
+        :focus-visible {
+            outline: 3px solid var(--navbar-highlight-color);
+            outline-offset: 2px;
+        }
+        /* Remove outline for mouse users while keeping it for keyboard */
+        :focus:not(:focus-visible) {
+            outline: none;
+        }
+
+        /* ── Navbar ───────────────────────────────────────────────── */
+        .navbar-inverse {
+            background-color: var(--navbar-bg-color) !important; /* Dynamic via CSS variable */
+            border-color: #080808;
+        }
+
+            /* Nav links – white on #222 = 14.75:1 (AAA) */
+            .navbar-inverse .navbar-nav > li > a,
+            .navbar-inverse .navbar-nav > li > a:visited {
+                color: #ffffff;
+            }
+
+                .navbar-inverse .navbar-nav > li > a:hover,
+                .navbar-inverse .navbar-nav > li > a:focus {
+                    color: var(--navbar-highlight-color) !important; /* Dynamic highlight color */
+                    background-color: transparent;
+                    text-decoration: underline;
+                }
+
+            /* Dropdown toggle */
+            .navbar-inverse .navbar-nav .dropdown-toggle {
+                color: #ffffff;
+            }
+
+                .navbar-inverse .navbar-nav .dropdown-toggle:hover,
+                .navbar-inverse .navbar-nav .dropdown-toggle:focus {
+                    color: var(--navbar-highlight-color) !important; /* Dynamic highlight color */
+                    text-decoration: underline;
+                }
+
+            /* Dropdown menu – meet 4.5:1 contrast on white background */
+            .navbar-inverse .dropdown-menu > li > a {
+                color: #1a1a1a;
+            }
+
+                .navbar-inverse .dropdown-menu > li > a:hover,
+                .navbar-inverse .dropdown-menu > li > a:focus {
+                    background-color: var(--dropdown-menu-highlight-color) !important;
+                    color: #ffffff !important;
+                    text-decoration: underline;
+                }
+
+            /* Right-side auth links */
+            .navbar-inverse .navbar-nav.navbar-right > li > a,
+            .navbar-inverse .navbar-nav.navbar-right > li > a:visited {
+                color: #ffffff;
+            }
+
+                .navbar-inverse .navbar-nav.navbar-right > li > a:hover,
+                .navbar-inverse .navbar-nav.navbar-right > li > a:focus {
+                    color: var(--navbar-highlight-color) !important; /* Dynamic highlight color */
+                    text-decoration: underline;
+                }
+
+            /* When dropdown is open (active state) */
+            .navbar-inverse .navbar-nav .dropdown.open > a,
+            .navbar-inverse .navbar-nav .dropdown.open > a:hover,
+            .navbar-inverse .navbar-nav .dropdown.open > a:focus {
+                background-color: rgba(255, 191, 71, 0.15) !important; /* Will be overridden dynamically */
+                color: var(--navbar-highlight-color) !important;
+            }
+
+            /* LoginStatus logout link */
+            .navbar-inverse .navbar-nav .navbar-right .aspNetLink,
+            .navbar-inverse .navbar-nav .navbar-right a {
+                color: #ffffff;
+            }
+
+        /* ── Logo ─────────────────────────────────────────────────── */
+        .logo {
+            height: 70px;       /* explicit logo height */
+            width: auto;
+        }
+
+        .navbar-brand {
+            padding: 0 15px;            /* remove top/bottom padding */
+            display: flex;
+            align-items: center;        /* vertically centre the logo */
+            height: 70px;               /* match the logo height exactly */
+        }
+
+        /* Force the navbar itself to be at least as tall as the logo */
+        .navbar {
+            min-height: 70px;
+        }
+
+        .navbar .container {
+            min-height: 70px;
+        }
+
+        /* ── Body padding for fixed navbar ───────────────────────── */
+        body {
+            padding-top: 70px; /* matches navbar min-height */
+        }
+
+        @media (max-width: 767px) {
+            body {
+                padding-top: 60px;
+            }
+        }
+
+        /* ── Mobile dropdown adjustments ─────────────────────────── */
+        @media (max-width: 767px) {
+            .navbar-nav .dropdown-menu {
+                position: static;
+                float: none;
+                width: auto;
+                margin-top: 0;
+                background-color: transparent;
+                border: 0;
+                box-shadow: none;
+            }
+
+                .navbar-nav .dropdown-menu > li > a {
+                    padding-left: 30px;
+                    color: #ffffff; /* white text on dark collapsed menu */
+                }
+
+                    .navbar-nav .dropdown-menu > li > a:hover,
+                    .navbar-nav .dropdown-menu > li > a:focus {
+                        color: var(--navbar-highlight-color) !important;
+                        background-color: transparent;
+                    }
+
+            .navbar-nav a br {
+                display: none;
+            }
+
+            .navbar-nav a {
+                white-space: normal !important;
+            }
+
+            .body-content {
+                padding: 15px;
+            }
+        }
+
+        /* ── Footer ───────────────────────────────────────────────── */
+        footer {
+            text-align: center;
+        }
+
+            footer img {
+                max-width: 100%;
+                height: auto;
+            }
+
+            footer p {
+                word-wrap: break-word;
+            }
+
+        /* ── Keyboard-controlled dropdown support ─────────────────── */
+        /* When JS opens dropdown via keyboard, ensure menu is visible */
+        .dropdown.open .dropdown-menu {
+            display: block;
+        }
+    </style>
+<link href="/WebResource.axd?d=DSgCKnaJlQjfnXvLWZApAFWC2LIu2HaFqpYxurBCIMZGLn0lzZ5Eo0QMzdQT0ovjbrGtGritp1cSQEr1JA1u3zqSJOd1174F2le6yar4fyPaOsqFs_2pZvE9fNTH7Zz1Z7Ke5ToqYojya0sOEwjBBQ2&amp;t=637037912498632462" type="text/css" rel="stylesheet" /><link href="/WebResource.axd?d=hcXDZhXiidgsQUtEo5iT3x_firuthmaIA4t8rvlGXXY9XC-TGvWkAEpzZrc7qxe4TuYa-TPBALn4jPevJlUKS_sb53HfA8RJIOjuB1eaCz2ZHYDVvrOu1qYH7jirkNzEU-Id-dBCGBDoAuoM5wKFXmMY27O_RvSsAM8HdxwjwiY1&amp;t=637037912498632462" type="text/css" rel="stylesheet" /></head>
+<body>
+    
+    <a href="#main-content" class="skip-nav">Skip to main content</a>
+
+    <form method="post" action="./PropertyDetail?p=R12005-000" id="ctl01">
+<div class="aspNetHidden">
+<input type="hidden" name="MainContent_PropertyContainer_ClientState" id="MainContent_PropertyContainer_ClientState" value="{&quot;ActiveTabIndex&quot;:0,&quot;TabEnabledState&quot;:[true,true,true,true,true,true,true,true,true,true],&quot;TabWasLoadedOnceState&quot;:[false,false,false,false,false,false,false,false,false,false]}" />
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" />
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" />
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="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" />
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['ctl01'];
+if (!theForm) {
+    theForm = document.ctl01;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+
+<script src="/bundles/MsAjaxJs?v=c42ygB2U07n37m_Sfa8ZbLGVu4Rr2gsBo7MvUEnJeZ81" type="text/javascript"></script>
+<script src="Scripts/jquery-1.10.2.min.js" type="text/javascript"></script>
+<script src="Scripts/bootstrap.min.js" type="text/javascript"></script>
+<script src="Scripts/respond.min.js" type="text/javascript"></script>
+<script src="/bundles/WebFormsJs?v=AAyiAYwMfvmwjNSBfIMrBAqfU5exDukMVhrRuZ-PDU01" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=eE6V8nDbUVn0gtG6hKNX_JNtcEmZqJLd18Cs6WL2nJmLbsn_3KcBoAjmloWNqmVYQCKOYO0W-Mty1KUMNZ66EYc1vYjaoFt80Cm_WYF4PIm4cD7tCDg0hQh3jNl297Z70&amp;t=17b84382" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=mcAASOSteirJeuV-3by3UT9349fEY73tOBSlhWPv0hXgaUgw1GZMUoPkQuxOmvJQ0xbAUxEoym9BHIBfM-j2F2ulE9PKrcdBWVAnVBNBNZQ1&amp;t=17b84382" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=jwf4VSQi7LeShc44FJ-gAcQFZ74XAQ2HdSEhSnADJgcyyU6uAMuLMr_ev4G_Vxify6n3krouldRwg49EGfsDi9rZPvOGWNSTUj4EJr0WlNEZmCmVkFE42j0-YBhf2SWl0&amp;t=17b84382" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=HEFpVKbnoeQjkjHkFKu3MFeNFGJCDyF63jJXrv_7zpdTEcRiHsY4Jqji0ZV390-IaAP7ROoP0ZeITg3AnpoKMAl40kcm5APuBm0R4aVmiD6mILIA7U6RgaELshqiOQcs0&amp;t=17b84382" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=ItGmCSWFnDZZrlIg2XveP8K7-0FjMejRQpHDNFKNFKDtOFcs4Z8psvklnxrSkM6mpHaI0Rzs4YFle96B9S3vxrUJzP8Wdxsv6JUMGFGlBaU1&amp;t=17b84382" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=hOeJu0xhC-uW6Gf8ooKdXp9wlzSg1hCBJ9R0Wl6PItl0F0oQFdBKB_tUGTX1fzY7PXiMGWpxO3f2AEC7JtNDZp2rAr2KbMEM_NvM9hZjlH0g8Fz1toHn-4rmg73SGTlP0&amp;t=17b84382" type="text/javascript"></script>
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="8054B053" />
+</div>
+        <script type="text/javascript">
+//<![CDATA[
+Sys.WebForms.PageRequestManager._initialize('ctl00$ctl07', 'ctl01', [], [], [], 90, 'ctl00');
+//]]>
+</script>
+
+
+        
+        <nav class="navbar navbar-inverse navbar-fixed-top" aria-label="Primary navigation">
+            <div class="container">
+                <div class="navbar-header">
+                    
+                    <button type="button"
+                        class="navbar-toggle collapsed"
+                        data-toggle="collapse"
+                        data-target="#site-navbar-collapse"
+                        aria-controls="site-navbar-collapse"
+                        aria-expanded="false"
+                        aria-label="Toggle navigation menu">
+                        <span class="icon-bar" aria-hidden="true"></span>
+                        <span class="icon-bar" aria-hidden="true"></span>
+                        <span class="icon-bar" aria-hidden="true"></span>
+                    </button>
+
+                    
+                    <a id="TaxCollectorLink" class="navbar-brand" aria-label="County Tax Collector (opens in new tab)" href="https://www.columbiataxcollector.com/" target="_blank"><img src="..\Images\Columbia02.png" class="img - responsive logo" alt="This is a link to the Tax Collector Site"></a>
+                </div>
+
+                
+                <div class="navbar-collapse collapse" id="site-navbar-collapse">
+                    <ul class="nav navbar-nav" role="menubar">
+
+                        
+                        <li role="menuitem">
+                            <a href="./" role="menuitem">
+                                
+                                Home
+                            </a>
+                        </li>
+
+                        
+                        
+                            <li class="dropdown">
+                                
+                                <a href="#"
+                                    class="dropdown-toggle"
+                                    data-toggle="dropdown"
+                                    role="button"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                    id="propertyTaxDropdown">Property Tax <span class="caret" aria-hidden="true"></span>
+                                </a>
+                                <ul class="dropdown-menu"
+                                    role="menu"
+                                    aria-labelledby="propertyTaxDropdown">
+                                    
+                                        <li role="menuitem"><a href="AccountSearch.aspx?s=pt" role="menuitem">Tax Account Search</a></li>
+                                    
+                                </ul>
+                            </li>
+                        
+
+                        
+                        
+                            <li class="dropdown">
+                                <a href="#"
+                                    class="dropdown-toggle"
+                                    data-toggle="dropdown"
+                                    role="button"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                    id="btrDropdown">Business Tax Receipts <span class="caret" aria-hidden="true"></span>
+                                </a>
+                                <ul class="dropdown-menu"
+                                    role="menu"
+                                    aria-labelledby="btrDropdown">
+                                    
+                                        <li role="menuitem"><a href="AccountSearch.aspx?s=br" role="menuitem">BTR Account Search</a></li>
+                                    
+                                </ul>
+                            </li>
+                        
+
+                        
+                        
+
+                        
+                        
+                            <li class="dropdown">
+                                <a href="#"
+                                    class="dropdown-toggle"
+                                    data-toggle="dropdown"
+                                    role="button"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                    id="miscDropdown">Misc <span class="caret" aria-hidden="true"></span>
+                                </a>
+                                <ul class="dropdown-menu"
+                                    role="menu"
+                                    aria-labelledby="miscDropdown">
+                                    <li role="menuitem"><a href="Contact" role="menuitem">Contact Us</a></li>
+                                    
+                                </ul>
+                            </li>
+                        
+
+                        
+                        
+                            
+                            <li role="menuitem">
+                                <a href="ShoppingCart" id="cartCount" role="menuitem" aria-label="Shopping Cart (0 items)">Shopping Cart <span aria-hidden='true'>(0)</span></a>
+                            </li>
+                        
+                    </ul>
+
+                    
+                    
+                </div>
+                
+            </div>
+            
+        </nav>
+        
+
+        
+        <main id="main-content" class="container body-content" tabindex="-1">
+            
+    <style>
+        @media print {
+            a[href]:after {
+                display: none;
+                visibility: hidden;
+            }
+        }
+        /* Responsive Layout Styles */
+        .detail-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            width: 100%;
+        }
+
+        .sidebar-left {
+            flex: 0 0 180px;
+            min-width: 180px;
+        }
+
+        .main-content {
+            flex: 1 1 500px;
+            min-width: 0; /* Important for flex items */
+        }
+
+        .sidebar-right {
+            flex: 0 0 220px;
+            min-width: 220px;
+        }
+
+        /* Mobile: Stack all sections vertically */
+        @media (max-width: 991px) {
+            .sidebar-left {
+                flex: 1 1 100%;
+                order: 2; /* Move to bottom on mobile */
+            }
+
+            .main-content {
+                flex: 1 1 100%;
+                order: 1; /* Show first on mobile */
+            }
+
+            .sidebar-right {
+                flex: 1 1 100%;
+                order: 3; /* Show last on mobile */
+            }
+
+            /* Hide sidebar spacing divs on mobile */
+            .sidebar-left > div:not(:has(table)) {
+                display: none;
+            }
+        }
+
+        /* Year Links Table - Responsive */
+        .year-links-table {
+            width: 100%;
+            max-width: 180px;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 991px) {
+            .year-links-table {
+                max-width: 100%;
+            }
+        }
+
+        /* Payment Options - Responsive */
+        .payment-options-container {
+            width: 100%;
+        }
+
+        @media (max-width: 991px) {
+            .payment-options-container {
+                max-width: 400px;
+                margin: 20px auto;
+            }
+        }
+
+        /* GridView Responsive */
+        .responsive-grid-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 768px) {
+            .responsive-grid-wrapper table {
+                font-size: 12px;
+            }
+
+            .responsive-grid-wrapper th,
+            .responsive-grid-wrapper td {
+                padding: 5px 3px !important;
+                white-space: nowrap;
+            }
+        }
+
+        /* Tab Container */
+        .ajax__tab_header {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 768px) {
+            .fancy .ajax__tab_header {
+                font-size: 11px;
+            }
+
+            .ajax__tab_tab {
+                padding: 5px 8px !important;
+            }
+        }
+
+        /* Title Image */
+        .title-image {
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Property Info Table */
+        .property-info-table {
+            width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .property-info-table td {
+                display: block;
+                width: 100% !important;
+                text-align: left !important;
+                padding: 5px 10px !important;
+            }
+
+                .property-info-table td[style*="text-align: right"] {
+                    text-align: left !important;
+                }
+        }
+
+        /* Buttons - Make them full width on mobile */
+        @media (max-width: 576px) {
+            .btn-default {
+                width: 100% !important;
+                max-width: 100% !important;
+                margin-bottom: 10px;
+            }
+        }
+
+        /* Form Controls */
+        .form-control {
+            max-width: 100%;
+        }
+
+        .rcorners2 {
+            border-radius: 25px;
+            border: 2px solid #73AD21;
+            padding: 20px;
+            width: 200px;
+            height: 150px;
+        }
+
+        .rounded-corners {
+            border: 1px solid black;
+            -webkit-border-radius: 8px;
+            -moz-border-radius: 8px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .rounded_corners {
+            border: 1px solid #A1DCF2;
+            -webkit-border-radius: 8px;
+            -moz-border-radius: 8px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+            .rounded_corners td, .rounded_corners th {
+                border: 1px solid #A1DCF2;
+                font-family: Arial;
+                font-size: 10pt;
+                text-align: center;
+            }
+
+            .rounded_corners table table td {
+                border-style: none;
+            }
+
+        .btn {
+            background-color: rgb(0, 92, 178);
+            border-color: rgb(0, 92, 178);
+            color: white;
+        }
+
+            .btn:hover {
+                border-color: rgb(0, 92, 178);
+                color: rgb(0, 92, 178);
+                text-decoration: none;
+                font-weight: bold;
+            }
+
+            .btn:focus {
+                background-color: rgb(0, 92, 178);
+                border-color: rgb(0, 92, 178);
+                color: white;
+                outline-color: transparent;
+            }
+
+            .btn:disabled {
+                background-color: rgb(24,137,245);
+            }
+
+        .myTabContainer {
+            border-color: lightblue;
+            border-bottom-color: lightblue;
+        }
+
+        .fancy .ajax__tab_header {
+            font-size: 13px;
+            font-weight: bold;
+            color: #000;
+            font-family: sans-serif;
+            /*background: url(images/tab-line.gif) repeat-x bottom;*/
+        }
+
+        .fancy .ajax__tab_outer {
+            border-color: lightblue;
+            border-left-color: lightblue;
+            border-bottom-color: lightblue;
+        }
+
+        .fancy .ajax__tab_inner {
+            border-color: lightblue;
+        }
+
+        .fancy .ajax__tab_tab {
+            border-color: lightblue;
+        }
+
+        .fancy .ajax__tab_body {
+            border-color: lightblue;
+        }
+
+        .fancy .ajax__tab_hover {
+            border-color: lightblue;
+        }
+
+        .fancy .ajax__tab_active {
+            border-color: lightblue;
+        }
+    </style>
+
+    
+    <!-- Left Sidebar - Year Links -->
+    
+    <div class="detail-container">
+        <!-- LEFT SIDEBAR: Year Links -->
+        <div class="sidebar-left">
+            <div style="margin-bottom: 20px;"></div>
+            <br>
+            <br>
+            <br>
+            <table class="year-links-table" rules="rows" style="border-width:1px;border-style:solid;border-color: lightblue">
+	<tr>
+		<td style="text-align: center; font-weight: bold; font-size: large; padding-bottom: 5px;"><span id="MainContent_lblTaxYearLinks">Year</span><br />
+                    </td><td style="text-align: center; font-weight: bold; font-size: large; padding-bottom: 5px;"><span id="MainContent_lblAmountLinks">Due</span><br />
+                    </td>
+	</tr><tr id="MainContent_YearRow01">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear01" href="PropertyDetail?p=R12005-000&amp;y=2025" style="display:inline-block;color:#7BBAF5;font-weight:bold;width:70px;">2025</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount01" style="display:inline-block;font-weight:bold;width:70px;">$1,884.52</span></td>
+	</tr><tr id="MainContent_YearRow02">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear02" href="PropertyDetail?p=R12005-000&amp;y=2024" style="display:inline-block;width:70px;">2024</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount02" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow03">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear03" href="PropertyDetail?p=R12005-000&amp;y=2023" style="display:inline-block;width:70px;">2023</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount03" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow04">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear04" href="PropertyDetail?p=R12005-000&amp;y=2022" style="display:inline-block;width:70px;">2022</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount04" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow05">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear05" href="PropertyDetail?p=R12005-000&amp;y=2021" style="display:inline-block;width:70px;">2021</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount05" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow06">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear06" href="PropertyDetail?p=R12005-000&amp;y=2020" style="display:inline-block;width:70px;">2020</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount06" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow07">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear07" href="PropertyDetail?p=R12005-000&amp;y=2019" style="display:inline-block;width:70px;">2019</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount07" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow08">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear08" href="PropertyDetail?p=R12005-000&amp;y=2018" style="display:inline-block;width:70px;">2018</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount08" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow09">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear09" href="PropertyDetail?p=R12005-000&amp;y=2017" style="display:inline-block;width:70px;">2017</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount09" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr><tr id="MainContent_YearRow10">
+		<td style="text-align: center; padding-bottom: 5px"><a id="MainContent_hlYear10" href="PropertyDetail?p=R12005-000&amp;y=2016" style="display:inline-block;width:70px;">2016</a></td><td style="text-align: center; padding-bottom: 5px"><span id="MainContent_h1Amount10" style="display:inline-block;width:70px;">$0.00</span></td>
+	</tr>
+</table>
+        </div>
+        
+
+        <!-- Main Content Area -->
+        <!-- MAIN CONTENT AREA -->
+        <div class="main-content">
+            <div style="margin-bottom: 20px;">
+                <img id="MainContent_TitleImage" class="title-image" src="../Images/RGB23-85-160-TaxBillDetail.png" />
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <span id="MainContent_PaymentsDisabledMessage"></span>
+            </div>
+            <span id="MainContent_lblPaymentAddedToCart" style="font-size: large"></span>
+            
+            <!-- Property General Info -->
+            <table id="MainContent_PropertyGeneralInfo" class="property-info-table" rules="rows" style="border-width:1px;border-style:solid;width:100%;border-color: lightblue">
+	<tr>
+		<td align="left" valign="top" colspan="6" style="font-size: large; padding-left: 10px"><span id="MainContent_lblAccountBanner" style="font-weight: bold">Property Tax Account: <font color="darkblue">R12005-000</font></span><br />
+                            <span id="MainContent_lblOwnerNameBanner">TAYLOR HOWARD</span><br />
+                            &nbsp;
+                        </td>
+	</tr><tr>
+		<td align="left" valign="top" colspan="2" style="padding-left: 2em"><span id="MainContent_lblGITaxYearBanner"><b>Year:</b> 2025</span><br />
+                            <span id="MainContent_lblGITaxDistrictBanner"><b>Tax District:</b> 1</span><br />
+                            &nbsp;
+                        </td><td align="left" valign="top" colspan="2"><span id="MainContent_lblGIBillNumberBanner"><b>Bill Number:</b> 35361</span><br />
+                            <span id="MainContent_lblGIPropertyTypeBanner"><b>Property Type:</b> Real Estate</span></td><td align="left" valign="top" colspan="2"><span id="MainContent_lblGIOwnerNameBanner"><b>Owner:</b> TAYLOR HOWARD</span><br />
+                            <span id="MainContent_lblGIInstallmentBanner"></span></td>
+	</tr><tr align="left" valign="top">
+		<td align="left" colspan="3" style="padding-left: 2em"><span id="MainContent_lblGIMailingAddress"><b>MAILING ADDRESS:</b><br>TAYLOR HOWARD<br>TAYLOR SONYA<br>8317 OLD PLANK RD<br>TALLAHASSEE FL 32305<br><br></span></td><td align="left" colspan="2" style="padding-left: 2em"><span id="MainContent_lblGIPhysicalAddress"><b>PROPERTY ADDRESS:</b><br>LAKE CITY 32055</span></td><td align="center" colspan="1" style="padding-left: 2em"><span id="MainContent_lblLienNumber"></span></td>
+	</tr>
+</table>
+
+            <!-- Tab Container -->
+            <br />
+            <div id="MainContent_PropertyContainer" class="fancy" style="width:100%;visibility:hidden;">
+	<div id="MainContent_PropertyContainer_header" class="ajax__tab_header">
+		<span id="MainContent_PropertyContainer_tpTaxes_tab" class="ajax__tab"><span class="ajax__tab_outer"><span class="ajax__tab_inner"><a class="ajax__tab_tab" id="__tab_MainContent_PropertyContainer_tpTaxes" href="#" style="text-decoration:none;"><span>Taxes & Fees</span></a></span></span></span><span id="MainContent_PropertyContainer_tpUnpaidBills_tab" class="ajax__tab"><span class="ajax__tab_outer"><span class="ajax__tab_inner"><a class="ajax__tab_tab" id="__tab_MainContent_PropertyContainer_tpUnpaidBills" href="#" style="text-decoration:none;"><span>All Unpaid Bills</span></a></span></span></span><span id="MainContent_PropertyContainer_tpAssessments_tab" class="ajax__tab"><span class="ajax__tab_outer"><span class="ajax__tab_inner"><a class="ajax__tab_tab" id="__tab_MainContent_PropertyContainer_tpAssessments" href="#" style="text-decoration:none;"><span>Assessments</span></a></span></span></span><span id="MainContent_PropertyContainer_tpLegalDescription_tab" class="ajax__tab"><span class="ajax__tab_outer"><span class="ajax__tab_inner"><a class="ajax__tab_tab" id="__tab_MainContent_PropertyContainer_tpLegalDescription" href="#" style="text-decoration:none;"><span>Legal Description</span></a></span></span></span><span id="MainContent_PropertyContainer_tpTransactionHistory_tab" class="ajax__tab"><span class="ajax__tab_outer"><span class="ajax__tab_inner"><a class="ajax__tab_tab" id="__tab_MainContent_PropertyContainer_tpTransactionHistory" href="#" style="text-decoration:none;"><span>Payment History</span></a></span></span></span>
+	</div><div id="MainContent_PropertyContainer_body" class="ajax__tab_body" style="display:block;">
+		<div id="MainContent_PropertyContainer_tpTaxes" class="ajax__tab_panel">
+			
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <span id="MainContent_PropertyContainer_tpTaxes_lblAdvaloremTaxes" style="font-size:Large;font-weight:bold;">Ad Valorem</span>
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpTaxes_TaxesGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr>
+						<th align="center" scope="col">Authority/Fund</th><th class="text-right" scope="col">Tax Rate</th><th class="text-right" scope="col">Charged</th><th class="text-right" scope="col">Paid</th><th class="text-right" scope="col">Due</th>
+					</tr><tr>
+						<td align="left">CITY OF LAKE CITY</td><td align="right">4.9000</td><td align="right">$275.41</td><td align="right">$0.00</td><td align="right">$275.41</td>
+					</tr><tr>
+						<td align="left">BOARD OF COUNTY COMMISSIONERS</td><td align="right">7.8150</td><td align="right">$439.26</td><td align="right">$0.00</td><td align="right">$439.26</td>
+					</tr><tr>
+						<td align="left">COLUMBIA COUNTY SCHOOL BOARD</td><td align="right">&nbsp;</td><td align="right">&nbsp;</td><td align="right">&nbsp;</td><td align="right">&nbsp;</td>
+					</tr><tr>
+						<td align="left">   DISCRETIONARY</td><td align="right">0.7480</td><td align="right">$42.04</td><td align="right">$0.00</td><td align="right">$42.04</td>
+					</tr><tr>
+						<td align="left">   LOCAL</td><td align="right">3.1010</td><td align="right">$174.30</td><td align="right">$0.00</td><td align="right">$174.30</td>
+					</tr><tr>
+						<td align="left">   CAPITAL OUTLAY</td><td align="right">1.5000</td><td align="right">$84.31</td><td align="right">$0.00</td><td align="right">$84.31</td>
+					</tr><tr>
+						<td align="left">   Subtotal</td><td align="right">5.3490</td><td align="right">$300.65</td><td align="right">$0.00</td><td align="right">$300.65</td>
+					</tr><tr>
+						<td align="left">SUWANNEE RIVER WATER MGT DIST</td><td align="right">0.2812</td><td align="right">$15.81</td><td align="right">$0.00</td><td align="right">$15.81</td>
+					</tr><tr>
+						<td align="left">LAKE SHORE HOSPITAL AUTHORITY</td><td align="right">0.0001</td><td align="right">$0.01</td><td align="right">$0.00</td><td align="right">$0.01</td>
+					</tr><tr>
+						<td align="left">TOTAL</td><td align="right">18.3453</td><td align="right">$1,031.14</td><td align="right">$0.00</td><td align="right">$1,031.14</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <span id="MainContent_PropertyContainer_tpTaxes_lblNonAdvaloremTaxes" style="font-size:Large;font-weight:bold;">Non-Ad Valorem</span>
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpTaxes_TaxesNonAdValoremGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr>
+						<th align="center" scope="col">Authority/Fund</th><th class="text-right" scope="col">Charged</th><th class="text-right" scope="col">Paid</th><th class="text-right" scope="col">Due</th>
+					</tr><tr>
+						<td align="left">CITY FIRE ASSESSMENT</td><td align="right">$579.89</td><td align="right">$0.00</td><td align="right">$579.89</td>
+					</tr><tr>
+						<td align="left">TOTAL</td><td align="right">$579.89</td><td align="right">$0.00</td><td align="right">$579.89</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <span id="MainContent_PropertyContainer_tpTaxes_lblFeesOnTaxes" style="font-size:Large;font-weight:bold;">Fees</span>
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpTaxes_TaxFeesGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr>
+						<th align="center" scope="col">Authority/Fund</th><th class="text-right" scope="col">Charged</th><th class="text-right" scope="col">Paid</th><th class="text-right" scope="col">Due</th>
+					</tr><tr>
+						<td align="left">3 PENALTY-RE</td><td align="right">$48.33</td><td align="right">$0.00</td><td align="right">$48.33</td>
+					</tr><tr>
+						<td align="left">5% CERTIFICATE SALE</td><td align="right">$82.97</td><td align="right">$0.00</td><td align="right">$82.97</td>
+					</tr><tr>
+						<td align="left">ADVERTISING - REAL</td><td align="right">$34.50</td><td align="right">$0.00</td><td align="right">$34.50</td>
+					</tr><tr>
+						<td align="left">REDEMPTION FEE</td><td align="right">$6.25</td><td align="right">$0.00</td><td align="right">$6.25</td>
+					</tr><tr>
+						<td align="left">INTERNET WEB FEE</td><td align="right">$12.00</td><td align="right">$0.00</td><td align="right">$12.00</td>
+					</tr><tr>
+						<td align="left">Interest</td><td align="right">$89.44</td><td align="right">$0.00</td><td align="right">$89.44</td>
+					</tr><tr>
+						<td align="left">TOTAL</td><td align="right">$273.49</td><td align="right">$0.00</td><td align="right">$273.49</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+                    
+		</div><div id="MainContent_PropertyContainer_tpUnpaidBills" class="ajax__tab_panel" style="display:none;visibility:hidden;">
+			
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpUnpaidBills_UnpaidBillsGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr style="font-size:8pt;font-weight:bold;">
+						<th class="text-center" scope="col">Year</th><th class="text-center" scope="col">Folio</th><th class="text-left" scope="col">Status</th><th class="text-right" scope="col">Minimum Due</th><th class="text-right" scope="col">Due</th>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2025</td><td align="center">35361</td><td align="left">Delinquent</td><td align="right">$1,884.52</td><td align="right">$1,884.52</td>
+					</tr><tr style="font-size:8pt;font-weight:bold;">
+						<td align="center">TOTAL</td><td align="center">&nbsp;</td><td align="left">&nbsp;</td><td align="right">$1,884.52</td><td align="right">$1,884.52</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+                        <div>
+                            <br />
+                            <span id="MainContent_PropertyContainer_tpUnpaidBills_lblNotPayable" style="color:Red;"></span>
+                        </div>
+                    
+		</div><div id="MainContent_PropertyContainer_tpAssessments" class="ajax__tab_panel" style="display:none;visibility:hidden;">
+			
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <span style="font-size:Large;font-weight:bold;">Assessments</span>
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpAssessments_AssessmentsGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr style="font-size:8pt;font-weight:bold;">
+						<th align="right" scope="col">Authority</th><th class="text-right" scope="col">Improv</th><th class="text-right" scope="col">Land</th><th class="text-right" scope="col">Ag Land</th><th class="text-right" scope="col">Personal</th><th class="text-right" scope="col">Market Ag</th>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">CITY OF LAKE CITY</td><td align="right">56,207</td><td align="right">0</td><td align="right">0</td><td align="right">0</td><td align="right">0</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">BOARD OF COUNTY COMMISSIONERS</td><td align="right">56,207</td><td align="right">0</td><td align="right">0</td><td align="right">0</td><td align="right">0</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">COLUMBIA COUNTY SCHOOL BOARD</td><td align="right">56,207</td><td align="right">0</td><td align="right">0</td><td align="right">0</td><td align="right">0</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">SUWANNEE RIVER WATER MGT DIST</td><td align="right">56,207</td><td align="right">0</td><td align="right">0</td><td align="right">0</td><td align="right">0</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">LAKE SHORE HOSPITAL AUTHORITY</td><td align="right">56,207</td><td align="right">0</td><td align="right">0</td><td align="right">0</td><td align="right">0</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <span style="font-size:Large;font-weight:bold;">Exemptions</span>
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpAssessments_ExemptionsGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr style="font-size:8pt;font-weight:bold;">
+						<th align="right" scope="col">Exemption</th><th class="text-right" scope="col">Amount</th>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left"> </td><td align="right"> </td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <span style="font-size:Large;font-weight:bold;">Taxable Values</span>
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpAssessments_TaxableValuesGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr style="font-size:8pt;font-weight:bold;">
+						<th align="center" scope="col">Authority</th><th class="text-right" align="right" scope="col">Assessed</th><th class="text-right" scope="col">Exemption</th><th class="text-right" scope="col">Taxable</th>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">CITY&nbsp;OF&nbsp;LAKE&nbsp;CITY</td><td align="right">56,207</td><td align="right">0</td><td align="right">56,207</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">BOARD&nbsp;OF&nbsp;COUNTY&nbsp;COMMISSIONERS</td><td align="right">56,207</td><td align="right">0</td><td align="right">56,207</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">COLUMBIA&nbsp;COUNTY&nbsp;SCHOOL&nbsp;BOARD</td><td align="right">56,207</td><td align="right">0</td><td align="right">56,207</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">SUWANNEE&nbsp;RIVER&nbsp;WATER&nbsp;MGT&nbsp;DIST</td><td align="right">56,207</td><td align="right">0</td><td align="right">56,207</td>
+					</tr><tr style="font-size:7pt;font-weight:normal;">
+						<td align="left">LAKE&nbsp;SHORE&nbsp;HOSPITAL&nbsp;AUTHORITY</td><td align="right">56,207</td><td align="right">0</td><td align="right">56,207</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+                    
+		</div><div id="MainContent_PropertyContainer_tpLegalDescription" class="ajax__tab_panel" style="display:none;visibility:hidden;">
+			
+                        <br />
+                        <p>
+                            <span id="MainContent_PropertyContainer_tpLegalDescription_lblLegalDescription">N DIV: 75 FT E & W BY 100 FT N & S IN SE CORBLOCK 77.364-631, 620-549, 621-119, DC 876-2088,PROB#05-127CP, 1053-1516 THRU 1537, WD 1069-623,QC 1269-1747, WD 1539-2151,</span>
+                        </p>
+                    
+		</div><div id="MainContent_PropertyContainer_tpTransactionHistory" class="ajax__tab_panel" style="width:100%;display:none;visibility:hidden;">
+			
+                        <div class="responsive-grid-wrapper">
+                            <br />
+                            <div>
+				<table cellspacing="0" rules="rows" id="MainContent_PropertyContainer_tpTransactionHistory_TransactionHistoryGrid" style="border-width:0px;width:100%;border-collapse:collapse;border-color: lightblue">
+					<tr style="font-size:8pt;font-weight:bold;">
+						<th class="text-center" scope="col">Tax Year</th><th class="text-center" scope="col">Folio</th><th class="text-center" scope="col">Receipt Number</th><th class="text-center" scope="col">Paid By</th><th class="text-center" scope="col">Payment Date</th><th class="text-right" scope="col">Paid</th>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2024</td><td align="center">35188</td><td align="center">2024-904356</td><td align="center">Sonya Taylor</td><td align="center">03/04/2025</td><td align="right">$1,420.55</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2023</td><td align="center">35331</td><td align="center">2023-9925473</td><td align="center">HOWARD  TAYLOR</td><td align="center">04/30/2024</td><td align="right">$1,424.79</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2022</td><td align="center">35640</td><td align="center">2022-9925491</td><td align="center">HOWARD  TAYLOR</td><td align="center">06/30/2023</td><td align="right">$1,471.97</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2021</td><td align="center">34754</td><td align="center">2021-9925837</td><td align="center">SONYA  TAYLOR</td><td align="center">07/31/2022</td><td align="right">$1,424.01</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2020</td><td align="center">2981</td><td align="center">2021-9922634</td><td align="center">HOWARD  TAYLOR</td><td align="center">12/29/2021</td><td align="right">$1,447.59</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2019</td><td align="center">2980</td><td align="center">2021-9922627</td><td align="center">HOWARD  TAYLOR</td><td align="center">12/29/2021</td><td align="right">$1,494.45</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2018</td><td align="center">2995</td><td align="center">2019-3500743</td><td align="center">HOWARD TAYLOR</td><td align="center">11/12/2019</td><td align="right">$1,507.66</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2017</td><td align="center">3004</td><td align="center">2017-9923508</td><td align="center">HOWARD  TAYLOR</td><td align="center">08/21/2018</td><td align="right">$1,484.87</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2016</td><td align="center">3021</td><td align="center">2016-2704645</td><td align="center">HOWARD L TAYLOR</td><td align="center">05/11/2017</td><td align="right">$1,311.41</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2015</td><td align="center">3024</td><td align="center">2015-9922553</td><td align="center">SONYA  TAYLOR</td><td align="center">06/29/2016</td><td align="right">$1,370.58</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2014</td><td align="center">3020</td><td align="center">2015-9921457</td><td align="center">SONYA  TAYLOR</td><td align="center">02/26/2016</td><td align="right">$1,111.73</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2014</td><td align="center">3020</td><td align="center">2014-3103539</td><td align="center">HOWARD TAYLOR</td><td align="center">03/31/2015</td><td align="right">$200.00</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2013</td><td align="center">3022</td><td align="center">2015-3503143</td><td align="center">HOWARD TAYLOR</td><td align="center">02/22/2016</td><td align="right">$1,369.72</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2012</td><td align="center">3019</td><td align="center">2014-3504883</td><td align="center">HOWARD TAYLOR</td><td align="center">03/31/2015</td><td align="right">$1,372.67</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2011</td><td align="center">3030</td><td align="center">2011-9921222</td><td align="center">SONYA  TAYLOR</td><td align="center">05/08/2012</td><td align="right">$1,195.85</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2010</td><td align="center">133862</td><td align="center">2010-2503568</td><td align="center">NO LIMIT/ HOWARD TAYLOR</td><td align="center">05/18/2011</td><td align="right">$1,250.73</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2009</td><td align="center">133858</td><td align="center">2010-1001837</td><td align="center">NO LIMIT RACING INC</td><td align="center">12/30/2010</td><td align="right">$1,451.51</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2008</td><td align="center">133618</td><td align="center">2010-1001837</td><td align="center">NO LIMIT RACING INC</td><td align="center">12/30/2010</td><td align="right">$1,822.29</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2007</td><td align="center">132939</td><td align="center">2010-1001837</td><td align="center">NO LIMIT RACING INC</td><td align="center">12/30/2010</td><td align="right">$1,979.16</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2006</td><td align="center">132303</td><td align="center">2006-2203842</td><td align="center">title offices llc</td><td align="center">12/14/2006</td><td align="right">$1,035.89</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2005</td><td align="center">131615</td><td align="center">2005-2202752</td><td align="center">TITLE OFFICES</td><td align="center">12/22/2005</td><td align="right">$996.43</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2004</td><td align="center">130750</td><td align="center">2004-2600854</td><td align="center">PARNELL ANNIE D</td><td align="center">12/13/2004</td><td align="right">$943.57</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2003</td><td align="center">130211</td><td align="center">2003-2400734</td><td align="center">PARNELL MERRILL-ANNIE</td><td align="center">12/29/2003</td><td align="right">$891.20</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2002</td><td align="center">129760</td><td align="center">2002-2500778</td><td align="center">PARNELL ANNIE D</td><td align="center">12/09/2002</td><td align="right">$896.05</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2001</td><td align="center">129129</td><td align="center">2001-1200164</td><td align="center">PARNELL ANNIE D</td><td align="center">11/07/2001</td><td align="right">$915.72</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">2000</td><td align="center">128509</td><td align="center">2000-1001375</td><td align="center">PARNELL ANNIE D</td><td align="center">11/27/2000</td><td align="right">$907.38</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1999</td><td align="center">128034</td><td align="center">1999-2001853</td><td align="center">PARNELL ANNIE D</td><td align="center">11/29/1999</td><td align="right">$905.34</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1998</td><td align="center">127607</td><td align="center">1998-1000863</td><td align="center">PARNELL CHARLES EUGENE &amp; ANNIE</td><td align="center">11/10/1998</td><td align="right">$907.70</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1997</td><td align="center">126966</td><td align="center">1997-3001503</td><td align="center">PARNELLS BARBER SHOP</td><td align="center">11/19/1997</td><td align="right">$641.65</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1996</td><td align="center">126231</td><td align="center">1996-2000157</td><td align="center">ANNIE PARNELL</td><td align="center">11/13/1996</td><td align="right">$659.55</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1995</td><td align="center">125707</td><td align="center">1995-3004164</td><td align="center">PARNELL CHARLES E &amp; ANNIE D</td><td align="center">12/22/1995</td><td align="right">$683.65</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1994</td><td align="center">125457</td><td align="center">1994-3001182</td><td align="center">KIMS ULTRA CHIC BEAUTH SALON</td><td align="center">11/15/1994</td><td align="right">$649.25</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1993</td><td align="center">124824</td><td align="center">1993-1002118</td><td align="center">PARNELL BUILDERS.APARTMENTS</td><td align="center">11/24/1993</td><td align="right">$653.08</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1992</td><td align="center">124207</td><td align="center">1992-1002248</td><td align="center">PARNELLS APTS/PARNELL BUILDERS</td><td align="center">11/23/1992</td><td align="right">$684.84</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1991</td><td align="center">123912</td><td align="center">1991-3011630</td><td align="center">PARNELL BUILDERS INC</td><td align="center">11/22/1991</td><td align="right">$915.77</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1990</td><td align="center">23775</td><td align="center">1990-1001347</td><td align="center">PARNELLBLD/PARNELL APTS/C PARN</td><td align="center">11/27/1990</td><td align="right">$901.47</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1989</td><td align="center">2323200.0001</td><td align="center">1989-1001065</td><td align="center">PARNELL, CHARLES</td><td align="center">11/16/1989</td><td align="right">$821.06</td>
+					</tr><tr style="font-size:8pt;font-weight:normal;">
+						<td align="center">1989</td><td align="center">2323200.0004</td><td align="center">1989-1001065</td><td align="center">PARNELL, CHARLES</td><td align="center">11/16/1989</td><td align="right">$58.68</td>
+					</tr>
+				</table>
+			</div>
+                        </div>
+                    
+		</div>
+	</div>
+</div>
+        </div>
+        
+        <!-- RIGHT SIDEBAR: Payment Options -->
+        <div class="sidebar-right">
+            <div style="margin-bottom: 100px;"></div>
+
+            <table id="MainContent_PropertyPaymentInfo" class="payment-options-container">
+	<tr>
+		<td colspan="2" style="text-align: center; font-weight: bold; font-size: large; padding-bottom: 5px"><span id="MainContent_lblPaymentOptions">Payment Options</span><br />
+                    </td>
+	</tr><tr>
+		<td colspan="2" style="text-align: center;"><span id="MainContent_lblIfPaidBy" style="color: darkblue; font-weight: bold;">If Paid By 9/30/2026</span></td>
+	</tr><tr>
+		<td><span id="MainContent_lblThisBill" style="font-size:Smaller;">This Bill:</span></td><td><input name="ctl00$MainContent$txtThisBill" type="text" value="$1,884.52" id="MainContent_txtThisBill" disabled="disabled" class="aspNetDisabled form-control" style="color:Black;background-color:White;font-size:Smaller;width:100px;text-align: right; height: 50%;" /></td>
+	</tr><tr>
+		<td><span id="MainContent_lblAllBills" style="font-size:Smaller;">All Bills:</span></td><td><input name="ctl00$MainContent$txtAllBills" type="text" value="$1,884.52" id="MainContent_txtAllBills" disabled="disabled" class="aspNetDisabled form-control" style="color:Black;background-color:White;font-size:Smaller;width:100px;text-align: right; height: 50%;" /></td>
+	</tr><tr>
+		<td><span id="MainContent_lblCartAmount" style="font-size:Smaller;">Cart Amount:</span></td><td><input name="ctl00$MainContent$txtCartAmount" type="text" value="$0.00" id="MainContent_txtCartAmount" disabled="disabled" class="aspNetDisabled form-control" style="color:Black;background-color:White;font-size:Smaller;width:100px;text-align: right; height: 50%;" /></td>
+	</tr><tr>
+		<td colspan="2"> &nbsp; <br /></td>
+	</tr><tr>
+		<td colspan="2"></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"><input type="submit" name="ctl00$MainContent$btnPrimaryBill" value="Bill 35361 -- Pay Now" id="MainContent_btnPrimaryBill" title="Add your current year tax bill to the shopping cart" class="btn btn-default" style="font-size:Smaller;width:200px;" /></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"><input type="submit" name="ctl00$MainContent$btnPayAllBills" value="Pay All Bills" id="MainContent_btnPayAllBills" title="Add all unpaid bills to the shopping cart" class="btn btn-default" style="font-size:Smaller;width:200px;" /></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"><a id="MainContent_btnPrintBill" title="Download and print your tax bill" class="btn btn-default" href="javascript:__doPostBack(&#39;ctl00$MainContent$btnPrintBill&#39;,&#39;&#39;)" style="display:inline-block;font-size:Smaller;width:200px;">
+                            <span class="glyphicon glyphicon-print"></span>&nbsp; Print Bill / Receipt
+                        </a></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"><a id="MainContent_btnRegisterEbilling" title="Register for electronic billing" class="btn btn-default" href="javascript:__doPostBack(&#39;ctl00$MainContent$btnRegisterEbilling&#39;,&#39;&#39;)" style="display:inline-block;font-size:Smaller;width:200px;">
+                            <span class="glyphicon glyphicon-envelope"></span>&nbsp; Register for E-Billing
+                        </a></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"><a id="MainContent_hypAssessorLink" title="Go to the Property Appraiser website" class="btn btn-default" href="https://search.ccpafl.com/parcel/12005000000000" target="_blank" style="display:inline-block;font-size:Smaller;width:200px;">Property Appraiser</a></td>
+	</tr><tr>
+		<td align="center" colspan="2" style="padding-bottom: 5px"></td>
+	</tr>
+</table>
+
+        </div>
+    </div>
+    
+    
+
+            <hr />
+
+            
+            
+        </main>
+
+    
+
+<script type="text/javascript">
+//<![CDATA[
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TabPanel, {"headerTab":$get("__tab_MainContent_PropertyContainer_tpTaxes"),"ownerID":"MainContent_PropertyContainer","wasLoadedOnce":false}, null, {"owner":"MainContent_PropertyContainer"}, $get("MainContent_PropertyContainer_tpTaxes"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TabPanel, {"headerTab":$get("__tab_MainContent_PropertyContainer_tpUnpaidBills"),"ownerID":"MainContent_PropertyContainer","wasLoadedOnce":false}, null, {"owner":"MainContent_PropertyContainer"}, $get("MainContent_PropertyContainer_tpUnpaidBills"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TabPanel, {"headerTab":$get("__tab_MainContent_PropertyContainer_tpAssessments"),"ownerID":"MainContent_PropertyContainer","wasLoadedOnce":false}, null, {"owner":"MainContent_PropertyContainer"}, $get("MainContent_PropertyContainer_tpAssessments"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TabPanel, {"headerTab":$get("__tab_MainContent_PropertyContainer_tpLegalDescription"),"ownerID":"MainContent_PropertyContainer","wasLoadedOnce":false}, null, {"owner":"MainContent_PropertyContainer"}, $get("MainContent_PropertyContainer_tpLegalDescription"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TabPanel, {"headerTab":$get("__tab_MainContent_PropertyContainer_tpTransactionHistory"),"ownerID":"MainContent_PropertyContainer","wasLoadedOnce":false}, null, {"owner":"MainContent_PropertyContainer"}, $get("MainContent_PropertyContainer_tpTransactionHistory"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TabContainer, {"activeTabIndex":0,"clientStateField":$get("MainContent_PropertyContainer_ClientState"),"onDemand":false,"tabStripPlacement":0,"useVerticalStripPlacement":false}, null, null, $get("MainContent_PropertyContainer"));
+});
+//]]>
+</script>
+</form>
+
+    
+    <script>
+        (function () {
+            'use strict';
+
+            /* ── Sync aria-expanded when Bootstrap opens/closes a dropdown ── */
+            $(document).on('show.bs.dropdown', function (e) {
+                $(e.target).find('[aria-haspopup="true"]').attr('aria-expanded', 'true');
+            });
+            $(document).on('hide.bs.dropdown', function (e) {
+                $(e.target).find('[aria-haspopup="true"]').attr('aria-expanded', 'false');
+            });
+
+            /* ── Full keyboard navigation for dropdown menus ────────────── */
+            $(document).on('keydown', '.dropdown-toggle', function (e) {
+                var $toggle = $(this);
+                var $parent = $toggle.closest('.dropdown');
+                var isOpen = $parent.hasClass('open');
+
+                /* Enter or Space: toggle the dropdown */
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    $toggle.trigger('click');
+                    if (!isOpen) {
+                        /* Move focus to first menu item after opening */
+                        setTimeout(function () {
+                            $parent.find('.dropdown-menu [role="menuitem"]:visible:first').focus();
+                        }, 50);
+                    }
+                    return;
+                }
+
+                /* Arrow Down: open menu and focus first item */
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (!isOpen) { $toggle.trigger('click'); }
+                    setTimeout(function () {
+                        $parent.find('.dropdown-menu [role="menuitem"]:visible:first').focus();
+                    }, 50);
+                    return;
+                }
+
+                /* Arrow Up: open menu and focus last item */
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (!isOpen) { $toggle.trigger('click'); }
+                    setTimeout(function () {
+                        $parent.find('.dropdown-menu [role="menuitem"]:visible:last').focus();
+                    }, 50);
+                    return;
+                }
+            });
+
+            $(document).on('keydown', '.dropdown-menu [role="menuitem"]', function (e) {
+                var $item = $(this);
+                var $menu = $item.closest('.dropdown-menu');
+                var $parent = $item.closest('.dropdown');
+                var $items = $menu.find('[role="menuitem"]:visible');
+                var index = $items.index($item);
+
+                /* Arrow Down: next item (wraps to first) */
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    $items.eq(index < $items.length - 1 ? index + 1 : 0).focus();
+                    return;
+                }
+
+                /* Arrow Up: previous item (wraps to last) */
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    $items.eq(index > 0 ? index - 1 : $items.length - 1).focus();
+                    return;
+                }
+
+                /* Escape: close menu, return focus to toggle */
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    $parent.removeClass('open');
+                    $parent.find('.dropdown-toggle')
+                        .attr('aria-expanded', 'false')
+                        .focus();
+                    return;
+                }
+
+                /* Tab: close menu (focus moves naturally) */
+                if (e.key === 'Tab') {
+                    $parent.removeClass('open');
+                    $parent.find('.dropdown-toggle').attr('aria-expanded', 'false');
+                }
+            });
+
+            /* ── Close dropdown when focus leaves the whole dropdown ────── */
+            $(document).on('focusout', '.dropdown', function (e) {
+                var $parent = $(this);
+                /* Short timeout allows the new focused element to be set */
+                setTimeout(function () {
+                    if (!$.contains($parent[0], document.activeElement)) {
+                        $parent.removeClass('open');
+                        $parent.find('.dropdown-toggle').attr('aria-expanded', 'false');
+                    }
+                }, 100);
+            });
+
+        }());
+    </script>
+    <footer role="contentinfo">
+        <p>
+            <img src="Publicsoft_logo_Small.png"
+                alt="Powered by Publicsoft Phenix.net"
+                class="img-responsive"
+                style="display: inline-block; max-width: 150px;" />
+            &nbsp;&nbsp;&copy; 2026 - Powered by Phenix.net
+        </p>
+    </footer>
+</body>
+
+</html>

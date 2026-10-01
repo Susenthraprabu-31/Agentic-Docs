@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
+from app.agents.llm_client import chat_completions_create
 from app.agents.county_resolver import CountyResolver
 from app.config.settings import get_settings
 from app.drivers.base.base_driver import BaseDriver
@@ -224,16 +225,18 @@ class InstructionWriterAI:
             "terms_modal_detected": terms_modal,
         }
 
-        response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=model_name,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT_INSTRUCTION_WRITER},
-                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-            ],
-            temperature=0.2,
-            max_tokens=500,
-            response_format={"type": "json_object"},
+        response, _provider = await chat_completions_create(
+            openai_client=client,
+            create_kwargs={
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT_INSTRUCTION_WRITER},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 500,
+                "response_format": {"type": "json_object"},
+            },
         )
         raw = response.choices[0].message.content or "{}"
         plan = json.loads(raw)

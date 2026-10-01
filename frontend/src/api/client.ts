@@ -1,5 +1,9 @@
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+function apiPath(path: string): string {
+  return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 export type QueryType = "owner" | "parcel" | "address" | "book_page";
 
 export interface NodeOverride {
@@ -122,6 +126,7 @@ export interface ReportData {
     ai_agent_response?: string;
     ai_agent_model?: string;
     ai_agent_meta?: Record<string, unknown>;
+    name_searches?: { name: string; source?: string }[];
     generated_at?: string;
   };
   pdf_path?: string;
@@ -254,6 +259,12 @@ export async function getRun(runId: string): Promise<RunDetail> {
   return res.json();
 }
 
+export async function cancelRun(runId: string): Promise<{ ok: boolean; run_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/cancel`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function getReportByRun(runId: string): Promise<ReportData> {
   const res = await fetch(`${API_BASE}/reports/by-run/${runId}`);
   if (!res.ok) throw new Error(await res.text());
@@ -320,6 +331,87 @@ export async function downloadReportExcel(runId: string, filename?: string): Pro
 
 export function getDocumentDownloadUrl(runId: string): string {
   return `${API_BASE}/reports/run/${runId}/document/download`;
+}
+
+export interface RecordingDetails {
+  document_type?: string;
+  recorded_date?: string;
+  executed_date?: string;
+  book?: string;
+  page?: string;
+  book_page?: string;
+  instrument_number?: string;
+  clerk_file_number?: string;
+  grantor?: string;
+  grantee?: string;
+  grantors?: string[];
+  grantees?: string[];
+  consideration?: string;
+  sale_price?: string;
+  documentary_stamps?: string;
+  recording_fee?: string;
+  deed_doc_fee?: string;
+  parcel_id?: string;
+  folio_number?: string;
+  order_number?: string;
+  prepared_by?: string;
+  legal_description?: string;
+  property_address?: string;
+}
+
+export interface DocumentDetail {
+  id?: string;
+  run_id?: string;
+  document_type?: string;
+  recording_date?: string;
+  book_page?: string;
+  instrument_number?: string;
+  grantor?: string;
+  grantee?: string;
+  source_url?: string;
+  file_name?: string;
+  file_url?: string | null;
+  download_url?: string | null;
+  preview_url?: string | null;
+  recording_details?: RecordingDetails;
+  ocr_status?: "pending" | "ready" | "fallback" | "error";
+  ocr_warning?: string;
+  ocr_json?: Record<string, unknown>;
+}
+
+export function getDocumentFileUrl(docId: string, inline = true): string {
+  const suffix = inline ? "?inline=1" : "";
+  return apiPath(`/reports/documents/${docId}/file${suffix}`);
+}
+
+export async function getDocumentById(docId: string): Promise<DocumentDetail> {
+  const res = await fetch(apiPath(`/reports/documents/${docId}`));
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to load document");
+  }
+  return res.json();
+}
+
+export async function analyzeDocumentOcr(docId: string, force = false): Promise<DocumentDetail> {
+  const suffix = force ? "?force=true" : "";
+  const res = await fetch(apiPath(`/reports/documents/${docId}/ocr${suffix}`), {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let message = "Failed to analyze document";
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { detail?: string };
+        message = parsed.detail || text;
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
+  }
+  return res.json();
 }
 
 export async function downloadOfficialDocument(runId: string, filename?: string): Promise<void> {

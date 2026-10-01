@@ -4,6 +4,7 @@ from app.config.florida_portals import (
     build_miami_dade_property_search_url,
     extract_miami_dade_folio_from_url,
     resolve_florida_county_sources,
+    is_brevard_assessor,
     is_broward_assessor,
     is_florida_pa_assessor,
     is_florida_schneider,
@@ -16,7 +17,9 @@ from app.config.florida_portals import (
     MIAMI_DADE_RECORDER_SEARCH_URL,
     normalize_florida_pa_parcel,
     normalize_florida_parcel,
+    normalize_miami_dade_property_search_url,
     format_florida_pa_address_for_search,
+    format_miami_dade_recorder_address_for_search,
     parse_florida_pa_address,
     resolve_florida_assessor_url,
     resolve_florida_recorder_url,
@@ -43,6 +46,16 @@ def test_miami_dade_detection():
 
 def test_resolve_miami_dade_urls():
     assert resolve_florida_assessor_url("https://www.miamidade.gov/pa/") == MIAMI_DADE_SEARCH_URL
+    assert (
+        normalize_miami_dade_property_search_url("https://apps.miamidade.gov/propertysearch/#/")
+        == MIAMI_DADE_SEARCH_URL
+    )
+    assert (
+        normalize_miami_dade_property_search_url(
+            "https://gisweb.miamidade.gov/propertysearch/"
+        )
+        == MIAMI_DADE_SEARCH_URL
+    )
     assert resolve_florida_recorder_url(
         "https://www.miamidadeclerk.gov/clerk/home.page",
         "miami-dade",
@@ -67,6 +80,15 @@ def test_resolve_florida_county_sources_miami_dade():
 
 def test_broward_detection():
     assert is_broward_assessor("https://web.bcpa.net/BcpaClient/#/Record-Search")
+
+
+def test_brevard_detection_and_parcel_normalization():
+    from app.config.florida_portals import BREVARD_SEARCH_URL
+
+    assert is_brevard_assessor("https://www.bcpao.us/PropertySearch/#/nav/Search")
+    assert resolve_florida_assessor_url("https://www.bcpao.us/") == BREVARD_SEARCH_URL
+    assert normalize_florida_parcel("22-35-31-AV-*-7", county="brevard") == "22-35-31-AV-*-7"
+    assert normalize_florida_parcel("22-35-31-AV-*-7") == "22-35-31-AV-*-7"
 
 
 def test_columbia_floridapa_detection():
@@ -97,10 +119,25 @@ def test_format_florida_pa_address_for_search():
     )
 
 
+def test_format_miami_dade_recorder_address_for_search():
+    assert format_miami_dade_recorder_address_for_search("9956 SW 157 ST") == " 9956 SW 157 ST"
+    assert format_miami_dade_recorder_address_for_search(" 9956 SW 157 ST") == " 9956 SW 157 ST"
+
+
 def test_florida_schneider_detection():
     url = "https://qpublic.schneidercorp.com/Application.aspx?App=BayCountyFL&PageType=Search"
     assert is_florida_schneider(url)
     assert "PageType=Search" in resolve_florida_assessor_url(url)
+
+
+def test_florida_schneider_appid_detection():
+    url = (
+        "https://qpublic.schneidercorp.com/Application.aspx"
+        "?AppID=1081&LayerID=26490&PageTypeID=2&PageID=10768"
+    )
+    assert is_florida_schneider(url)
+    resolved = resolve_florida_assessor_url(url)
+    assert "PageTypeID=2" in resolved
 
 
 def test_resolve_orange_search_url():
@@ -137,6 +174,28 @@ def test_normalize_orange_parcel():
 
 def test_normalize_miami_dade_folio():
     assert normalize_florida_parcel("0141380190430", county="miami-dade") == "01-4138-019-0430"
+
+
+def test_extract_baker_parcel_from_html():
+    import httpx
+
+    from app.extraction.florida_extractors import extract_florida_parcel_from_html
+
+    html = httpx.get(
+        "https://www.bakerpa.com/propertydetails.php?parcel=282S22021600001210",
+        timeout=20,
+    ).text
+    parcel = extract_florida_parcel_from_html(
+        html,
+        "https://www.bakerpa.com/propertydetails.php?parcel=282S22021600001210",
+    )
+    assert parcel.apn == "282S22021600001210"
+    assert parcel.owner_name
+    assert "BURROUGHS" in parcel.owner_name
+    assert parcel.property_address
+    assert "505 MATECUMBE" in parcel.property_address
+    assert parcel.legal_desc
+    assert parcel.assessed_value == 252066.0
 
 
 def test_extract_florida_parcel_from_html():

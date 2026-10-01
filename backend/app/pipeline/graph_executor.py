@@ -4,15 +4,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-BROWSER_NODE_IDS = frozenset({"netr", "assessor", "recorder", "gis", "tax"})
+BROWSER_NODE_IDS = frozenset({"netr", "portal_gate", "assessor", "recorder", "name_searcher", "gis", "tax"})
 
 # Tie-break parallel-ready nodes in a stable, user-friendly order.
 NODE_EXECUTION_PRIORITY: dict[str, int] = {
     "input": 0,
     "netr": 10,
     "platform": 20,
+    "portal_gate": 25,
     "assessor": 30,
     "recorder": 40,
+    "name_searcher": 45,
     "gis": 50,
     "tax": 60,
     "ai_agent": 65,
@@ -121,3 +123,13 @@ def requires_browser(step_node_ids: list[str]) -> bool:
 
 def requires_report(step_node_ids: list[str]) -> bool:
     return "report" in step_node_ids
+
+
+def get_input_node_data(graph: dict[str, Any] | None) -> dict[str, Any]:
+    """Return serialized Input node data from a pipeline graph."""
+    if not graph:
+        return {}
+    for node in graph.get("nodes") or []:
+        if node.get("node_id") == "input":
+            return node.get("data") or {}
+    return {}

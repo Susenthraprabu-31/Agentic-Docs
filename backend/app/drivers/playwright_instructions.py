@@ -6,7 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 from app.extraction.book_page import parse_book_page
-from app.drivers.recorder.miami_dade_recorder import select_miami_dade_book_type, DEFAULT_MIAMI_DADE_BOOK_TYPE
+from app.drivers.recorder.miami_dade_recorder import configure_miami_dade_book_type, DEFAULT_MIAMI_DADE_BOOK_TYPE
 from app.extraction.schemas import QueryType
 from app.drivers.recorder.acclaimweb_recorder import resolve_party_type_from_notes
 
@@ -130,8 +130,31 @@ RESULT_ROW_SELECTORS = [
 ]
 
 
+def is_template_playwright_notes(notes: str) -> bool:
+    """True for placeholder editor hints (e.g. 'e.g. Click parcel tab...') — not real instructions."""
+    if not notes or not notes.strip():
+        return True
+    lower = notes.strip().lower()
+    if lower.startswith("e.g.") or lower.startswith("example:"):
+        return True
+    if any(
+        token in lower
+        for token in (
+            "auto-scrape publicrecords",
+            "maps portal urls to platform",
+            "merge & deduplicate",
+            "generate pdf report",
+            "finalize run results",
+        )
+    ):
+        return True
+    return False
+
+
 def _extract_click_link_text(notes: str) -> str | None:
     """Pull link/button label from phrases like: click the Search Records and Tax Details."""
+    if is_template_playwright_notes(notes):
+        return None
     quoted = re.search(r'click\s+(?:the\s+)?["\']([^"\']+)["\']', notes, re.I)
     if quoted:
         return quoted.group(1).strip()
@@ -225,18 +248,9 @@ async def _click_first_visible(driver: "BaseDriver", selectors: list[str], timeo
 
 
 async def _fill_first_visible(driver: "BaseDriver", selectors: list[str], value: str) -> bool:
-    if not value:
-        return False
-    for sel in selectors:
-        try:
-            loc = driver.page.locator(sel).first
-            if await loc.count() > 0 and await loc.is_visible(timeout=3000):
-                await loc.click()
-                await loc.fill(value)
-                return True
-        except Exception as exc:
-            logger.debug("Fill failed for %s: %s", sel, exc)
-    return False
+    from app.drivers.form_fill import fill_first_visible_input
+
+    return await fill_first_visible_input(driver, selectors, value, timeout_ms=3_000)
 
 
 def _selectors_for_query_type(query_type: QueryType) -> tuple[list[str], list[str]]:
@@ -262,6 +276,9 @@ async def apply_playwright_instructions(
     Returns True if at least one action succeeded.
     """
     if not notes or not notes.strip():
+        return False
+    if is_template_playwright_notes(notes):
+        logger.debug("Skipping template Playwright notes: %s", notes[:80])
         return False
 
     if isinstance(query_value, QueryType):
@@ -319,18 +336,29 @@ async def apply_playwright_instructions(
             await driver._emit_status("Playwright: selecting All parties...")
             acted = await _click_first_visible(driver, ALL_PARTY_RADIO_SELECTORS) or acted
 
-    # Tab selection — honor explicit note keywords, else use query_type when notes mention tabs
-    if any(k in notes_lower for k in ("address tab", "address search", "click address")):
+    # Tab selection — query_type wins for assessor; notes may override only when explicit.
+    note_wants_address = any(k in notes_lower for k in ("address tab", "address search", "click address"))
+    note_wants_owner = any(k in notes_lower for k in ("owner tab", "owner search", "click owner"))
+    note_wants_parcel = any(
+        k in notes_lower for k in ("parcel tab", "folio tab", "click parcel", "click folio")
+    )
+    note_wants_book = any(k in notes_lower for k in ("book/page", "book page", "recording book"))
+    explicit_tab_in_notes = note_wants_address or note_wants_owner or note_wants_parcel or note_wants_book
+
+    if portal_type != "recorder":
+        acted = await _click_first_visible(driver, tab_selectors) or acted
+
+    if note_wants_address and query_type != QueryType.ADDRESS:
         acted = await _click_first_visible(driver, ADDRESS_TAB_SELECTORS) or acted
-    elif any(k in notes_lower for k in ("owner tab", "owner search", "click owner")):
+    elif note_wants_owner and query_type != QueryType.OWNER:
         acted = await _click_first_visible(driver, OWNER_TAB_SELECTORS) or acted
-    elif any(k in notes_lower for k in ("parcel tab", "folio tab", "click parcel", "click folio")):
+    elif note_wants_parcel and query_type != QueryType.PARCEL:
         acted = await _click_first_visible(driver, PARCEL_TAB_SELECTORS) or acted
-    elif any(k in notes_lower for k in ("book/page", "book page", "recording book")):
+    elif note_wants_book:
         acted = await _click_first_visible(driver, BOOK_PAGE_TAB_SELECTORS) or acted
     elif link_text:
         pass  # navigation link already handled above
-    elif any(k in notes_lower for k in ("click", "tab", "open")):
+    elif not explicit_tab_in_notes and any(k in notes_lower for k in ("click", "tab", "open")):
         acted = await _click_first_visible(driver, tab_selectors) or acted
 
     # Custom CSS selector in notes: selector: #myInput or fill #myInput
@@ -353,7 +381,7 @@ async def apply_playwright_instructions(
             book_filled = await _fill_first_visible(driver, BOOK_INPUT_SELECTORS, book_number)
             page_filled = await _fill_first_visible(driver, PAGE_INPUT_SELECTORS, page_number)
             if book_filled and page_filled:
-                await select_miami_dade_book_type(driver, DEFAULT_MIAMI_DADE_BOOK_TYPE)
+                await configure_miami_dade_book_type(driver, DEFAULT_MIAMI_DADE_BOOK_TYPE)
             filled = book_filled and page_filled
             acted = filled or acted
     elif should_fill:
@@ -369,6 +397,12 @@ async def apply_playwright_instructions(
                 logger.debug("Custom selector fill failed: %s", exc)
         else:
             filled = await _fill_first_visible(driver, input_selectors, fill_value)
+            if not filled:
+                from app.drivers.page_search_ai import execute_ai_page_search
+
+                filled = await execute_ai_page_search(
+                    driver, query_type, fill_value, portal_type=portal_type
+                )
             if not filled:
                 filled = await _fill_first_visible(
                     driver, ['input[type="text"]', 'input[type="search"]'], fill_value

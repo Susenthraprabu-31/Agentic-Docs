@@ -19,12 +19,30 @@ def _record_key(rec: dict) -> str | None:
 
 
 def _document_key(doc: dict) -> str:
-    instrument = doc.get("instrument_number")
-    if instrument:
-        return f"inst:{str(instrument).strip().upper()}"
-    book_page = doc.get("book_page")
+    """Build a deduplication key that keeps distinct recorder book/page entries."""
+    ocr = doc.get("ocr_json") or {}
+    book_page = str(doc.get("book_page") or "").strip().upper()
+    book_number = str(ocr.get("book_number") or "").strip()
+    page_number = str(ocr.get("page_number") or "").strip()
+    if not book_page and book_number and page_number:
+        book_page = f"{book_number}/{page_number}".upper()
+
+    instrument = str(
+        doc.get("instrument_number") or ocr.get("clerk_file_number") or ""
+    ).strip().upper()
+    folder = str(ocr.get("folder_name") or "").strip().upper()
+
+    if book_page and instrument:
+        return f"bp:{book_page}|inst:{instrument}"
     if book_page:
-        return f"bp:{str(book_page).strip().upper()}"
+        return f"bp:{book_page}"
+    if instrument:
+        return f"inst:{instrument}"
+    if folder:
+        return f"folder:{folder}"
+    doc_id = doc.get("id")
+    if doc_id:
+        return f"id:{doc_id}"
     return f"__doc__:{id(doc)}"
 
 
@@ -47,7 +65,7 @@ def deduplicate_records(records: list[dict]) -> list[dict]:
 
 
 def deduplicate_documents(documents: list[dict]) -> list[dict]:
-    """Keep one document per instrument_number or book_page."""
+    """Keep one document per unique book/page (and instrument when present)."""
     by_key: dict[str, dict] = {}
     for doc in documents:
         by_key[_document_key(doc)] = doc

@@ -1,72 +1,208 @@
+import asyncio
 import base64
 import logging
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from app.config.settings import get_settings
+from app.extraction.recording_details_parser import parse_recording_details
 from app.extraction.schemas import RecordedDocument
 
 logger = logging.getLogger(__name__)
+
+RATE_LIMIT_PATTERN = re.compile(r"rate limit|rate_limited|status 429|\b429\b", re.I)
+
+
+def is_rate_limit_error(message: str | None) -> bool:
+    return bool(message and RATE_LIMIT_PATTERN.search(message))
 
 
 class DocumentOcrService:
     def __init__(self) -> None:
         self.settings = get_settings()
         self._client: Any = None
+        self._client_error: str | None = None
 
     def _get_client(self) -> Any:
-        if self._client is None and self.settings.mistral_api_key:
+        if self._client is not None:
+            return self._client
+        if not self.settings.mistral_api_key:
+            self._client_error = "Mistral API key not configured"
+            return None
+        try:
             try:
+                from mistralai.client import Mistral
+            except ImportError:
                 from mistralai import Mistral
 
-                self._client = Mistral(api_key=self.settings.mistral_api_key)
-            except Exception as exc:
-                logger.warning("Mistral client init failed: %s", exc)
+            self._client = Mistral(api_key=self.settings.mistral_api_key)
+            self._client_error = None
+        except Exception as exc:
+            self._client_error = f"Mistral client init failed: {exc}"
+            logger.warning(self._client_error)
         return self._client
+
+    def _client_unavailable_message(self) -> str:
+        if not self.settings.mistral_api_key:
+            return "Mistral API key not configured"
+        return self._client_error or "Mistral OCR client is unavailable"
 
     async def extract_document(
         self,
-        image_path: str,
+        file_path: str,
         document_hint: Optional[str] = None,
     ) -> RecordedDocument:
+        """Run Mistral OCR on a PDF or image and return structured recording details."""
         client = self._get_client()
+        path = Path(file_path)
         if not client:
             return RecordedDocument(
                 document_type=document_hint or "Unknown",
-                ocr_json={"error": "Mistral API key not configured"},
+                ocr_json={"error": self._client_unavailable_message()},
             )
 
-        path = Path(image_path)
         if not path.exists():
-            return RecordedDocument(ocr_json={"error": f"File not found: {image_path}"})
+            return RecordedDocument(ocr_json={"error": f"File not found: {file_path}"})
 
-        image_b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
-        mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
-        data_uri = f"data:{mime};base64,{image_b64}"
+        document_payload = self._build_document_payload(path)
+        if not document_payload:
+            return RecordedDocument(
+                screenshot_path=file_path,
+                ocr_json={"error": f"Unsupported file type: {path.suffix}"},
+            )
 
         try:
-            response = client.ocr.process(
-                model="mistral-ocr-latest",
-                document={"type": "image_url", "image_url": data_uri},
-                include_image_base64=False,
-            )
+            response = await self._process_with_retry(client, document_payload)
             ocr_json = response.model_dump() if hasattr(response, "model_dump") else {"raw": str(response)}
             text = self._extract_text(ocr_json)
+            recording_details = parse_recording_details(text, document_hint=document_hint)
+            recording_details["ocr_text"] = text[:8000] if text else None
+            recording_details = {k: v for k, v in recording_details.items() if v}
+
+            merged_ocr = {
+                **ocr_json,
+                "recording_details": recording_details,
+                "mistral_analyzed": True,
+                "mistral_ocr_model": self.settings.mistral_ocr_model,
+                "ocr_source": path.suffix.lower().lstrip("."),
+            }
+            for key in (
+                "legal_description",
+                "property_address",
+                "clerk_file_number",
+                "instrument_number",
+                "book_page",
+                "book",
+                "page",
+                "recorded_date",
+                "executed_date",
+                "sale_price",
+                "consideration",
+                "documentary_stamps",
+                "recording_fee",
+                "parcel_id",
+                "folio_number",
+                "order_number",
+                "prepared_by",
+            ):
+                value = recording_details.get(key)
+                if value:
+                    merged_ocr[key] = value
+
+            grantors = recording_details.get("grantors") or []
+            grantees = recording_details.get("grantees") or []
+            if grantors:
+                merged_ocr["grantors"] = grantors
+            if grantees:
+                merged_ocr["grantees"] = grantees
+
+            book_page = recording_details.get("book_page")
+            if book_page and "/" in book_page:
+                book, _, page = book_page.partition("/")
+                merged_ocr.setdefault("book_number", book.strip())
+                merged_ocr.setdefault("page_number", page.strip())
+
             return RecordedDocument(
-                document_type=document_hint or self._guess_doc_type(text),
-                grantor=self._extract_field(text, ["grantor", "from"]),
-                grantee=self._extract_field(text, ["grantee", "to"]),
-                book_page=self._extract_field(text, ["book", "page"]),
-                instrument_number=self._extract_field(text, ["instrument", "document number"]),
-                ocr_json=ocr_json,
-                screenshot_path=image_path,
+                document_type=recording_details.get("document_type")
+                or document_hint
+                or self._guess_doc_type(text),
+                grantor=recording_details.get("grantor")
+                or (grantors[0] if grantors else None),
+                grantee=recording_details.get("grantee")
+                or (grantees[0] if grantees else None),
+                book_page=book_page or self._extract_field(text, ["book", "page"]),
+                instrument_number=recording_details.get("instrument_number")
+                or recording_details.get("clerk_file_number")
+                or self._extract_field(text, ["instrument", "document number", "cfn"]),
+                ocr_json=merged_ocr,
+                screenshot_path=file_path,
             )
         except Exception as exc:
-            logger.error("Mistral OCR failed: %s", exc)
+            error_message = str(exc)
+            logger.error("Mistral OCR failed: %s", error_message)
+            ocr_json: dict[str, Any] = {
+                "error": error_message,
+                "mistral_analyzed": False,
+            }
+            if is_rate_limit_error(error_message):
+                ocr_json["rate_limited"] = True
+                ocr_json["rate_limited_at"] = datetime.now(timezone.utc).isoformat()
             return RecordedDocument(
-                screenshot_path=image_path,
-                ocr_json={"error": str(exc)},
+                screenshot_path=file_path,
+                ocr_json=ocr_json,
             )
+
+    async def _process_with_retry(self, client: Any, document_payload: dict[str, Any]) -> Any:
+        max_retries = max(1, self.settings.mistral_ocr_max_retries)
+        base_delay = max(0.5, self.settings.mistral_ocr_retry_base_seconds)
+        last_error: Exception | None = None
+
+        for attempt in range(max_retries):
+            try:
+                return client.ocr.process(
+                    model=self.settings.mistral_ocr_model,
+                    document=document_payload,
+                    include_image_base64=False,
+                    extract_header=True,
+                    extract_footer=True,
+                )
+            except Exception as exc:
+                last_error = exc
+                message = str(exc)
+                if not is_rate_limit_error(message) or attempt >= max_retries - 1:
+                    raise
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    "Mistral OCR rate limited; retrying in %.1fs (%s/%s)",
+                    delay,
+                    attempt + 1,
+                    max_retries,
+                )
+                await asyncio.sleep(delay)
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("Mistral OCR failed without an error")
+
+    def _build_document_payload(self, path: Path) -> Optional[dict[str, Any]]:
+        suffix = path.suffix.lower()
+        if suffix not in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}:
+            return None
+
+        data = base64.b64encode(path.read_bytes()).decode("utf-8")
+        if suffix == ".pdf":
+            return {
+                "type": "document_url",
+                "document_url": f"data:application/pdf;base64,{data}",
+            }
+
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        return {
+            "type": "image_url",
+            "image_url": f"data:{mime};base64,{data}",
+        }
 
     def _extract_text(self, ocr_json: dict[str, Any]) -> str:
         pages = ocr_json.get("pages", [])
@@ -81,15 +217,24 @@ class DocumentOcrService:
         for kw in keywords:
             idx = lower.find(kw)
             if idx >= 0:
-                snippet = text[idx : idx + 80].split("\n")[0]
+                snippet = text[idx : idx + 120].split("\n")[0]
                 if ":" in snippet:
                     return snippet.split(":", 1)[1].strip()
         return None
 
     def _guess_doc_type(self, text: str) -> Optional[str]:
-        types = ["deed", "mortgage", "lien", "release", "easement", "warranty deed"]
+        types = [
+            "corporate warranty deed",
+            "warranty deed",
+            "quit claim deed",
+            "mortgage",
+            "lien",
+            "release",
+            "easement",
+            "deed",
+        ]
         lower = text.lower()
-        for t in types:
-            if t in lower:
-                return t.title()
+        for doc_type in types:
+            if doc_type in lower:
+                return doc_type.title()
         return None

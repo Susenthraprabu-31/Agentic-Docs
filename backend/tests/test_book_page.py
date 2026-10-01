@@ -7,8 +7,10 @@ from app.extraction.book_page import format_book_page, format_book_page_label, p
 from app.extraction.schemas import QueryType
 
 
-def test_default_miami_dade_book_type_is_deed():
-    assert DEFAULT_MIAMI_DADE_BOOK_TYPE == "Deed"
+def test_default_miami_dade_book_type_is_unselected():
+    assert DEFAULT_MIAMI_DADE_BOOK_TYPE == ""
+    assert resolve_miami_dade_book_type_value(DEFAULT_MIAMI_DADE_BOOK_TYPE) == ""
+    assert resolve_miami_dade_book_type_value("") == ""
 
 
 def test_resolve_miami_dade_book_type_value():

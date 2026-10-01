@@ -22,8 +22,11 @@ from app.drivers.recorder.acclaimweb_recorder import (
 )
 from app.drivers.recorder.miami_dade_recorder import (
     DEFAULT_MIAMI_DADE_BOOK_TYPE,
+    configure_miami_dade_book_type,
     miami_dade_book_page_search_and_download,
-    select_miami_dade_book_type,
+    miami_dade_party_name_search_and_download,
+    miami_dade_property_address_search_and_download,
+    _click_miami_dade_search_button,
 )
 from app.extraction.book_page import format_book_page_label, parse_book_page
 from app.extraction.html_extractors import extract_documents_from_html
@@ -78,6 +81,7 @@ class GilaRecorderDriver(BaseDriver):
         book_number: str | None = None,
         page_number: str | None = None,
         available_values: dict[str, str] | None = None,
+        search_limit: int | None = None,
     ) -> list[RecordedDocument]:
         await self._emit_status("Opening county recorder portal...")
         recorder_wait_selector = None
@@ -112,12 +116,31 @@ class GilaRecorderDriver(BaseDriver):
         await self.dismiss_netronline_modals()
         await self._click_disclaimer()
 
+        notes = (self.playwright_notes or "").strip()
+        search_value = _format_recorder_search_value(query_type, query_value, self.page.url)
+
         if is_florida_recorder(recorder_url) or is_florida_recorder(self.page.url):
             await self._emit_status("Opening Florida clerk official records search...")
+            if (
+                query_type == QueryType.OWNER
+                and (is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url))
+                and search_value.strip()
+            ):
+                await self._emit_status(
+                    f"Miami-Dade Name/Document search for party: {search_value[:80]}..."
+                )
+                docs = await miami_dade_party_name_search_and_download(
+                    self,
+                    search_value,
+                    party_type=resolve_party_type_from_notes(notes or ""),
+                    search_limit=search_limit,
+                )
+                await self.save_browser_preview()
+                return docs
             if is_myflorida_county_recorder(recorder_url) or is_myflorida_county_recorder(self.page.url):
                 await self._open_myfloridacounty_search()
             elif is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
-                prefer_book_page = bool(book_number and page_number)
+                prefer_book_page = bool(book_number and page_number) and query_type == QueryType.BOOK_PAGE
                 await self._open_miami_dade_recorder_search(prefer_book_page=prefer_book_page)
             elif not is_acclaimweb_recorder(recorder_url) and not is_acclaimweb_recorder(self.page.url):
                 await self._open_florida_recorder_search()
@@ -144,8 +167,6 @@ class GilaRecorderDriver(BaseDriver):
             pass
 
         book_page = parse_book_page(query_value, book_number, page_number)
-        notes = (self.playwright_notes or "").strip()
-        search_value = _format_recorder_search_value(query_type, query_value, self.page.url)
         searched = False
         acclaimweb = is_acclaimweb_recorder(recorder_url) or is_acclaimweb_recorder(self.page.url)
         values = {
@@ -170,9 +191,37 @@ class GilaRecorderDriver(BaseDriver):
                 return []
             book_number, page_number = book_page
             search_value = format_book_page_label(book_number, page_number)
+            if is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
+                await self._emit_status(
+                    f"Miami-Dade book/page search for book {book_number}, page {page_number}..."
+                )
+                docs = await miami_dade_book_page_search_and_download(
+                    self,
+                    book_number,
+                    page_number,
+                    search_limit=search_limit,
+                )
+                await self.save_browser_preview()
+                return docs
         elif not query_value.strip() and not (values.get("book") and values.get("page")):
             await self._emit_status("Recorder search skipped — no name, parcel, or book/page in Input node.")
             return []
+
+        if (
+            query_type == QueryType.ADDRESS
+            and (is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url))
+            and search_value.strip()
+        ):
+            await self._emit_status(
+                f"Miami-Dade Property/Condo search for address: {search_value[:80]}..."
+            )
+            docs = await miami_dade_property_address_search_and_download(
+                self,
+                search_value,
+                search_limit=search_limit,
+            )
+            await self.save_browser_preview()
+            return docs
 
         ai_ok, search_kind = await execute_ai_recorder_search(
             self,
@@ -189,10 +238,12 @@ class GilaRecorderDriver(BaseDriver):
                 await self._emit_status(
                     f"GPT-4o detected Book/Page search — using book {book_number}, page {page_number}."
                 )
-                doc = await miami_dade_book_page_search_and_download(self, book_number, page_number)
+                doc = await miami_dade_book_page_search_and_download(
+                    self, book_number, page_number, search_limit=search_limit
+                )
                 await self.save_browser_preview()
                 if doc:
-                    return [doc]
+                    return doc
             searched = ai_ok
         elif ai_ok:
             searched = True
@@ -200,10 +251,12 @@ class GilaRecorderDriver(BaseDriver):
         if not searched and query_type == QueryType.BOOK_PAGE and book_page:
             bnum, pnum = book_page
             if is_miami_dade_recorder(recorder_url) or is_miami_dade_recorder(self.page.url):
-                doc = await miami_dade_book_page_search_and_download(self, bnum, pnum)
+                docs = await miami_dade_book_page_search_and_download(
+                    self, bnum, pnum, search_limit=search_limit
+                )
                 await self.save_browser_preview()
-                if doc:
-                    return [doc]
+                if docs:
+                    return docs
                 return []
 
         if notes and query_type != QueryType.BOOK_PAGE:
@@ -406,10 +459,11 @@ class GilaRecorderDriver(BaseDriver):
             return False
 
         if is_miami_dade_recorder(self.page.url):
-            if DEFAULT_MIAMI_DADE_BOOK_TYPE:
-                await select_miami_dade_book_type(self, DEFAULT_MIAMI_DADE_BOOK_TYPE)
+            await configure_miami_dade_book_type(self, DEFAULT_MIAMI_DADE_BOOK_TYPE)
 
         await self._emit_status(f"Searching recorder for book {book_number}, page {page_number}...")
+        if is_miami_dade_recorder(self.page.url):
+            return await _click_miami_dade_search_button(self)
         await self._click_search_button()
         return True
 

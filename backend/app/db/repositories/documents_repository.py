@@ -78,6 +78,46 @@ class DocumentsRepository:
 
         return mem_docs
 
+    def get_by_id(self, doc_id: str) -> dict[str, Any] | None:
+        mem = get_memory_store()
+        doc = next((d for d in mem.documents if d.get("id") == doc_id), None)
+        if doc:
+            return doc
+
+        client = get_supabase()
+        if client:
+            result = supabase_call(
+                lambda: client.table("documents").select("*").eq("id", doc_id).execute(),
+                label="get_document",
+            )
+            if result and result.data:
+                return result.data[0]
+        return None
+
+    def update(self, doc_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        if not updates:
+            return self.get_by_id(doc_id)
+
+        mem = get_memory_store()
+        updated: dict[str, Any] | None = None
+        for index, doc in enumerate(mem.documents):
+            if doc.get("id") == doc_id:
+                merged = {**doc, **updates}
+                mem.documents[index] = merged
+                updated = merged
+                break
+
+        client = get_supabase()
+        if client:
+            result = supabase_call(
+                lambda: client.table("documents").update(updates).eq("id", doc_id).execute(),
+                label="update_document",
+            )
+            if result and result.data:
+                return result.data[0]
+
+        return updated or self.get_by_id(doc_id)
+
     def delete_by_ids(self, run_id: str, ids: list[str]) -> int:
         if not ids:
             return 0

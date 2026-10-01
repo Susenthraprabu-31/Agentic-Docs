@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -7,8 +8,9 @@ from pydantic import BaseModel, Field
 from app.db.repositories.documents_repository import DocumentsRepository
 from app.db.repositories.records_repository import RecordsRepository
 from app.db.repositories.runs_repository import RunsRepository
-from app.extraction.schemas import QueryType, RunDetailResponse, RunEvent, RunRecord, RunStatus, SourceStatus, SourceType
 from app.drivers.browser_registry import get_driver
+from app.extraction.schemas import QueryType, RunDetailResponse, RunEvent, RunRecord, RunStatus, SourceStatus, SourceType
+from app.queue.job_queue import cancel_run, is_run_active
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -76,6 +78,29 @@ async def preview_click(run_id: str, body: PreviewClickRequest) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True}
+
+
+@router.post("/{run_id}/cancel")
+async def cancel_run_job(run_id: str) -> dict:
+    """Stop a running pipeline cooperatively."""
+    repo = RunsRepository()
+    run = repo.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    status = run.get("status")
+    if status in (RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value):
+        return {"ok": True, "run_id": run_id, "status": status, "already_finished": True}
+
+    cancel_run(run_id)
+    if not is_run_active(run_id):
+        repo.update_run(
+            run_id,
+            status=RunStatus.CANCELLED.value,
+            error_message="Pipeline stopped by user",
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+    return {"ok": True, "run_id": run_id, "status": RunStatus.CANCELLED.value}
 
 
 @router.get("/{run_id}", response_model=RunDetailResponse)

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.extraction.book_page import format_book_page, parse_book_page
 from app.extraction.schemas import QueryType, SearchRequest, SearchResponse
-from app.pipeline.graph_executor import GraphValidationError, resolve_pipeline_graph
+from app.pipeline.graph_executor import GraphValidationError, get_input_node_data, resolve_pipeline_graph
 from app.queue.job_queue import enqueue_run
 from app.db.repositories.runs_repository import RunsRepository
 
@@ -68,6 +68,18 @@ async def create_search(request: SearchRequest) -> SearchResponse:
         plan_json["owner_name"] = request.owner_name
     if request.parcel_number:
         plan_json["parcel_number"] = request.parcel_number
+
+    input_data = get_input_node_data(pipeline_graph)
+    raw_scope = str(input_data.get("searchScope") or input_data.get("search_scope") or "full").strip().lower()
+    plan_json["search_scope"] = raw_scope if raw_scope in ("current", "full") else "full"
+    raw_limit = input_data.get("searchLimit", input_data.get("search_limit"))
+    if raw_limit is not None:
+        try:
+            limit_val = int(raw_limit)
+            if limit_val > 0:
+                plan_json["search_limit"] = limit_val
+        except (TypeError, ValueError):
+            pass
 
     repo.update_run(run["id"], plan_json=plan_json)
 

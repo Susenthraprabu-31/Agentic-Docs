@@ -1,0 +1,545 @@
+﻿'use strict';
+
+angular.module('propertySalesApp')
+  .factory('comparableSalesService', ['utils', '$location', function (utils, $location) {
+ 
+      var ComparableSales = function (data) {
+          if (isUndefinedOrNull(data)) {
+              this.comparableSalesFolioMatch = [];
+              this.footerMessage = "";
+              this.headerMessage = "";              
+              this.completed = null;
+              this.message = null;
+              this.salesInformationArr = [];
+              this.subjectPropertyArr = [];              
+          }
+          else {
+              this.comparableSalesFolioMatch = data.ComparableSalesFolioMatch;             
+              this.footerMessage =  data.FooterMessage;
+              this.headerMessage = data.HeaderMessage;
+              this.message = data.Message;
+              this.completed = data.Completed;    
+              this.salesInformationArr = buildComparableSales(data.ComparableSalesFolioMatch);
+              this.subjectPropertyArr = buildSubjectPropertySales(data);
+          }
+          this.propertyFolio = "";
+          this.currentPage = 0;
+          this.pageSize = 20;          
+          this.numberOfPages = function () {
+              return Math.ceil(this.salesInformationArr.length / this.pageSize);
+          };
+          this.searchAddressFolio = null;
+          this.searchDistance = null;
+          this.searchYear = null;
+          this.showMinimumInformation = true;
+          this.showMaximumInformation = false;
+          this.minimizeSalesInformation = function () {
+              this.showMinimumInformation = false;
+              this.showMaximumInformation = true;
+          };
+
+          this.maximizeSalesInformation = function () {
+              this.showMinimumInformation = true;
+              this.showMaximumInformation = false;
+          };
+          this.toggleSalesInformation = function (event) {
+              if ($("#sales_info_header").hasClass('glyphicon glyphicon-minus-sign')) {
+                  $("#sales_info_header").removeClass('glyphicon glyphicon-minus-sign').addClass('glyphicon glyphicon glyphicon-plus-sign');
+                  $("#tableComparableSales tr").not('thead tr').addClass('hideTableRows');
+                  $("#sales_info_header").attr('title',"Maximize Sales Information");
+              }
+              else {
+                  $("#sales_info_header").removeClass('glyphicon glyphicon-plus-sign').addClass('glyphicon glyphicon glyphicon-minus-sign');
+                  $("#tableComparableSales tr").not('thead tr').removeClass('hideTableRows');
+                  $("#sales_info_header").attr('title', "Minimize Sales Information");
+              };
+          };
+          this.showMinimumSubjectInformation = true;
+          this.showMaximumSubjectInformation = false;
+          this.minimizeSubjectInformation = function () {
+              this.showMinimumInformation = false;
+              this.showMaximumInformation = true;
+          };
+          this.maximizeSubjectInformation = function () {
+              this.showMinimumInformation = true;
+              this.showMaximumInformation = false;
+          };
+          this.toggleSubjectPropertyInformation = function (event) {
+              if ($("#subject_sales_info_header").hasClass('glyphicon glyphicon-minus-sign')) {
+                  $("#subject_sales_info_header").removeClass('glyphicon glyphicon-minus-sign').addClass('glyphicon glyphicon glyphicon-plus-sign');
+                  $("#tableSubjectSales tr").not('thead tr').addClass('hideTableRows');
+                  $("#subject_sales_info_header").attr('title', "Maximize Sales Information");
+              }
+              else {
+                  $("#subject_sales_info_header").removeClass('glyphicon glyphicon-plus-sign').addClass('glyphicon glyphicon glyphicon-minus-sign');
+                  $("#tableSubjectSales tr").not('thead tr').removeClass('hideTableRows');
+                  $("#subject_sales_info_header").attr('title', "Minimize Sales Information");
+              };
+          };
+          this.subjectProperty = null;
+
+          this.scrollTo = function () {
+              $("html, body").animate({ scrollTop: $("#divComparableSales").offset().top - 5 });
+          };
+          this.goToPageNumber = 0;          
+          this.scrolltoSalesNumber = function (elementId, rowNumber) {
+              //  var rowNumber = elementId.replace(/^\D+/g, '');              
+              var pageIDforElement = Math.floor((parseInt(rowNumber) / this.pageSize));
+              this.goToPageNumber = pageIDforElement;
+              angular.element('#btnGoToPage').trigger('click');
+              $("html, body").animate({ scrollTop: $('#' + elementId).offset().top });
+          };
+          this.goToPage = function (pageNumber) {
+              if (this.currentPage !== pageNumber) { //&& pageNumber > 0 && pageNumber <= this.numberOfPages
+                  this.currentPage = pageNumber;
+              }
+          };
+          this.resetSorting = function () {
+
+          };
+
+          this.setBackgroundSolor = function (color, saleCount) {
+              if (saleCount == 1) {
+                  return { backgroundColor: color }
+              }
+              else {
+                  return { backgroundColor: '#FF0080' }
+              }
+          };
+
+          this.getClassSale = function (saleCount) {
+              if (saleCount == 1) {
+                  return 'circleSalesStyle';
+              }
+              else {
+                  return 'squareSalesStyle';
+              }
+          };
+
+          this.getSaleNumber = function (saleNumber, saleCount) {
+              if (saleCount == 1) {
+                  return saleNumber;
+              }
+              else {
+                  return saleCount + '*';
+              }
+          };
+
+          this.highLightSalesParentFolio = function (elementId, rowNumber) {
+
+          };
+      };
+
+      
+         
+
+      //Property Information
+      var propertyInfo = {          
+          bathroomCount: "BathroomCount",
+          bedroomCount: "BedroomCount",
+          buildingActualArea: "BuildingActualArea",
+          buildingBaseArea: "BuildingBaseArea",
+          buildingEffectiveArea: "BuildingEffectiveArea",
+          buildingGrossArea: "BuildingGrossArea",
+          buildingHeatedArea: "BuildingHeatedArea",
+          DORCode: "DORCode",
+          DORDescription: "DORDescription",
+          DORDescriptionCurrent: "DORDescriptionCurrent",
+          floorCount: "FloorCount",
+          folioNumber: "FolioNumber",
+          halfBathroomCount: "HalfBathroomCount",
+          lotSize: "LotSize",
+          municipality: "Municipality",
+          neighborhood: "Neighborhood",
+          neighboorhoodDescription: "NeighboorhoodDescription",
+          parentFolio: "ParentFolio",
+          percentHomesteadCapped: "PercentHomesteadCapped",
+          platBook: "PlatBook",
+          platPage: "PlatPage",
+          PrimaryZoneDescription: "PrimaryZoneDescription",
+          status: "Status",
+          subDivision: "SubDivision",
+          subDivisionDescription: "SubDivisionDescription",
+          unitCount: "UnitCount",
+          yearBuilt: "YearBuilt",
+          geometry: "geometry"
+      };
+      
+      var saleInfo = {
+              salesNumber: "SalesNumber",             
+              dateOfSale : "DateOfSale",
+              documentStamps : "DocumentStamps",
+              granteeName1 : "GranteeName1",
+              granteeName2 : "GranteeName2",
+              granteeName3 : "GranteeName3",
+              granteeName4 : "GranteeName4",
+              granteeName5: "GranteeName5",
+              grantorName1: "GrantorName1",
+              grantorName2: "GrantorName2",
+              grantorName3: "GrantorName3",
+              grantorName4: "GrantorName4",
+              grantorName5: "GrantorName5",
+              message : "Message",
+              officialRecordBook : "OfficialRecordBook",
+              officialRecordPage : "OfficialRecordPage",
+              qualificationDescription : "QualificationDescription",
+              qualifiedFlag : "QualifiedFlag",
+              qualifiedSourceCode : "QualifiedSourceCode",
+              reasonCode : "ReasonCode",
+              reviewCode : "ReviewCode",
+              saled : "Saled",
+              saleInstrument : "SaleInstrument",
+              salePrice : "SalePrice",
+              vacantFlag : "VacantFlag",
+              validCode : "ValidCode",
+              verifyCode: "VerifyCode",
+              highlightColor: "HighlightColor",
+              highlightColorCode: "HighlightColorCode",
+              totalSalesCount: "TotalSalesCount",
+              geometry: "Geometry",
+              highlightRow: "highlightRow"
+      };
+
+      //Site Information
+      var siteAddress = {          
+          address: "Address",
+          buildingNumber: "BuildingNumber",
+          city: "City",
+          streetName: "StreetName",
+          streetNumber: "StreetNumber",
+          streetPrefix: "StreetPrefix",
+          streetSufixDirection: "StreetSufixDirection",
+          message: "Message",
+          unit: "Unit",
+          zip: "Zip",
+      };
+
+          var fieldTypeChanger = {
+              dateOfSale: "Date"
+          };
+
+          var buildSales = function(data){
+              return buildArray(data.SaleInfo, saleInfo);
+          };
+
+          var buildSiteAddress = function (data) {
+              return buildArray(data.SiteAddress, siteAddress);
+          };
+
+          var buildPropertyInformation = function (data) {
+              return buildArray(data.propertyInfo, siteAddress);
+          };
+
+          var salesInfoArray = {
+              salesNumber:"salesNumber",
+              folioNumber:"folioNumber",
+              address:"address",
+              dateOfSale:"dateOfSale",
+              salePrice:"salePrice",
+              qualificationDescription:"qualificationDescription",
+              DORDescriptionCurrent:"DORDescriptionCurrent",
+              yearBuilt:"yearBuilt",
+              buildingGrossArea: "buildingGrossArea",
+              buildingHeatedArea: "buildingHeatedArea",
+              buildingEffectiveArea:"buildingEffectiveArea",
+              lotSize:"lotSize",
+              bedroomCount:"bedroomCount",
+              bathroomCount: "bathroomCount",
+              parentFolio: "parentFolio",
+              siteAddress: "siteAddress",
+              type: "type",
+              highlightColor: "highlightColor",
+              highlightColorCode: "highlightColorCode",
+              totalSalesCount: "totalSalesCount",
+              geometry: "geometry",
+              highlightRow: "highlightRow",
+              primaryZoneDescription: "primaryZoneDescription"
+          };
+
+          var buildComparableSales = function (data) {
+              var salesReportArray = [];            
+              var salesNumber = 1;
+              _.each(data, function (propertyInfo) {                  
+                  _.each(propertyInfo.SalesInfo, function (saleInfo) {
+                      var saleArrValue = {};
+                      saleArrValue.folioNumber = propertyInfo.PropertyInfo.FolioNumber;
+                      if (propertyInfo.SiteAddress[0] && propertyInfo.SiteAddress[0].Address) {
+                          saleArrValue.address = propertyInfo.SiteAddress[0].Address;
+                      }
+                      else {
+                          saleArrValue.address = null;
+                      }
+                      saleArrValue.dateOfSale = saleInfo.DateOfSale;
+                      saleArrValue.salePrice = saleInfo.SalePrice;
+                      saleArrValue.qualificationDescription = saleInfo.QualificationDescription;
+                      saleArrValue.DORDescriptionCurrent = propertyInfo.PropertyInfo.DORDescriptionCurrent;
+                      saleArrValue.yearBuilt = propertyInfo.PropertyInfo.YearBuilt;
+                      //saleArrValue.zoneCode = propertyInfo.PropertyInfo.PrimaryZoneDescription;
+                      saleArrValue.primaryZoneDescription = propertyInfo.PropertyInfo.PrimaryZoneDescription;
+                       
+                      if (propertyInfo.PropertyInfo.BuildingGrossArea !== -1) {
+                          saleArrValue.buildingGrossArea = propertyInfo.PropertyInfo.BuildingGrossArea;
+                      }
+                      else {
+                          saleArrValue.buildingGrossArea = null;
+                      }
+                      if (propertyInfo.PropertyInfo.BuildingHeatedArea !== -1) {
+                          saleArrValue.buildingHeatedArea = propertyInfo.PropertyInfo.BuildingHeatedArea;
+                      }
+                      else {
+                          saleArrValue.buildingHeatedArea = null;
+                      }
+                      if (propertyInfo.PropertyInfo.BuildingEffectiveArea !== -1) {
+                          saleArrValue.buildingEffectiveArea = propertyInfo.PropertyInfo.BuildingEffectiveArea;
+                      }
+                      else {
+                          saleArrValue.buildingEffectiveArea = null;
+                      }
+                      saleArrValue.lotSize = propertyInfo.PropertyInfo.LotSize;
+                      saleArrValue.bedroomCount = propertyInfo.PropertyInfo.BedroomCount;
+                      saleArrValue.bathroomCount = propertyInfo.PropertyInfo.BathroomCount;
+                      if (!utils.isUndefinedOrNull(propertyInfo.SiteAddress[0])) {
+                          var streetNumber = propertyInfo.SiteAddress[0].StreetNumber;
+                          var streetPrefix = propertyInfo.SiteAddress[0].StreetPrefix;
+                          var streetName = propertyInfo.SiteAddress[0].StreetName;
+                          var streetSuffix = propertyInfo.SiteAddress[0].StreetSuffix;
+                          var streetSuffixDirection = propertyInfo.SiteAddress[0].StreetSuffixDirection;
+                          var unitNumber = propertyInfo.SiteAddress[0].Unit;
+                          saleArrValue.siteAddress = streetNumber + " " + streetPrefix + " " + streetName +
+                            " " + streetSuffix + " " + streetSuffixDirection + " " + unitNumber.trim();
+                          if (saleArrValue.siteAddress.trim() == 0) {
+                              saleArrValue.siteAddress = "";
+                          }
+                          
+                      } else {
+                          saleArrValue.siteAddress = "";
+                      }                      
+                      var regex = new RegExp("-", 'g');                      
+                      saleArrValue.parentFolio = propertyInfo.PropertyInfo.ParentFolio.replace(regex, '');
+                      if (saleArrValue.parentFolio === "") {
+                          saleArrValue.parentFolio = propertyInfo.PropertyInfo.FolioNumber.replace(regex, '');
+                      }
+                      saleArrValue.type = "salesbuffer";
+                      saleArrValue.highlightColor = null;
+                      saleArrValue.highlightColorCode = null;
+                      saleArrValue.totalSalesCount = 1;
+                      saleArrValue.geometry = null;
+                      saleArrValue.highlightRow = false;
+                      salesReportArray.push(saleArrValue);                      
+                  });           
+              });
+              //salesReportArray.sort(function (a, b) {
+              //    var aDate = new Date(a.dateOfSale);                  
+              //    var bDate = new Date(b.dateOfSale);               
+              //    return aDate > bDate ? -1 : 1;                   
+              //});
+              salesReportArray.sort(function (salesA, salesB) {
+                  var folioA = salesA.folioNumber.replace(/\-/g, '');
+                  var folioB = salesB.folioNumber.replace(/\-/g, '');
+                  var saleDateA = new Date(salesA.dateOfSale);
+                  var saleDateB = new Date(salesB.dateOfSale);
+                  if (folioA == folioB && saleDateA > saleDateB)
+                      return 1;
+                  if (folioA > folioB)
+                      return 1;
+                  if (folioA < folioB)
+                      return -1;
+              });             
+              _.each(salesReportArray, function (saleInfo) {
+                  saleInfo.salesNumber = salesNumber;
+                  salesNumber++;
+              });
+              return buildArray(salesReportArray, salesInfoArray);
+          };
+
+          var buildSubjectPropertySales = function (data) {
+              //console.log("selectedFolio",data.SelectedFolio);
+              var salesReportArray = [];
+              var salesNumber = 1;
+              var subjectPropertyInfo = data.SelectedFolio.SiteAddress[0];
+              var propertyInfo = data.SelectedFolio.PropertyInfo;
+              _.each(data.SelectedFolio.SalesInfo, function (saleInfo) {                 
+                      var saleArrValue = {};
+                      // saleArrValue.salesNumber =  salesNumber;
+                      saleArrValue.folioNumber = propertyInfo.FolioNumber;
+                      saleArrValue.address = subjectPropertyInfo.Address;
+                      saleArrValue.dateOfSale = saleInfo.DateOfSale;
+                      saleArrValue.salePrice = saleInfo.SalePrice;
+                      saleArrValue.qualificationDescription = saleInfo.QualificationDescription;
+                      saleArrValue.DORDescriptionCurrent = propertyInfo.DORDescriptionCurrent;
+                      saleArrValue.yearBuilt = propertyInfo.YearBuilt;
+                      saleArrValue.primaryZoneDescription = propertyInfo.PrimaryZoneDescription;
+					  //console.log("saleArrValue", saleArrValue);
+                      if (propertyInfo.BuildingGrossArea !== -1) {
+                          saleArrValue.buildingGrossArea = propertyInfo.BuildingGrossArea;
+                      }
+                      else {
+                          saleArrValue.buildingGrossArea = null;
+                      }
+                      if (propertyInfo.BuildingHeatedArea !== -1) {
+                          saleArrValue.buildingHeatedArea = propertyInfo.BuildingHeatedArea;
+                      }
+                      else {
+                          saleArrValue.buildingHeatedArea = null;
+                      }
+                      if (propertyInfo.BuildingEffectiveArea !== -1) {
+                          saleArrValue.buildingEffectiveArea = propertyInfo.BuildingEffectiveArea;
+                      }
+                      else {
+                          saleArrValue.buildingEffectiveArea = null;
+                      }
+                      saleArrValue.lotSize = propertyInfo.LotSize;
+                      saleArrValue.bedroomCount = propertyInfo.BedroomCount;
+                      saleArrValue.bathroomCount = propertyInfo.BathroomCount;
+                      if (!utils.isUndefinedOrNull(subjectPropertyInfo)) {
+                          var streetNumber = subjectPropertyInfo.StreetNumber;
+                          var streetPrefix = subjectPropertyInfo.StreetPrefix;
+                          var streetName = subjectPropertyInfo.StreetName;
+                          var streetSuffix = subjectPropertyInfo.StreetSuffix;
+                          var streetSuffixDirection = subjectPropertyInfo.StreetSuffixDirection;
+                          var unitNumber = subjectPropertyInfo.Unit;
+                          saleArrValue.siteAddress = streetNumber + " " + streetPrefix + " " + streetName +
+                            " " + streetSuffix + " " + streetSuffixDirection + " " + unitNumber.trim();
+                          if (saleArrValue.siteAddress.trim() == 0) {
+                              saleArrValue.siteAddress = "";
+                          }
+
+                      } else {
+                          saleArrValue.siteAddress = "";
+                      }
+                      var regex = new RegExp("-", 'g');
+                      saleArrValue.parentFolio = propertyInfo.ParentFolio.replace(regex, '');
+                      if (saleArrValue.parentFolio === "") {
+                          saleArrValue.parentFolio = propertyInfo.FolioNumber.replace(regex, '');
+                      }
+                      saleArrValue.type = "subject";
+                      saleArrValue.highlightColor = null;
+                      saleArrValue.highlightColorCode = null;
+                      saleArrValue.totalSalesCount = 1;
+                      saleArrValue.geometry = null;
+                      saleArrValue.highlightRow = false;
+                      salesReportArray.push(saleArrValue);
+              });
+              if (data.SelectedFolio.SalesInfo.length == 0) {
+                  var saleArrValue = {};
+                  saleArrValue.salesNumber =  1;
+                  saleArrValue.folioNumber = propertyInfo.FolioNumber;
+                  saleArrValue.address = subjectPropertyInfo.Address;
+                  saleArrValue.dateOfSale = null;
+                  saleArrValue.salePrice = null;
+                  saleArrValue.qualificationDescription = null;
+                  saleArrValue.primaryZoneDescription = propertyInfo.PrimaryZoneDescription;
+                  saleArrValue.DORDescriptionCurrent = propertyInfo.DORDescriptionCurrent;
+                  saleArrValue.yearBuilt = propertyInfo.YearBuilt;
+                  if (propertyInfo.BuildingGrossArea !== -1) {
+                      saleArrValue.buildingGrossArea = propertyInfo.BuildingGrossArea;
+                  }
+                  else {
+                      saleArrValue.buildingGrossArea = null;
+                  }
+                  if (propertyInfo.BuildingHeatedArea !== -1) {
+                      saleArrValue.buildingHeatedArea = propertyInfo.BuildingHeatedArea;
+                  }
+                  else {
+                      saleArrValue.buildingHeatedArea = null;
+                  }
+                  if (propertyInfo.BuildingEffectiveArea !== -1) {
+                      saleArrValue.buildingEffectiveArea = propertyInfo.BuildingEffectiveArea;
+                  }
+                  else {
+                      saleArrValue.buildingEffectiveArea = null;
+                  }
+                  saleArrValue.lotSize = propertyInfo.LotSize;
+                  saleArrValue.bedroomCount = propertyInfo.BedroomCount;
+                  saleArrValue.bathroomCount = propertyInfo.BathroomCount;
+                  if (!utils.isUndefinedOrNull(subjectPropertyInfo)) {
+                      var streetNumber = subjectPropertyInfo.StreetNumber;
+                      var streetPrefix = subjectPropertyInfo.StreetPrefix;
+                      var streetName = subjectPropertyInfo.StreetName;
+                      var streetSuffix = subjectPropertyInfo.StreetSuffix;
+                      var streetSuffixDirection = subjectPropertyInfo.StreetSuffixDirection;
+                      var unitNumber = subjectPropertyInfo.Unit;
+                      saleArrValue.siteAddress = streetNumber + " " + streetPrefix + " " + streetName +
+                        " " + streetSuffix + " " + streetSuffixDirection + " " + unitNumber.trim();
+                      if (saleArrValue.siteAddress.trim() == 0) {
+                          saleArrValue.siteAddress = "";
+                      }
+
+                  } else {
+                      saleArrValue.siteAddress = "";
+                  }
+                  var regex = new RegExp("-", 'g');
+                  saleArrValue.parentFolio = propertyInfo.ParentFolio.replace(regex, '');
+                  saleArrValue.type = "subject";
+                  saleArrValue.highlightColor = null;
+                  saleArrValue.highlightColorCode = null;
+                  saleArrValue.totalSalesCount = 0;
+                  saleArrValue.geometry = null;
+                  salesReportArray.push(saleArrValue);
+                  //console.log("salesReportArray", salesReportArray);
+              }
+              else {
+                  salesReportArray.sort(function (a, b) {
+                      var aDate = new Date(a.dateOfSale);
+                      var bDate = new Date(b.dateOfSale);
+                      return aDate > bDate ? -1 : 1;
+                  });
+                  _.each(salesReportArray, function (saleInfo) {
+                      saleInfo.salesNumber = salesNumber;
+                      salesNumber++;
+                  });
+              }
+              return buildArray(salesReportArray, salesInfoArray);
+          };
+
+          var buildArray = function (data, attributes) {
+              // data not given - return an empty array.
+              if (isUndefinedOrNull(data))
+                  return [];
+              var result = [];
+              var loopIndex = 1;
+              _.each(data, function (originalValue) {
+                  var newValue = {};                  
+                  _.each(attributes, function (value, key) {
+                      newValue[key] = originalValue[value];
+                  });                  
+                  newValue["salesNumber"] = loopIndex;
+                  loopIndex++;
+                  //change field types if required
+                  _.each(fieldTypeChanger, function (value, key) {
+                      if (!isUndefinedOrNull(newValue[key])) {
+                          if (value === "Date") {
+                              newValue[key] = new Date(newValue[key]); //new Date(newValue[key]); //change it back
+                          }
+                      }
+                  });
+                  result.push(newValue);
+              });
+              return result;
+          };
+
+
+
+          var isServiceCompleted = function (rawProperty) {
+              if (rawProperty.ComparableSalesFolioMatchResult.Completed === false)
+                  return false;
+              else if (rawProperty.Completed === true &&
+                       _.isNull(rawProperty.ComparableSalesFolioMatchResult))
+                  return false
+              else
+                  return true;
+          };
+
+
+          var isUndefinedOrNull = function (val) { return _.isUndefined(val) || _.isNull(val) }
+          
+          return {
+              ComparableSales: ComparableSales,
+              isServiceCompleted: isServiceCompleted
+          };
+
+      }]);
+
+
+
+     

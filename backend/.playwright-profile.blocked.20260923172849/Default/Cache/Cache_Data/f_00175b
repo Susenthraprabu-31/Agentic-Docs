@@ -1,0 +1,903 @@
+'use strict';
+
+angular.module('propertySalesApp')
+  .service('esriGisService', ['$q', '$log', 'paConfiguration', 'esriGisGeometryService', function ($q, $log, paConfig, esriGisGeometryService) {
+      var queryLayer = function ($scope, url, whereClause, geometry, returnGeometry) {
+          // build query.
+          var queryTask = new esri.tasks.QueryTask(url);
+          var query = new esri.tasks.Query();
+          query.returnGeometry = returnGeometry;
+          query.where = whereClause;
+          if (geometry) {
+              query.geometry = geometry;
+          }
+          query.outFields = ["*"];
+          // execute query.
+          var deferred = $q.defer();
+          queryTask.execute(query, function (featureSet) {
+              deferred.resolve(featureSet);
+              $scope.$apply();
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              deferred.reject(error);
+              $scope.$apply();
+          });
+          // return promise.
+          return deferred.promise.then(
+            function (featureSet) {
+                return featureSet
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                return $q.reject(error);
+            }
+          );
+
+      }
+
+      var xyFromFolio = function ($scope, folio) {
+	//console.log("called xyFromFolio");          
+	var url = paConfig.urlCoordFromFolio;
+          var whereClause = "CHILD='" + folio + "'";
+          //D.VonWerne 2/19
+		  /*return queryLayer($scope, url, whereClause, null, false).then(
+            function (featureSet) {
+                if (featureSet.features != undefined && featureSet.features.length > 0) {
+                    return {
+                        "x": featureSet.features[0].attributes.X_COORD,
+                        "y": featureSet.features[0].attributes.Y_COORD
+                    };
+                } else {
+                    var message = "No xy found for folio " + folio;
+                    return $q.reject({ error: featureSet, message: message });
+                }
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                var message = "error when trying to get xy from folio. "
+                return $q.reject({ "error": error, "message": message });
+            }
+          );*/
+
+      };
+
+      var graphicMarkerFromXY = function (x, y) {
+          var point = {
+              "geometry": {
+                  "x": x,
+                  "y": y,
+                  "spatialReference": { "wkid": 2236 }
+              },
+              "symbol": paConfig.propertyMarkerPictureSymbol
+          };
+
+          return new esri.Graphic(point);
+      }
+
+      var joinGeometries = function (featureSet) {
+          var geometry = featureSet.features[0].geometry;
+          _.each(featureSet.features, function (feature, index) {
+              if (index == 0)
+                  return;
+              _.each(feature.geometry.rings, function (ring) {
+                  geometry.rings.push(ring);
+              });
+          });
+          return geometry;
+      }
+
+      var polygonFromFolio = function ($scope, folio) {
+          var url = paConfig.urlParcelBoundariesLayer;
+          var whereClause = "FOLIO='" + folio + "'";
+          return queryLayer($scope, url, whereClause, null, true).then(
+            function (featureSet) {
+                if (featureSet.features != undefined && featureSet.features.length > 0) {
+                    return joinGeometries(featureSet);                    
+                } else {
+                    var message = "No polygon found for folio " + folio;
+                    return $q.reject({ "error": featureSet, "message": message });
+                }
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                var message = "error  when getting polygonFormFolio";
+                return $q.reject({ "error": error, "message": message });
+            }
+          );
+      };
+
+
+      var childFolios = function ($scope, parentFolio) {
+	//console.log("called childFolios");          
+	var url = paConfig.urlCondosTable;
+          var whereClause = " PARENT IN (" + parentFolio + ")";
+          return queryLayer($scope, url, whereClause, null, false).then(
+            function (featureSet) {
+                if (featureSet.features != undefined && featureSet.features.length > 0) {
+                    return featureSet.features;
+                } else {
+                    var message = "No child folios found for parent folio " + folio;
+                    return $q.reject({ error: featureSet, message: message });
+                }
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                var message = "error when trying to get child folios. "
+                return $q.reject({ "error": error, "message": message });
+            }
+          );
+      };
+
+
+      var getParentFolio = function ($scope, childFolio) {
+          var url = paConfig.urlCondosTable;
+          var whereClause = "FOLIO ='" + childFolio + "'";
+          return queryLayer($scope, url, whereClause, null, false).then(
+            function (featureSet) {
+                if (featureSet.features != undefined && featureSet.features.length > 0) {
+                    return featureSet.features;
+                } else {
+                    var message = "No PARENT folio found for child folio " + childFolio;
+                    return $q.reject({ error: featureSet, message: message });
+                }
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                var message = "error when trying to get parent folio. "
+                return $q.reject({ "error": error, "message": message });
+            }
+          );
+      };
+
+      var graphicMarkerFromPolygon = function (polygon) {
+          var boundary = {
+              "geometry": polygon,
+              "symbol": paConfig.propertyBoundarySymbol
+          };
+          return new esri.Graphic(boundary);
+      };
+
+
+      //Added for buffer
+      var graphicMarkerFromBufferPolygon = function (polygon) {
+          var boundary = {
+              "geometry": polygon,
+              "symbol": paConfig.bufferBoundarySymbol
+          };
+          return new esri.Graphic(boundary);
+      };
+
+      var folioFromPoint = function ($scope, x, y) {
+          var url = paConfig.urlParcelLayer;
+          return featuresFromPointLayerIntersection($scope, x, y, url, false).then(function (featureSet) {
+              if (featureSet.features.length > 0)
+                  return featureSet.features[0].attributes.FOLIO;
+              else
+                  return "";
+
+          }, function (error) { return error; });
+      };
+
+      var geometryAndFolioFromXY = function ($scope, x, y) {
+          var url = paConfig.urlParcelLayer;
+          return featuresFromPointLayerIntersection($scope, x, y, url, true).then(
+            function (featureSet) {
+                if (featureSet.features != undefined && featureSet.features.length > 0) {
+                    var data = {
+                        geometry: featureSet.features[0].geometry,
+                        folio: featureSet.features[0].attributes.FOLIO
+                    };
+                    return data;
+                } else {
+                    $log.debug("geometryAndFolioFromXY: No folio found in x,y ", x, y, url, featureSet);
+                    return { geometry: null, folio: "" }
+                }
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                $log.error("geometryAndFolioFromXY: error ", error);
+                var message = "error  when getting geometryAndFolioFromXY";
+                return $q.reject({ "error": error, "message": message });
+            }
+          );
+      };
+
+
+      var featureFromPointLayerIntersection = function ($scope, layer, x, y) {
+          var url = layer.url;
+          return featuresFromPointLayerIntersection($scope, x, y, url, true).then(function (featureSet) {
+              if (featureSet.features.length > 0) {
+                  return {
+                      geometry: featureSet.features[0].geometry,
+                      attributes: featureSet.features[0].attributes
+                  }
+              }
+              else
+                  return null;
+          }, function (error) { return error; });
+
+      };
+
+      var geometryFromPointLayerIntersection = function ($scope, layer, x, y) {
+          var url = layer.url;
+          return featuresFromPointLayerIntersection($scope, x, y, url, true).then(function (featureSet) {
+              if (featureSet.features.length > 0)
+                  return featureSet.features[0].geometry;
+              else
+                  return null;
+          }, function (error) { return error; });
+      };
+
+      var featuresFromPointLayerIntersection = function ($scope, x, y, url, returnGeometry) {
+          // build hte query.
+          var point = new esri.geometry.Point(x, y, new esri.SpatialReference(paConfig.wkidJson));
+          var query = new esri.tasks.Query();
+          query.geometry = point;
+          query.spatialRelationship = esri.tasks.Query.SPATIAL_REL_INTERSECTS;
+          query.returnGeometry = returnGeometry;
+          query.outFields = ["*"];
+          query.outSpatialReference = paConfig.wkidJson;
+          // execute the query.
+          var queryTask = new esri.tasks.QueryTask(url);
+          var deferred = $q.defer();
+          queryTask.execute(query, function (featureSet) {
+              deferred.resolve(featureSet);
+              $scope.$apply();
+          }, function (error) {
+              deferred.reject(error);
+              $scope.$apply();
+          });
+          return deferred.promise.then(function (featureSet) {
+              $log.debug("featuresFromPointLayerIntersection:features", featureSet);
+              return featureSet
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error('featuresFromPointLayerIntersection:error ', error);
+              return error;
+          });
+
+      };
+
+      var featuresInCircle = function (x, y, radius, url, returnGeometry) {
+          // Get circle buffer to intersect with the layer.
+          var geometryCircle = esriGisGeometryService.getCircleGeometry(x, y, radius);
+          var query = new esri.tasks.Query();
+          query.geometry = geometryCircle;
+          query.spatialRelationship = esri.tasks.Query.SPATIAL_REL_OVERLAPS;
+          query.returnGeometry = returnGeometry;
+          query.outFields = ["*"];
+          query.outSpatialReference = paConfig.wkidJson;
+          // execute the query.
+          var queryTask = new esri.tasks.QueryTask(url);
+          var deferred = $q.defer();
+          queryTask.execute(query, function (featureSet) {
+              deferred.resolve(featureSet);
+              //$scope.$apply();
+          }, function (error) {
+              deferred.reject(error);
+              //$scope.$apply();
+          });
+          // return promise
+          return deferred.promise.then(function (featureSet) {
+              $log.debug("esriGisService:featuresInCircle", featureSet);
+              return featureSet.features
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error('esriGisService:featuresInCircle ', error);
+              return $q.reject(error);
+          });
+      };
+
+      //method added to return multiple polygons for multiple folios
+      var PAPropertySalesInformation = function ($scope, folio) {
+          var parentFolio = getParentFolio($scope, folio);
+          return parentFolio.then(function (parentFolioData) {
+              var folioProperty = folio;
+              var condoFlag = parentFolioData[0].attributes.CONDO_FLAG;
+              if (condoFlag == 'Y') {
+                  $scope.property.parentFolio = parentFolioData[0].attributes.PARENT_FOLIO;
+                  folioProperty = parentFolioData[0].attributes.PARENT_FOLIO;
+              } else {
+                  $scope.property.parentFolio = folio;
+              }
+              //$scope.property.parentFolio = parentFolioData[0].attributes.PARENT;
+              //if (parentFolioData[0].attributes.PARENT !== folio) {
+              //    folioProperty = parentFolioData[0].attributes.PARENT;
+              //}
+              var folioPolyPromise = polygonFromFolio($scope, folioProperty);
+              return folioPolyPromise.then(function (polygonProperty) {
+                  var polygonGraphic = graphicMarkerFromPolygon(polygonProperty);
+                  $scope.addParcelGeometrytoMap(polygonGraphic);
+                  var getBufferGeomPromise = esriGisGeometryService.getBufferSalesGeometry(polygonProperty, $scope.searchParam.Distance);
+                  return getBufferGeomPromise.then(function (polyGeometries) {
+                      var polygon = new esri.geometry.Polygon(new esri.SpatialReference({ wkid: 2236 }));
+                      _.each(polyGeometries[0].rings, function (ring) {
+                          polygon.rings.push(ring);
+                      }
+                      );
+                      $scope.addBufferGeometrytoMap(polygon);
+                      try {
+                          $scope.mapState = "SmallMap";
+                          $scope.map.setExtent(polygon.getExtent().expand(1.0), true);
+                      }
+                      catch (err) {
+                          // alert(err.message);
+                      }
+                      var getSalesPropertiesPromise = getPropertiesFromBuffer($scope, polygon, polygonProperty);
+                      return getSalesPropertiesPromise.then(function (featureSet) {
+                          var getFolios = getArrayOfFolios(featureSet.featureSet);
+                          var parentFolios = "";
+                          _.each(featureSet.featureSet, function (feature) {
+                              if (feature.attributes.CONDO == "C") {
+                                  if (parentFolios == "") {
+                                      parentFolios = feature.attributes.FOLIO;
+                                  }
+                                  else {
+                                      parentFolios = parentFolios + "," + feature.attributes.FOLIO;
+                                  }
+                              }
+                          });
+                          if (parentFolios !== "") {
+                              /*var getChildFolios = childFolios($scope, parentFolios);
+                              return getChildFolios.then(function (featuresCondo) {
+                                  _.each(featuresCondo, function (feat) {
+                                      if (feat.attributes.CHILD.trim() !== "") {
+                                          getFolios.push(feat.attributes.CHILD);
+                                      }
+                                  });
+                                  $scope.searchParam.Folios = getFolios;
+                                  return featureSet;
+                              });*/
+                              if (getFolios !== "") {
+                                  $scope.searchParam.Folios = getFolios;
+                              }
+                              return featureSet;
+                          }
+                          else {
+                              if (getFolios !== "") {
+                                  $scope.searchParam.Folios = getFolios;
+                              }
+                              return featureSet;
+                          }
+                      }, function (error) {
+                          //todo
+                          var message = "An error has occurred while fetching the information from the map service.";
+                          $scope.showErrorDialog(message);
+                          $('#load-modal').modal('hide');
+                          $log.error("PAPropertySalesInformation:error- ", error);
+                          $q.reject(error);
+                      });
+
+                  }, function (error) {
+                      //todo
+                      var message = "An error has occurred while fetching the information from the map service.";
+                      $scope.showErrorDialog(message);
+                      $('#load-modal').modal('hide');
+                      $log.error("PAPropertySalesInformation:error- ", error);
+                      $q.reject(error);
+                  });
+
+              }, function (error) {
+                  $('#load-modal').modal('hide');
+                  $log.error("PAPropertySalesInformation:error- ", error);
+                  $scope.mapZoomToFullExtent();
+                  var message = "An error has occurred while fetching the information from the map service.";
+                  $scope.showErrorDialog(message);
+                  $q.reject(error);
+              });
+          }, function (error) {
+              $('#load-modal').modal('hide');
+              $log.error("PAPropertySalesInformation:error- ", error);
+              $scope.mapZoomToFullExtent();
+              var message = "An error has occurred while fetching the information from the map service.";
+              $scope.showErrorDialog(message);
+              $q.reject(error);
+          });
+      };
+
+
+      var getPropertiesFromBuffer = function ($scope, geometryBuffer, polygonProperty) {
+          var url = paConfig.urlParcelBoundariesLayer;
+          var whereClause;
+          if ($scope.searchParam.ZipCodeFlag) {
+              var propZipCode = bufferZipCodeIntersection($scope, polygonProperty, geometryBuffer);
+              return propZipCode.then(function (intersectionPoly) {
+                  if (intersectionPoly.length == 0) {
+                      whereClause = "1=1";
+                      var message = "There is no zip code associated with this property. The report will be created without any zip code.";
+                      $scope.showErrorDialog(message);
+
+                  } else {
+                      whereClause = "1=1";
+                      geometryBuffer = intersectionPoly[0];
+                  }
+                  if ($scope.searchParam.SubDivFlag) {
+                      whereClause = whereClause + " AND FOLIO LIKE '" + $scope.folio.substr(0, 9) + "%'";
+                  } else if ($scope.searchParam.MunicipalityFlag) {
+                      whereClause = whereClause + " AND FOLIO LIKE '" + $scope.folio.substr(0, 2) + "%'";
+                  }
+                  return queryLayer($scope, url, whereClause, geometryBuffer, true).then(
+                function (featureSet) {
+                    if (featureSet.features != undefined && featureSet.features.length > 0) {
+                        return {
+                            featureSet: featureSet.features
+                        };
+                    } else {
+                        var message = "No properties found in the selected buffer ";
+                        return $q.reject({ error: featureSet, message: message });
+                    }
+                },
+                function (error) {
+                    $('#load-modal').modal('hide');
+                    var message = "error when trying to get properties in the selected buffer. "
+                    return $q.reject({ "error": error, "message": message });
+                }
+              );
+              });
+          }
+          else {
+              if ($scope.searchParam.SubDivFlag) {
+                  whereClause = "FOLIO LIKE '" + $scope.folio.substr(0, 9) + "%'";
+              }
+              else if ($scope.searchParam.MunicipalityFlag) {
+                  whereClause = "FOLIO LIKE '" + $scope.folio.substr(0, 2) + "%'";
+              }
+              else {
+                  whereClause = "1=1";
+              }
+              return queryLayer($scope, url, whereClause, geometryBuffer, true).then(
+                function (featureSet) {
+                    if (featureSet.features != undefined && featureSet.features.length > 0) {
+                        return {
+                            featureSet: featureSet.features
+                        };
+                    } else {
+                        var message = "No properties found in the selected buffer ";
+                        return $q.reject({ error: featureSet, message: message });
+                    }
+                },
+                function (error) {
+                    $('#load-modal').modal('hide');
+                    var message = "error when trying to get properties in the selected buffer. "
+                    return $q.reject({ "error": error, "message": message });
+                }
+              );
+          }
+      };
+
+
+      //function added to give array of Folios only
+      var getArrayOfFolios = function (featureSet) {
+          var folioArr = [];
+          //console.log("parcelpolygon buffer", featureSet);
+          _.each(featureSet, function (feature, index) {
+              if (feature.attributes.FOLIO) {
+                  if (feature.attributes.FOLIO.trim() !== "") {
+                      folioArr.push(feature.attributes.FOLIO);
+                  }
+              }
+          });
+          return folioArr;
+      };
+
+
+      var addSalesPropertytoMap = function ($scope, propertyFeatureSet, salesInformationArr, subjectPropertyInformation) {
+          try {              
+          //console.log("subjectPropertyInformation", subjectPropertyInformation);
+              var initRange;
+              var endRange;
+              var uniqueSalesArr = $scope.uniqueSalesValues;
+              var salesInformation = [];
+             // var salesArray = uniqueSalesValues(salesInformation);
+              var showCondoColor = false;
+              var multipleSalesFlag = false;
+              var saleRange;
+              if (uniqueSalesArr.length > 6) {
+                  saleRange = Math.floor(uniqueSalesArr.length / 6);
+              }
+              else {
+                  saleRange = 1;
+              }             
+              _.each(salesInformationArr, function (sale) {
+                  var highlightColor;
+                  var lineColor = new dojo.Color();
+                  var fillColor = new dojo.Color();
+                  if (sale.totalSalesCount == 1) {
+                      highlightColor = sale.highlightColor;
+                      lineColor.setColor(highlightColor);
+                      lineColor.a = 1.0;
+                      fillColor.setColor(highlightColor);
+                      fillColor.a = 0.4;
+                  }
+                  else {
+                      highlightColor = paConfig.salesPropertyColors.colorCondo;
+                      lineColor.setColor(highlightColor);
+                      lineColor.a = 0.1;
+                      fillColor.setColor(highlightColor);
+                      fillColor.a = 0.1;
+                  } 
+                  var symbol = new esri.symbol.SimpleFillSymbol(esri.symbol.SimpleFillSymbol.STYLE_SOLID,
+                                  new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID, lineColor, 2), fillColor);
+                  var newCircle = new esri.Graphic(sale.geometry, symbol);
+                  var salePoint = sale.geometry.getExtent().getCenter();
+                  if (sale.totalSalesCount > 1) {
+                      multipleSalesFlag = true;
+                      $scope.map.getLayer("salesBoundary").add(newCircle);
+                      addPropertyGeometrytoMap($scope, sale, sale.totalSalesCount, salePoint, paConfig.salesPropertyColors.colorCondo, "SQUARE");
+                  }
+                  else {                     
+                      $scope.map.getLayer("salesBoundary").add(newCircle);
+                      addPropertyGeometrytoMap($scope, sale, sale.salesNumber, salePoint, highlightColor, "CIRCLE");
+                  }
+              });
+
+              _.each(subjectPropertyInformation, function (sale) {
+                  var highlightColor;
+                  var lineColor = new dojo.Color();
+                  var fillColor = new dojo.Color();
+                  if (sale.totalSalesCount == 1) {
+                      highlightColor = sale.highlightColor;
+                      lineColor.setColor(highlightColor);
+                      lineColor.a = 1.0;
+                      fillColor.setColor(highlightColor);
+                      fillColor.a = 0.4;
+                  }
+                  else {
+                      highlightColor = paConfig.salesPropertyColors.colorCondo;
+                      lineColor.setColor(highlightColor);
+                      lineColor.a = 0.1;
+                      fillColor.setColor(highlightColor);
+                      fillColor.a = 0.1;
+                  }
+                  var symbol = new esri.symbol.SimpleFillSymbol(esri.symbol.SimpleFillSymbol.STYLE_SOLID,
+                                  new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID, lineColor, 2), fillColor);
+                  var newCircle = new esri.Graphic(sale.geometry, symbol);                  
+                  $scope.map.getLayer("salesBoundary").add(newCircle);
+              });
+
+              //create Legend
+              var loopLength = 6;
+              if (uniqueSalesArr.length < 6) {
+                  loopLength = uniqueSalesArr.length;
+              }
+              $("#trSalesColors").find('div').remove();
+              var rowLegendColor = "<div class='legendFirstRow'><img class='legendRowPadding' src='" + paConfig.propertyMarkerSymbolURL + "' alt='map point'></img>  Selected Property&nbsp;&nbsp;</div>";
+              var addPadding = "<div style='width:5px;float:left;'>&nbsp;</div>";
+              rowLegendColor += addPadding;
+              for (var loop = 0; loop < loopLength; loop++) {
+                  var initRange;
+                  var endRange;
+                  var rowTemplate;
+                  switch (loop) {
+                      case 0:
+                          if (uniqueSalesArr.length < 6) {
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color1Code + "'><span class='legendRowPadding'>" + formatMoney(uniqueSalesArr[0]) + "</span></div>";
+                          }
+                          else {
+                              initRange = formatMoney(uniqueSalesArr[0]);
+                              endRange = formatMoney(uniqueSalesArr[(saleRange * 1) - 1]);
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color1Code + "'><span class='legendRowPadding'>" + initRange + " - " + endRange + "</span></div>";
+                          }
+                          break;
+                      case 1:
+                          if (uniqueSalesArr.length < 6) {
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color2Code + "'><span class='legendRowPadding'>" + formatMoney(uniqueSalesArr[1]) + "</span></div>";
+                          }
+                          else {
+                              initRange = formatMoney(uniqueSalesArr[(saleRange * 1)]);
+                              endRange = formatMoney(uniqueSalesArr[(saleRange * 2) - 1]);
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color2Code + "'><span class='legendRowPadding'>" + initRange + " - " + endRange + "</span></div>";
+
+                          } break;
+                      case 2:
+                          if (uniqueSalesArr.length < 6) {
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color3Code + "'><span class='legendRowPadding'>" + formatMoney(uniqueSalesArr[2]) + "</span></div>";
+                          }
+                          else {
+                              initRange = formatMoney(uniqueSalesArr[(saleRange * 2)]);
+                              endRange = formatMoney(uniqueSalesArr[(saleRange * 3) - 1]);
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color3Code + "'><span class='legendRowPadding'>" + initRange + " - " + endRange + "</span></div>";
+                          }
+                          break;
+                      case 3:
+                          if (uniqueSalesArr.length < 6) {
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color4Code + "'><span class='legendRowPadding'>" + formatMoney(uniqueSalesArr[3]) + "</span></div>";
+                          }
+                          else {
+                              initRange = formatMoney(uniqueSalesArr[(saleRange * 3)]);
+                              endRange = formatMoney(uniqueSalesArr[(saleRange * 4) - 1]);
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color4Code + "'><span class='legendRowPadding'>" + initRange + " - " + endRange + "</span></div>";
+                          }
+                          break;
+                      case 4:
+                          if (uniqueSalesArr.length < 6) {
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color5Code + "'><span class='legendRowPadding'>" + formatMoney(uniqueSalesArr[4]) + "</span></div>";
+                          }
+                          else {
+                              initRange = formatMoney(uniqueSalesArr[(saleRange * 4)]);
+                              endRange = formatMoney(uniqueSalesArr[(saleRange * 5) - 1]);
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color5Code + "'><span class='legendRowPadding'>" + initRange + " - " + endRange + "</span></div>";
+                          }
+                          break;
+                      case 5:
+                          if (uniqueSalesArr.length < 6) {
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color6Code + "'><span class='legendRowPadding'>" + formatMoney(uniqueSalesArr[5]) + "</span></div>";
+                          }
+                          else {
+                              initRange = formatMoney(uniqueSalesArr[(saleRange * 5)]);
+                              endRange = formatMoney(uniqueSalesArr[uniqueSalesArr.length - 1]);
+                              rowTemplate = "<div class='legendRow' style='background-color:" + paConfig.salesPropertyColors.color6Code + "'><span class='legendRowPadding'>" + initRange + " - " + endRange + "</span></div>";
+                          }
+                          break;
+                  };
+                  rowLegendColor += rowTemplate;                 
+              };
+              if (multipleSalesFlag == true) {
+                  var rowMultiSales = "<div class='legendSaleRow'><img class='legendRowPadding' src='" + paConfig.moreSalesSymbolURL + "' alt='Multiple Sales'></img> Multiple Sales in Year &nbsp;&nbsp;</div>";
+                  rowLegendColor += rowMultiSales;
+              }
+              $scope.legendColors = rowLegendColor;
+              $("#trSalesColors").append($scope.legendColors);
+              $scope.map.reposition();
+             // $scope.comparableSalesLegend = salesArray;
+              $scope.propertyFeatureSet = propertyFeatureSet;
+              //delete it later
+              $scope.propertySalesInformation = salesInformationArr;//propertySalesInformation;
+              $scope.subjectPropertyInformation = subjectPropertyInformation;
+          }
+          catch (error) {
+              // alert(error.message);
+          }
+
+      };  
+
+
+      //Format Currency
+      var formatMoney = function (n) {
+          if (n == undefined || n == 0) {
+              return "$0";
+          }
+          return "$" + n.toLocaleString().split(".")[0];
+      };
+
+
+      //Add Property Search result to map for all searches
+      var addPropertyGeometrytoMap = function ($scope, saleInfo, saleNumber, geometry, highlightColor, symbolType) {
+          try {
+              var fontSize = saleNumber > 99 ? 10 : 12;
+              var font = new esri.symbol.Font(fontSize + "pt", esri.symbol.Font.STYLE_NORMAL, esri.symbol.Font.VARIANT_NORMAL, esri.symbol.Font.WEIGHT_BOLD, "Arial");
+              var textSymbol = new esri.symbol.TextSymbol(saleNumber, font, new dojo.Color("#FFFFFF"));
+              textSymbol.setAlign(esri.symbol.TextSymbol.ALIGN_MIDDLE);
+              textSymbol.setOffset(0, -6);
+              //Added to show boundary
+              var fontBlk = new esri.symbol.Font(fontSize + "pt", esri.symbol.Font.STYLE_NORMAL, esri.symbol.Font.VARIANT_NORMAL, esri.symbol.Font.WEIGHT_BOLDER, "Arial");
+              var textSymbolBlk = new esri.symbol.TextSymbol(saleNumber, font, new dojo.Color("#000"));
+              textSymbolBlk.setAlign(esri.symbol.TextSymbol.ALIGN_MIDDLE);
+              textSymbolBlk.setOffset(-1, -5);
+              if (geometry != null && geometry.x != 0 && geometry.y != 0 && geometry.x != NaN && geometry.y != NaN) {
+                  var circleSymbol;
+                  if (symbolType == "CIRCLE") {
+                       circleSymbol = new esri.symbol.SimpleMarkerSymbol(
+                              esri.symbol.SimpleMarkerSymbol.STYLE_CIRCLE,
+                              24,
+                              new esri.symbol.SimpleLineSymbol(
+                                esri.symbol.SimpleLineSymbol.STYLE_SOLID,
+                                new dojo.Color([255, 255, 255, 1.0]), 1.5
+                              ),
+                              new dojo.Color(highlightColor)
+                              );
+                  }
+                  if (symbolType == "SQUARE") {
+                      circleSymbol = new esri.symbol.SimpleMarkerSymbol(
+                             esri.symbol.SimpleMarkerSymbol.STYLE_SQUARE,
+                             24,
+                             new esri.symbol.SimpleLineSymbol(
+                               esri.symbol.SimpleLineSymbol.STYLE_SOLID,
+                               new dojo.Color([255, 255, 255, 1.0]), 1.5
+                             ),
+                             new dojo.Color(highlightColor)
+                             );
+                  }
+                  var circleRenderer = new esri.renderer.SimpleRenderer(circleSymbol);
+                  var newCircle = new esri.Graphic(geometry, circleSymbol);
+                  newCircle.attributes = saleInfo;
+                  if ($scope.map.getLayer("circleResultLayer")) {
+                      $scope.map.getLayer("circleResultLayer").add(newCircle);
+                      var newCircleText = new esri.Graphic(geometry, textSymbolBlk);
+                      newCircleText.attributes = saleInfo;
+                      $scope.map.getLayer("circleResultLayer").add(newCircleText);
+                      var newCircleText = new esri.Graphic(geometry, textSymbol);
+                      newCircleText.attributes = saleInfo;
+                      $scope.map.getLayer("circleResultLayer").add(newCircleText);
+                  }
+              }
+          }
+          catch (error) {
+              $scope.showErrorDialog("An error has occurred while adding the geometry. ");
+          }
+      };
+
+
+      //function added to caluculate intersection of buffer and zipcode geometry
+      var bufferZipCodeIntersection = function ($scope, propertyGeom, bufferGeometry) {
+          var getZipCode = propertyZipCode($scope, propertyGeom, bufferGeometry);
+          return getZipCode.then(function (featureSet) {
+              var intersectGeom = esriGisGeometryService.getIntersectGeometries(bufferGeometry, featureSet.features[0].geometry);
+              return intersectGeom.then(function (intersectGeometries) {
+                  return intersectGeometries;
+              });
+          },
+            function (error) {
+                $('#load-modal').modal('hide');
+                var message = "error when trying to get zipcode. ";
+                return $q.reject({ "error": error, "message": message });
+            }
+          );
+      };
+
+
+      //function added to get Zipcode geometry for property based on the point geometry
+      var propertyZipCode = function ($scope, propertyGeom, bufferGeometry) {
+          var url = paConfig.urlZipCodeLayer;
+          var whereClause = "1=1"; 
+          return queryLayer($scope, url, whereClause, propertyGeom, true).then(
+            function (featureSet) {
+                if (featureSet.features != undefined && featureSet.features.length > 0) {
+                    return featureSet;                    
+                } else {
+                    var message = "No ZipCode found for this geometry";
+                    return $q.reject({ error: featureSet, message: message });
+                }
+            },
+            function (error) {
+                $('#load-modal').modal('hide');
+                var message = "error when trying to get zipcode. ";
+                return $q.reject({ "error": error, "message": message });
+            }
+          );
+      };
+
+
+      var assignColortoPropertySales = function ($scope, salesInformationArr, subjectPropertyInformation, propertyFeatureset) {
+          var index = 1;
+          var initRange;
+          var endRange;
+          var uniqueSalesArr = [];         
+          var salesInformation = [];
+          var saleIndex = 0;
+          _.each(salesInformationArr, function (saleProp) {
+              salesInformation.push({ sale: saleProp, index: saleIndex, type: 'sale' });
+              saleIndex++;
+          });
+          var subjectIndex = 0;
+          _.each(subjectPropertyInformation, function (subjectProp) {
+              if (subjectProp.salePrice) {
+                  salesInformation.push({ sale: subjectProp, index: subjectIndex, type: 'subject' });
+                  subjectIndex++;
+              }
+          });
+          var salesArray = uniqueSalesValues(salesInformation);
+          uniqueSalesArr = salesArray.filter(function (itm, i, a) {
+              return i == a.indexOf(itm);
+          });
+          uniqueSalesArr.sort(function (a, b) {
+              if (a < b)
+                  return -1;
+              if (a >= b)
+                  return 1;
+          });
+          var saleRange;
+          $scope.uniqueSalesValues = uniqueSalesArr;
+          if (uniqueSalesArr.length > 6) {
+              saleRange = Math.floor(uniqueSalesArr.length / 6);
+          }
+          else {
+              saleRange = 1;
+          }
+          _.each(salesInformation, function (sale) {
+              //console.log("sale", sale);
+              var highlightColor;
+              var highlightColorSale;
+              var propertyPrice = sale.sale.salePrice;
+              switch (propertyPrice >= 0) {
+                  case (propertyPrice <= (uniqueSalesArr[(saleRange * 1) - 1])):
+                      highlightColor = paConfig.salesPropertyColors.color1;
+                      highlightColorSale = paConfig.salesPropertyColors.color1Code;
+                      break;
+                  case (propertyPrice > (uniqueSalesArr[(saleRange * 1) - 1]) && propertyPrice <= (uniqueSalesArr[(saleRange * 2) - 1])):
+                      highlightColor = paConfig.salesPropertyColors.color2;
+                      highlightColorSale = paConfig.salesPropertyColors.color2Code;
+                      break;
+                  case (propertyPrice > (uniqueSalesArr[(saleRange * 2) - 1]) && propertyPrice <= (uniqueSalesArr[(saleRange * 3) - 1])):
+                      highlightColor = paConfig.salesPropertyColors.color3;
+                      highlightColorSale = paConfig.salesPropertyColors.color3Code;
+                      break;
+                  case (propertyPrice > (uniqueSalesArr[(saleRange * 3) - 1]) && propertyPrice <= (uniqueSalesArr[(saleRange * 4) - 1])):
+                      highlightColor = paConfig.salesPropertyColors.color4;
+                      highlightColorSale = paConfig.salesPropertyColors.color4Code;
+                      break;
+                  case (propertyPrice > (uniqueSalesArr[(saleRange * 4) - 1]) && propertyPrice <= (uniqueSalesArr[(saleRange * 5) - 1])):
+                      highlightColor = paConfig.salesPropertyColors.color5;
+                      highlightColorSale = paConfig.salesPropertyColors.color5Code;
+                      break;
+                  case (propertyPrice > (salesArray[(saleRange * 5) - 1])):
+                      highlightColor = paConfig.salesPropertyColors.color6;
+                      highlightColorSale = paConfig.salesPropertyColors.color6Code;
+                      break;
+                  default:
+                      highlightColor = paConfig.salesPropertyColors.color6;
+                      highlightColorSale = paConfig.salesPropertyColors.color6Code;
+                      break;
+              }
+              sale.sale.highlightColor = highlightColor;
+              var getSalesCount = addSalesCountParentFolio(salesInformation, sale.sale.parentFolio);
+              var saleGeometry =  getSalePropertyGeometry(propertyFeatureset,sale.sale.parentFolio);
+              if (sale.type === "sale") {
+                  salesInformationArr[sale.index].highlightColor = highlightColor;
+                  salesInformationArr[sale.index].highlightColorCode = highlightColorSale;
+                  salesInformationArr[sale.index].totalSalesCount = getSalesCount;
+                  salesInformationArr[sale.index].geometry = saleGeometry;
+              }
+              if (sale.type === "subject") {
+                  subjectPropertyInformation[sale.index].highlightColor = highlightColor;
+                  subjectPropertyInformation[sale.index].highlightColorCode = highlightColorSale;
+                  subjectPropertyInformation[sale.index].totalSalesCount = getSalesCount;
+                  subjectPropertyInformation[sale.index].geometry = saleGeometry;
+              }              
+          });
+      };
+
+
+      //returns unique sales price value
+      var uniqueSalesValues = function (salesInformation) {
+          var salesArray = [];
+          _.each(salesInformation, function (sale) {
+              salesArray.push(sale.sale.salePrice);             
+          });
+          //console.log("salesArray", salesArray);
+          return salesArray;
+      };      
+      
+
+      //function added to add count for all sales based on the PARENT folio
+      var addSalesCountParentFolio = function (salesInformationArr, parentFolio) {
+          var count = 0;
+          _.each(salesInformationArr, function (sale) {
+              if (sale.sale.parentFolio === parentFolio) {
+                  count++;
+              }
+          });
+          return count;
+      };
+
+
+
+      var getSalePropertyGeometry = function (propertyFeatureSet, parentFolio) {
+          var returnGeometry;
+          _.each(propertyFeatureSet.featureSet, function (property) {
+              if (property.attributes.FOLIO === parentFolio) {
+                  returnGeometry = property.geometry;                  
+              }
+          });
+          return returnGeometry;
+      };
+
+      // public API
+      return {
+          getXYFromFolio: xyFromFolio,
+          getGraphicMarkerFromXY: graphicMarkerFromXY,
+          getPolygonFromFolio: polygonFromFolio,
+          getGraphicMarkerFromPolygon: graphicMarkerFromPolygon,
+          getFolioFromPoint: folioFromPoint,
+          getGeometryFromPointLayerIntersection: geometryFromPointLayerIntersection,
+          getFeatureFromPointLayerIntersection: featureFromPointLayerIntersection,
+          getFeaturesInCircle: featuresInCircle,
+          getGeometryAndFolioFromXY: geometryAndFolioFromXY,
+          getSalesInformation: PAPropertySalesInformation,
+          getGraphicMarkerFromBufferPolygon: graphicMarkerFromBufferPolygon,
+          getAddPropertyGeometrytoMap: addPropertyGeometrytoMap,
+          getAddSalesPropertytoMap: addSalesPropertytoMap,
+          getPropertyZipCode: propertyZipCode,
+          getAssignColortoPropertySales: assignColortoPropertySales
+      };
+  }]);

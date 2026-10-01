@@ -7,10 +7,10 @@ from typing import Any
 
 
 from app.agents.orchestrator import Orchestrator
-
+from app.drivers.browser_registry import get_driver
 from app.extraction.schemas import QueryType
-
 from app.queue.playwright_runner import run_async_in_playwright_thread
+from app.queue.run_cancellation import clear_run_cancelled, is_run_cancelled, mark_run_cancelled
 
 from app.report.report_builder import ReportBuilder
 
@@ -61,6 +61,7 @@ async def enqueue_run(
     def _on_done(t: asyncio.Task[Any]) -> None:
 
         _running_tasks.pop(run_id, None)
+        clear_run_cancelled(run_id)
 
         if not t.cancelled() and t.exception():
 
@@ -189,5 +190,24 @@ def get_task_status(run_id: str) -> str | None:
         return "done"
 
     return "running"
+
+
+def cancel_run(run_id: str) -> bool:
+    """Request cooperative cancellation of a running pipeline."""
+    mark_run_cancelled(run_id)
+    driver = get_driver(run_id)
+    if driver:
+        driver.request_cancellation()
+    task = _running_tasks.get(run_id)
+    if task and not task.done():
+        task.cancel()
+    return True
+
+
+def is_run_active(run_id: str) -> bool:
+    if is_run_cancelled(run_id):
+        return False
+    task = _running_tasks.get(run_id)
+    return task is not None and not task.done()
 
 

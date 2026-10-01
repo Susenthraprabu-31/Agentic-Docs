@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import ChainOfTitle, { mergeChainEntries } from "../components/ChainOfTitle";
 import DocumentsList from "../components/DocumentsList";
 import GisMapPreview from "../components/GisMapPreview";
+import NameSearches, { NameSearchEntry } from "../components/NameSearches";
 import PropertyDetails from "../components/PropertyDetails";
 import ReportPreview from "../components/ReportPreview";
 import TaxRecords from "../components/TaxRecords";
@@ -34,6 +35,7 @@ export default function ReportView() {
   const county = report?.report_json?.county;
   const queryType = report?.report_json?.query_type;
   const queryValue = report?.report_json?.query_value;
+  const nameSearches = (report?.report_json?.name_searches || []) as NameSearchEntry[];
 
   const firstDoc = documents[0];
 
@@ -121,6 +123,7 @@ export default function ReportView() {
 
           <TaxRecords taxRecord={taxRecord as Parameters<typeof TaxRecords>[0]["taxRecord"]} />
           <DocumentsList documents={documents} runId={runId} />
+          <NameSearches entries={nameSearches} />
           <ChainOfTitle entries={chainEntries} currentOwner={currentOwner || firstDoc?.grantee} />
         </>
       )}

@@ -12,6 +12,8 @@ export interface PipelineNodeData {
 
   url?: string;
 
+  portalType?: "assessor" | "recorder" | "tax" | "gis";
+
   playwrightNotes?: string;
 
   enabled?: boolean;
@@ -33,6 +35,16 @@ export interface PipelineNodeData {
   bookNumber?: string;
 
   pageNumber?: string;
+
+  searchScope?: "current" | "full";
+
+  searchLimit?: number;
+
+  expandVariations?: boolean;
+
+  partyType?: "both" | "grantor" | "grantee";
+
+  maxNames?: number;
 
   // AI Agent fields
 
@@ -100,6 +112,10 @@ export const DEFAULT_NODES: Node<PipelineNodeData>[] = [
       queryType: "owner",
 
       queryValue: "",
+
+      searchScope: "full",
+
+      searchLimit: 0,
 
     },
 
@@ -169,7 +185,7 @@ export const DEFAULT_NODES: Node<PipelineNodeData>[] = [
 
       url: "",
 
-      playwrightNotes: "e.g. Click parcel search tab, fill owner field, wait for results table",
+      playwrightNotes: "Uses Input query type: Address opens ADDRESS tab, Owner opens OWNER NAME tab, Parcel opens FOLIO tab.",
 
     },
 
@@ -415,6 +431,8 @@ export function getInputFromNodes(nodes: Node<PipelineNodeData>[]) {
     parcelNumber: (input?.data.parcelNumber as string) || "",
     bookNumber: input?.data.bookNumber || "",
     pageNumber: input?.data.pageNumber || "",
+    searchScope: (input?.data.searchScope as "current" | "full") || "full",
+    searchLimit: (input?.data.searchLimit as number) ?? 0,
   };
 }
 

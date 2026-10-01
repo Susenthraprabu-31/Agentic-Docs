@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any, Literal, Union
 
+from app.agents.llm_client import chat_completions_create_sync
 from app.config.settings import get_settings
 from app.extraction.schemas import ParcelRecord, RecordedDocument
 from app.extraction.florida_extractors import is_garbage_assessor_text
@@ -73,15 +74,18 @@ class ExtractionNormalizer:
             prompt += f"\n\nPartial data already extracted:\n{json.dumps(partial_dict, default=str)}"
 
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You extract public records fields into JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {"name": f"{source}_record", "schema": schema},
+            response, _provider = chat_completions_create_sync(
+                openai_client=client,
+                create_kwargs={
+                    "model": "gpt-4o",
+                    "messages": [
+                        {"role": "system", "content": "You extract public records fields into JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {"name": f"{source}_record", "schema": schema},
+                    },
                 },
             )
             content = response.choices[0].message.content or "{}"

@@ -28,6 +28,18 @@ def test_deduplicate_documents_by_instrument():
     assert len(result) == 2
 
 
+def test_deduplicate_documents_keeps_distinct_book_pages_with_same_instrument():
+    docs = [
+        {"id": "1", "instrument_number": "2016 R 472151", "book_page": "15513/670"},
+        {"id": "2", "instrument_number": "2016 R 472151", "book_page": "15755/674"},
+        {"id": "3", "instrument_number": "2016 R 472151", "book_page": "15755/674", "grantor": "Duplicate"},
+    ]
+    result = deduplicate_documents(docs)
+    assert len(result) == 2
+    book_pages = {doc["book_page"] for doc in result}
+    assert book_pages == {"15513/670", "15755/674"}
+
+
 def test_normalize_run_data_removes_duplicate_rows():
     run_id = "normalize-run-test"
     mem = get_memory_store()

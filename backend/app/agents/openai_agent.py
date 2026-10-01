@@ -1,11 +1,11 @@
 """OpenAI Agent node — API key loaded from backend .env only."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any, Optional
 
+from app.agents.llm_client import chat_completions_create
 from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,10 @@ class OpenAIAgentService:
             create_kwargs["max_tokens"] = max_tokens
 
         try:
-            response = await asyncio.to_thread(client.chat.completions.create, **create_kwargs)
+            response, provider_model = await chat_completions_create(
+                openai_client=client,
+                create_kwargs=create_kwargs,
+            )
         except Exception as exc:
             err_str = str(exc).lower()
             if "model" in err_str and ("not_found" in err_str or "does not exist" in err_str or "access" in err_str):
@@ -163,10 +166,16 @@ class OpenAIAgentService:
                         {"role": "system", "content": instructions},
                         {"role": "user", "content": user_message},
                     ]
-                response = await asyncio.to_thread(client.chat.completions.create, **create_kwargs)
+                response, provider_model = await chat_completions_create(
+                    openai_client=client,
+                    create_kwargs=create_kwargs,
+                )
                 target_model = f"{target_model} (fallback: {fallback_model})"
             else:
                 raise
+
+        if provider_model.startswith("groq:"):
+            target_model = provider_model
 
         content = response.choices[0].message.content or ""
         usage = response.usage

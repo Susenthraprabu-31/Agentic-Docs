@@ -115,12 +115,14 @@ function ConfigurationTab({
   const [layoutType, setLayoutType] = useState<string | null>(null);
 
   const isInput = nodeId === "input";
+  const isNameSearcher = nodeId === "name_searcher";
   const isReport = nodeId === "report";
   const isChatbot = nodeId === "chatbot";
   const isAiAgent = nodeId === "ai_agent" || isChatbot;
-  const showUrl = ["netr", "assessor", "recorder", "gis", "tax"].includes(nodeId);
-  const showNotes = ["netr", "assessor", "recorder", "gis", "tax", "platform", "normalizer"].includes(nodeId);
-  const showAiGenerate = ["netr", "assessor", "recorder", "gis", "tax"].includes(nodeId);
+  const isPortalGate = nodeId === "portal_gate";
+  const showUrl = ["netr", "portal_gate", "assessor", "recorder", "name_searcher", "gis", "tax"].includes(nodeId);
+  const showNotes = ["netr", "portal_gate", "assessor", "recorder", "name_searcher", "gis", "tax", "platform", "normalizer"].includes(nodeId);
+  const showAiGenerate = ["netr", "assessor", "recorder", "name_searcher", "gis", "tax"].includes(nodeId);
 
   const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
   const [testingAi, setTestingAi] = useState(false);
@@ -520,14 +522,100 @@ function ConfigurationTab({
           </div>
         </div>
 
+        {/* Search Scope */}
+        <div>
+          <label className={labelClass}>Search Scope</label>
+          <select
+            value={(data.searchScope as string) || "full"}
+            onChange={(e) => patch({ searchScope: e.target.value as "current" | "full" })}
+            className={fieldClass}
+          >
+            <option value="current">Current Search</option>
+            <option value="full">Full Search</option>
+          </select>
+          <p className="text-[10px] text-zinc-500 mt-1">
+            Current Search downloads only the latest assessor sale deed. Full Search downloads all assessor sales history.
+          </p>
+        </div>
+
         {/* Search Limit */}
         <div>
           <label className={labelClass}>Search Limit</label>
           <select
-            value={(data.searchLimit as number) || 1}
+            value={(data.searchLimit as number) ?? 0}
             onChange={(e) => patch({ searchLimit: Number(e.target.value) })}
             className={fieldClass}
           >
+            <option value={0}>All</option>
+            <option value={1}>1</option>
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+          </select>
+        </div>
+      </div>
+    );
+  }
+
+  if (isNameSearcher) {
+    return (
+      <div className="p-4 space-y-3.5 overflow-y-auto">
+        <div>
+          <p className={`text-xs ${isDark ? "text-zinc-400" : "text-slate-600 font-medium"}`}>
+            Reads party names from the upstream Recorder node, then runs follow-up recorder
+            searches for each extracted grantor/grantee.
+          </p>
+        </div>
+
+        <div>
+          <label className={labelClass}>Party Type</label>
+          <select
+            value={(data.partyType as string) || "both"}
+            onChange={(e) => patch({ partyType: e.target.value as "both" | "grantor" | "grantee" })}
+            className={fieldClass}
+          >
+            <option value="both">Both (Direct + Reverse)</option>
+            <option value="grantor">Grantor / Direct</option>
+            <option value="grantee">Grantee / Reverse</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={labelClass}>Expand Name Variations</label>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input
+              type="checkbox"
+              checked={Boolean(data.expandVariations)}
+              onChange={(e) => patch({ expandVariations: e.target.checked })}
+            />
+            Generate nickname and entity permutations before searching
+          </label>
+        </div>
+
+        <div>
+          <label className={labelClass}>Max Names To Search</label>
+          <select
+            value={(data.maxNames as number) ?? 0}
+            onChange={(e) => patch({ maxNames: Number(e.target.value) })}
+            className={fieldClass}
+          >
+            <option value={0}>All extracted names</option>
+            <option value={1}>1</option>
+            <option value={3}>3</option>
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={labelClass}>Results Per Name</label>
+          <select
+            value={(data.searchLimit as number) ?? 0}
+            onChange={(e) => patch({ searchLimit: Number(e.target.value) })}
+            className={fieldClass}
+          >
+            <option value={0}>All</option>
             <option value={1}>1</option>
             <option value={5}>5</option>
             <option value={10}>10</option>
@@ -839,6 +927,25 @@ function ConfigurationTab({
   // ── Other pipeline nodes ───────────────────────────────────────────────────
   return (
     <div className="p-4 space-y-4 overflow-y-auto">
+      {isPortalGate && (
+        <div>
+          <label className={labelClass}>Portal type</label>
+          <select
+            value={String(data.portalType || "assessor")}
+            onChange={(e) => patch({ portalType: e.target.value })}
+            className={fieldClass}
+          >
+            <option value="assessor">Assessor / Property Appraiser</option>
+            <option value="recorder">Recorder / Clerk</option>
+            <option value="tax">Tax Collector</option>
+            <option value="gis">GIS / Map</option>
+          </select>
+          <p className={`mt-1.5 text-[10px] ${isDark ? "text-zinc-500" : "text-slate-500"}`}>
+            Opens the portal and waits for Cloudflare verification in Live Browser. Session cookies are saved per county host.
+          </p>
+        </div>
+      )}
+
       {showUrl && (
         <div>
           <label className={labelClass}>URL</label>

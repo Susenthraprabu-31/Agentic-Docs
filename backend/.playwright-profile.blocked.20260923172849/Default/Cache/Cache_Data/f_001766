@@ -1,0 +1,246 @@
+﻿<div class="table-responsive" id="divAdvanceSearchArea">
+    <table class="table table-condensed " id="tableAdvancedSearch">
+        <thead>
+            <tr>
+                <th class="tableHeader" colspan="14">Advance Search <span id="adv_search_header"
+                    class="glyphicon glyphicon-minus-sign" ng-click="toggleAdvanceSearch($event)"
+                    style="float: left; padding-right: 30px; padding-top: 8px;" title="Minimize Advance Search"></span>
+                </th>
+            </tr>
+        </thead>
+        <tr>
+            <td>
+                <div class="no-gutter row">
+                    <div id="advSearchHeader" class="col-md-12 col-sm-12 col-xs-12" style="color: red; font-weight: bold;">
+                        <p style="white-space: pre; padding: 0px; margin: 0px;">{{ defaultValues.headerMessage | breakFilter }}</p>
+                    </div>
+                </div>
+                <div class="no-gutter row">
+                    <div class="col-md-6 col-sm-12 col-xs-12">
+                        <div class="control-group">
+                            <!--salesPropertyType-->
+                            <div class="form-inline">
+                                <label class="inputHeading inputLabelWidth searchAlignmentRight">
+                                    <strong>Property Type:</strong>
+                                </label>
+                                <div id="divSalesPropType" class="btn-group" style="width: 280px;" ng-keyup="gotoSelectedSales($event)">
+                                    <button id="btnPropertyType" value="" type="button" class="btn btn-default dropdown-toggle"
+                                        data-toggle="dropdown" style="text-align: left; width: 100%">
+                                        All
+                                    <span class="caret pull-right" style="margin-top: 5px;"></span>
+                                    </button>
+                                    <ul id="ulPropertyType" class="dropdown-menu layer-ul"
+                                        role="menu" style="height: 200px; overflow: auto; width: 300px;">
+                                        <span ng-repeat="dorCodeVal in defaultValues.dorCode">
+                                            <li ng-click="resetPropertyTypeValue(this)">{{ dorCodeVal }}</li>
+                                            <li class="divider" ng-show="!$last"></li>
+                                        </span>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="divAdvSearchSubReport" class="col-md-6 col-sm-12 col-xs-12">
+                        <!--salesQualification-->
+                        <div class="form-inline">
+                            <label class="inputHeading inputLabelWidthR searchAlignmentRight"><strong>Sale Qualification:</strong></label>
+                            <div class="btn-group" style="width: 280px;" ng-keyup="gotoSelectedProperty($event)">
+                                <button value="" id="btnSalesQual" type="button" class="btn btn-default dropdown-toggle"
+                                    data-toggle="dropdown" style="width: 100%; text-align: left;">
+                                    All
+                                <span class="caret pull-right" style="margin-top: 5px;"></span>
+                                </button>
+                                <ul id="ulSaleQual" class="dropdown-menu layer-ul" role="menu" style="height: 200px; width: 300px; overflow: auto;">
+                                    <!--<span ng-repeat="saleQualiVal in defaultValues.salesQualifications">-->
+                                    <span ng-repeat="saleQualiVal in salesQualiArr">
+                                        <li ng-click="resetSalesQualValue(this)"><span ng-show="saleQualiVal.code">{{ saleQualiVal.code }} - </span>{{saleQualiVal.description}}</li>
+                                        <li class="divider" ng-show="!$last"></li>
+                                    </span>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                  <div class="no-gutter row">
+                   
+                    <div id="div2" class="col-md-6 col-sm-12 col-xs-12">
+                        <div class="control-group">
+                        <!--PAPrimaryZoning Code{{ zoneCodeVal.code }} --->
+                        <div class="form-inline">
+                            <label class="inputHeading inputLabelWidth searchAlignmentRight"><strong>PA Primary Zone:</strong></label>
+                            <div class="btn-group" style="width: 280px;" ng-keyup="gotoPrimaryZoning($event)">
+                                <button value="" id="btnPrimaryZoning" type="button" class="btn btn-default dropdown-toggle"
+                                    data-toggle="dropdown" style="width: 100%; text-align: left;">
+                                    All
+                                <span class="caret pull-right" style="margin-top: 5px;"></span>
+                                </button>
+                                <ul id="ulPrimaryZoning" class="dropdown-menu layer-ul"
+                                     role="menu" style="height: 200px; width: 300px; overflow: auto;">
+                                    <span ng-repeat="zoneCodeVal in defaultValues.zoneCodes">
+                                        <li ng-click="resetZoneCodeValue(this)"><span ng-show="zoneCodeVal.code"> </span>{{zoneCodeVal.shortDescription}}</li>
+                                        <li class="divider" ng-show="!$last"></li>
+                                    </span>
+                                </ul>
+                            </div>
+                             </div>
+                        </div>
+                    </div>
+                       <div class="col-md-6 col-sm-12 col-xs-12">
+                        <div class="control-group">
+                            <!--empty column-->
+                            <div class="form-inline">
+                               
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Sale Price/Bedrooms -->
+                <div id="divSubAdvSearchMore">
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline">
+                                <label class="inputHeading inputLabelWidth searchAlignmentRight"><strong>Sale Price:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Price"
+                                    id="input_min_sales" ng-model="min_sales" only-num />
+                                <label class="inputHeading "><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Price"
+                                    id="input_max_sales" ng-model="max_sales" only-num />
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidthR searchAlignmentRight"><strong>Bedrooms:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Number"
+                                    id="input_min_bedroom" ng-model="min_bedroom" only-num />
+                                <label class="inputHeading"><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Number"
+                                    id="input_max_bedroom" ng-model="max_bedroom" only-num />
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Adjusted Area/Bathrooms -->
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidth searchAlignmentRight"><strong>Adjusted Area:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Sq Feet"
+                                    id="input_min_adj_area" ng-model="min_adj_area" only-num />
+                                <label class="inputHeading "><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Sq Feet"
+                                    id="input_max_adj_area" ng-model="max_adj_area" only-num />
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidthR searchAlignmentRight"><strong>Bathrooms:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Number"
+                                    id="input_min_bathrooms" ng-model="min_bathrooms" only-num />
+                                <label class="inputHeading"><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Number"
+                                    id="input_max_bathrooms" ng-model="max_bathrooms" only-num />
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Living SqFt / Actual SqFt -->
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidth searchAlignmentRight"><strong>Living SqFt:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Sq Feet"
+                                    id="input_min_livingsqft" ng-model="min_living_sqft" only-num />
+                                <label class="inputHeading "><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Sq Feet"
+                                    id="input_max_livingsqft" ng-model="max_living_sqft" only-num />
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidthR searchAlignmentRight"><strong>Lot Size:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Sq Feet"
+                                    id="input_min_lotsize" ng-model="min_lotsize" only-num />
+                                <label class="inputHeading "><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Sq Feet"
+                                    id="input_max_lotsize" ng-model="max_lotsize" only-num />
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Lot Size/Year Built -->
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidth searchAlignmentRight"><strong>Actual SqFt:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Sq Feet"
+                                    id="input_min_actualsqft" ng-model="min_actual_sqft" only-num />
+                                <label class="inputHeading"><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Sq Feet"
+                                    id="input_max_actualsqft" ng-model="max_actual_sqft" only-num />
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-sm-12 col-xs-6">
+                            <div class="form-inline" ng-controller="MyCtrl">
+                                <label class="inputHeading inputLabelWidthR searchAlignmentRight"><strong>Year Built:</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Min Year"
+                                    id="input_min_yearbuilt" ng-model="min_yearbuilt" only-num />
+                                <label class="inputHeading"><strong>to</strong></label>
+                                <input name="" type="number" class="form-control inputClass" placeholder="Max Year"
+                                    id="input_max_yearbuilt" ng-model="max_yearbuilt" only-num />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-12">
+                            <div style="padding-left: 100px;">
+                                <label class="inputHeading">
+                                    <input type="checkbox" style="margin-top: 10px;" id="cbMunicipality">
+                                    &nbsp;&nbsp;Only include sales within selected property’s city boundaries
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-offset-3 col-md-1 col-sm-1 col-xs-1">
+                            <button id="btnAdvanceSearch" aria-label="advanced search button" class="btn btn-default btn-primary" id="adv_search_submit" type="button" ng-click="validateSearch()">
+                                <span class="glyphicon glyphicon-search"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-12">
+                            <div style="padding-left: 100px;">
+                                <label class="inputHeading">
+                                    <input type="checkbox" style="margin-top: 10px;" id="cbZipcode">
+                                    &nbsp;&nbsp;Only include sales within the selected property’s zip code
+                                </label>
+                            </div>
+                        </div>                      
+                    </div>
+                    <div class="no-gutter row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-6 col-sm-12 col-xs-12">
+                            <div style="padding-left: 100px;">
+                                <label class="inputHeading">
+                                    <input type="checkbox" style="margin-top: 10px;" id="cbSubDiv">
+                                    &nbsp;&nbsp;Only include sales within the selected property’s subdivision
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <!--    <div class="row subAdvancedSearch subSearchPadding">
+                        <div class="col-md-12 col-sm-12 col-xs-12">
+                            <div style="padding-left:100px;">
+                                <label class="inputHeading">
+                                    <input type="checkbox" style="margin-top:10px;">
+                                    &nbsp;&nbsp;If selected property is abutting a water body only select sales of similar properties
+                                </label>
+                            </div>
+                            
+                        </div>
+                    </div>-->
+                </div>
+                <div class="no-gutter row">
+                    <div id="advSearchFooter" class="col-md-12 col-sm-12 col-xs-12" style="color: red; font-weight: bold;">
+                        <p style="white-space: pre; padding: 0px; margin: 0px;">{{ defaultValues.footerMessage | breakFilter }}</p>
+                    </div>
+                </div>
+                <div style="height: 5px;">&nbsp;</div>
+            </td>
+        </tr>
+    </table>
+</div>

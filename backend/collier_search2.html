@@ -1,0 +1,201 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta content="width=device-width, initial-scale=1" name="viewport">
+	<meta content="noindex,nofollow" name="robots">
+	<meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <script src="/scripts/framed.js?version=20260924235449" type="text/javascript"></script>
+    <link href="/scripts/external/jquery-ui-1.13.3.custom/jquery-ui.min.css" rel="stylesheet" type="text/css" media="all">
+    <link href="/scripts/default.css?version=20260924235449" rel="stylesheet" type="text/css" media="all">
+    <script src="/scripts/external/jquery-ui-1.13.3.custom/external/jquery/jquery-3.6.1.min.js" type="text/javascript"></script>
+    <script src="/scripts/external/jquery-ui-1.13.3.custom/external/jquery.cookie.js" type="text/javascript"></script>
+    <script src="/scripts/external/jquery-ui-1.13.3.custom/jquery-ui.min.js" type="text/javascript"></script>
+    <script src="/scripts/default.js?version=20260924235449" type="text/javascript"></script>
+    <link href="/scripts/site-splash.css?version=20260924235449" rel="stylesheet" type="text/css" media="all">
+    <script src="/scripts/site-splash.js?version=20260924235449" type="text/javascript"></script>
+    <script>
+      const mapserver = 'maps'
+      const AppVersion = '20260924235449'
+      // ═══════════════════════════════════════════════════════════
+      // ENABLE/DISABLE SPLASH POPUP (Change here for immediate effect)
+      // ═══════════════════════════════════════════════════════════
+      const SPLASH_ENABLED = false;  // Set to true to enable popup
+      // ═══════════════════════════════════════════════════════════
+    </script>
+    <noscript>
+    <style>
+      body::before {
+        content: "This site requires JavaScript to function properly. Please enable it in your browser.";
+        display: block;
+        background: #ffecec;
+        color: #d8000c;
+        padding: 10px;
+        text-align: center;
+        font-weight: bold;
+      }
+    </style>
+    </noscript>    
+	<title>Access Restricted - Collier County Property Appraiser</title>
+	<style>
+		body { margin: 0; padding: 20px 0; color: #003366; text-align: center; }
+		* { font-family: Arial, Helvetica, sans-serif !important; }
+
+		.container {
+			background: #fff; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,.2);
+			padding: 1px 24px 24px; max-width: 560px; margin: 40px auto; text-align: center;
+		}
+		h1 { color: red; text-align: center; margin-bottom: 6px; }
+		h1.ok { color: #2e7d32; }
+		.sub { color: #003366; font-size: 16px; margin-top: 0; line-height: 1.5; }
+
+		.steps { display: flex; justify-content: center; gap: 8px; margin: 18px 0 6px; font-size: 12px; color: #999; }
+		.steps span { padding: 4px 10px; border-radius: 12px; background: #f0f0f0; }
+		.steps span.on { background: #003366; color: #fff; font-weight: bold; }
+		.steps span.done { background: #eaf6ea; color: #2e7d32; }
+
+		.notice { border-radius: 6px; padding: 16px 18px; margin: 18px 0; text-align: left; font-size: 16px; line-height: 1.65; color: #003366; }
+		.notice-grey  { background: #F3FAF5; border: 1px solid #20B2AA; }   /* site announcement green + header teal */
+		.notice-green { background: #F3FAF5; border: 1px solid #20B2AA; }
+		.notice p { margin: 0 0 10px; }
+		.notice p:last-child { margin-bottom: 0; }
+		.notice strong { color: #003366; }
+
+		form.req { text-align: left; margin-top: 16px; }
+		form.req label { display: block; margin-top: 14px; font-weight: bold; font-size: 14px; }
+		form.req .hint { font-weight: normal; color: #666; font-size: 12px; }
+		form.req input[type=text], form.req input[type=email], form.req input[type=tel], form.req textarea {
+			width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box;
+		}
+		form.req input:focus, form.req textarea:focus { border-color: #003366; outline: none; box-shadow: 0 0 0 3px rgba(0,51,102,.12); }
+		form.req textarea { min-height: 90px; }
+
+		.radio-row { font-weight: normal; font-size: 14px; margin-top: 6px; }
+		.radio-row label { display: inline; font-weight: normal; margin-right: 18px; }
+		.agree { margin-top: 18px; font-size: 13px; line-height: 1.5; background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; padding: 12px; }
+		.agree label { font-weight: normal; margin-top: 0; }
+
+		.chal-image { border: 2px solid #999; border-radius: 6px; margin: 10px 0; background: #f0f0f0; vertical-align: middle; }
+		.chal-input {
+			font-size: 20px; text-align: center; width: 170px; padding: 8px; letter-spacing: 6px; text-transform: uppercase;
+			border: 2px solid #ccc; border-radius: 6px; font-family: 'Courier New', Courier, monospace !important;
+		}
+
+		.code-input {
+			font-size: 34px; text-align: center; width: 260px; padding: 12px 0; letter-spacing: 14px; text-indent: 14px;
+			border: 2px solid #ccc; border-radius: 8px; font-family: 'Courier New', Courier, monospace !important;
+		}
+		.code-input:focus { border-color: #003366; outline: none; box-shadow: 0 0 0 3px rgba(0,51,102,.12); }
+
+		.err { color: #d8000c; font-weight: bold; margin-top: 14px; text-align: center; }
+		.ok-msg { color: #2e7d32; font-weight: bold; margin-top: 14px; text-align: center; }
+		.submit-row { text-align: center; margin-top: 20px; }
+		.btn.wide { min-width: 220px; }
+
+		.help { margin-top: 22px; padding-top: 16px; border-top: 1px solid #e6e6e6; font-size: 13px; color: #555; text-align: center; line-height: 2; }
+		.help a, .linkbtn { color: #0066cc; text-decoration: underline; }
+		.linkbtn { background: none; border: none; padding: 0; cursor: pointer; font-size: 13px; font-family: inherit; }
+		.linkbtn:disabled { color: #999; text-decoration: none; cursor: default; }
+
+		.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+		@media (max-width: 600px) {
+			.container { padding: 5px 18px 20px; max-width: 100%; margin: 16px; }
+			.code-input { width: 100%; max-width: 260px; }
+		}
+	</style>
+</head>
+
+<body>
+
+	<div class="container">
+
+
+
+		<h1>Access Restricted</h1>
+		<div class="steps"><span class="on">1 Email</span><span>2 Code</span><span>3 Details</span></div>
+		<p class="sub">Your access to this website has been restricted due to automated activity.</p>
+
+		<div class="notice notice-grey">
+			<p><strong>Why this happens.</strong> Collier County property records are public and
+				we want them to stay easy for everyone to use. Two things force us to limit
+				automated collection: it slows the site down for every other visitor, and the
+				personal information in these records is increasingly harvested in bulk &mdash;
+				often with automated and AI tools &mdash; to impersonate people and commit
+				identity fraud.</p>
+			<!-- [2026-09] The rule itself, stated plainly. The page previously explained
+			     only WHY we limit collection (slowdown, identity fraud) and never said
+			     the tools are not permitted - so someone who used an AI assistant read
+			     the fraud paragraph, decided it was not about them, and answered "no
+			     automated software" in good faith. Naming the tools here is what makes
+			     the question on step 3 answerable honestly. -->
+			<p><strong>This includes AI assistants.</strong> Asking a tool such as Claude,
+				ChatGPT, Gemini, or Copilot to look something up on this site reaches us as
+				automated access. It is not permitted under our
+				Terms of Use (linked at the bottom of this page).</p>
+			<p>If you reached this page during ordinary use of the site, we apologize for the
+				inconvenience. To request that access be restored, start by verifying your
+				email address below.</p>
+		</div>
+
+		<form method="POST" action="/Main_Search/Security/blocked.html" class="req">
+			<input type="hidden" name="step" value="identify">
+			<div class="hp" aria-hidden="true">
+				<label for="hp_extra">Leave this field blank</label>
+				<input type="text" id="hp_extra" name="hp_extra" tabindex="-1" autocomplete="off">
+			</div>
+
+			<label for="req_email">Email address</label>
+			<input type="email" id="req_email" name="req_email" maxlength="255" required autofocus
+				autocomplete="email" value="">
+
+			<label for="req_email2">Confirm email address</label>
+			<input type="email" id="req_email2" name="req_email2" maxlength="255" required
+				autocomplete="email" value="">
+			<div id="emailMatchMsg" class="err" style="display:none;text-align:left;margin-top:6px">Email addresses do not match</div>
+
+			<label for="captcha_answer">Type the 5 characters from the image below</label>
+			<div style="text-align:center">
+				<img src="/Main_Search/Security/captcha_image.ashx?t=f0cl3287sssfl0jctszuxvqtl9m960br" alt="Verification image" class="chal-image"
+					width="260" height="70" draggable="false" style="user-select:none"><br>
+				<span class="hint" style="display:block;margin:4px 0">&#8595; enter the image characters here &#8595;</span>
+				<input type="text" id="captcha_answer" name="captcha_answer" class="chal-input"
+					maxlength="5" autocomplete="off" placeholder="_ _ _ _ _">
+			</div>
+
+			
+			<div class="submit-row">
+				<button type="submit" id="sendBtn" class="btn wide">Send Verification Code</button>
+			</div>
+		</form>
+
+		<script>
+		(function () {
+			// Live match check, like a password-reset form. The server re-checks on submit.
+			var a = document.getElementById("req_email"), b = document.getElementById("req_email2"),
+			    msg = document.getElementById("emailMatchMsg"), btn = document.getElementById("sendBtn");
+			function check() {
+				var mismatch = b.value !== "" && a.value.trim().toLowerCase() !== b.value.trim().toLowerCase();
+				b.setCustomValidity(mismatch ? "Email addresses do not match" : "");
+				msg.style.display = mismatch ? "block" : "none";
+				btn.disabled = mismatch;
+				if (window.jQuery && jQuery.fn.button) { jQuery(btn).button(mismatch ? "disable" : "enable"); }
+			}
+			a.addEventListener("input", check); b.addEventListener("input", check);
+		})();
+		</script>
+
+
+	</div>
+
+<script>
+$(".btn").button();
+
+</script>
+</body>
+
+</html>

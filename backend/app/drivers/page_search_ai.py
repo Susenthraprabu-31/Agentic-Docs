@@ -7,6 +7,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+from app.agents.llm_client import chat_completions_create
 from app.config.settings import get_settings
 from app.extraction.schemas import QueryType
 
@@ -34,6 +35,10 @@ PAGE_SNAPSHOT_JS = """
     const role = el.getAttribute('role');
     const text = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 60);
     if (role === 'tab' && text) return `[role="tab"]:has-text("${esc(text)}")`;
+
+    if (el.getAttribute('aria-hidden') === 'true') return null;
+    if ((el.className || '').match(/cssDebug|cssNoPrint/i)) return null;
+    if (el.id && /debug/i.test(el.id)) return null;
 
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       const type = (el.type || 'text').toLowerCase();
@@ -226,19 +231,21 @@ class PageSearchAI:
             user_payload["available_values"] = {k: v for k, v in available_values.items() if v}
 
         try:
-            response = await asyncio.to_thread(
-                client.chat.completions.create,
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": json.dumps(user_payload, ensure_ascii=False),
-                    },
-                ],
-                temperature=0.1,
-                max_tokens=600,
-                response_format={"type": "json_object"},
+            response, _provider = await chat_completions_create(
+                openai_client=client,
+                create_kwargs={
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {
+                            "role": "user",
+                            "content": json.dumps(user_payload, ensure_ascii=False),
+                        },
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 600,
+                    "response_format": {"type": "json_object"},
+                },
             )
             raw = response.choices[0].message.content or "{}"
             plan = json.loads(raw)
@@ -344,29 +351,9 @@ async def _click_selector(driver: "BaseDriver", selector: str) -> bool:
 
 
 async def _fill_selector(driver: "BaseDriver", selector: str, value: str) -> bool:
-    if not value:
-        return False
-    try:
-        loc = driver.page.locator(selector).first
-        if await loc.count() > 0 and await loc.is_visible(timeout=5_000):
-            await loc.click()
-            await loc.fill("")
-            try:
-                await loc.press_sequentially(value, delay=20)
-            except Exception:
-                await loc.fill(value)
-            await loc.evaluate(
-                """(el, val) => {
-                    el.value = val;
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                }""",
-                value,
-            )
-            return True
-    except Exception as exc:
-        logger.debug("AI fill failed %s: %s", selector, exc)
-    return False
+    from app.drivers.form_fill import fill_first_visible_input
+
+    return await fill_first_visible_input(driver, [selector], value, timeout_ms=5_000)
 
 
 async def execute_ai_page_search(
@@ -385,6 +372,16 @@ async def execute_ai_page_search(
     if not ai.is_configured:
         await driver._emit_status("OpenAI key not configured — skipping AI page analysis.")
         return False
+
+    if await driver.is_cloudflare_blocked():
+        await driver._emit_status(
+            "Cloudflare is blocking the county portal — complete verification in Live Browser, then re-run."
+        )
+        cleared = await driver.wait_for_portal_access(
+            success_selector="input, form, #ctlBodyPane, .widgetLabel",
+        )
+        if not cleared or await driver.is_cloudflare_blocked():
+            return False
 
     portal_label = "recorder" if portal_type == "recorder" else query_type.value
     await driver._emit_status(f"Analyzing page with AI ({portal_label} search)...")
