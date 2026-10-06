@@ -13,6 +13,7 @@ from app.extraction.schemas import RecordedDocument
 logger = logging.getLogger(__name__)
 
 RATE_LIMIT_PATTERN = re.compile(r"rate limit|rate_limited|status 429|\b429\b", re.I)
+_rate_limit_until: float = 0.0
 
 
 def is_rate_limit_error(message: str | None) -> bool:
@@ -24,6 +25,18 @@ class DocumentOcrService:
         self.settings = get_settings()
         self._client: Any = None
         self._client_error: str | None = None
+
+    def is_enabled(self) -> bool:
+        return bool(self.settings.mistral_ocr_enabled and self.settings.mistral_api_key)
+
+    def is_rate_limited(self) -> bool:
+        global _rate_limit_until
+        return _rate_limit_until > datetime.now(timezone.utc).timestamp()
+
+    def rate_limit_remaining_seconds(self) -> int:
+        global _rate_limit_until
+        remaining = int(_rate_limit_until - datetime.now(timezone.utc).timestamp())
+        return max(0, remaining)
 
     def _get_client(self) -> Any:
         if self._client is not None:
@@ -55,6 +68,33 @@ class DocumentOcrService:
         document_hint: Optional[str] = None,
     ) -> RecordedDocument:
         """Run Mistral OCR on a PDF or image and return structured recording details."""
+        if not self.settings.mistral_ocr_enabled:
+            return RecordedDocument(
+                document_type=document_hint or "Unknown",
+                screenshot_path=file_path,
+                ocr_json={
+                    "error": "Mistral OCR is disabled (set MISTRAL_OCR_ENABLED=true to re-enable)",
+                    "mistral_analyzed": False,
+                    "ocr_skipped": True,
+                },
+            )
+
+        if self.is_rate_limited():
+            remaining = self.rate_limit_remaining_seconds()
+            return RecordedDocument(
+                document_type=document_hint or "Unknown",
+                screenshot_path=file_path,
+                ocr_json={
+                    "error": (
+                        f"Mistral OCR rate limited — retry after {remaining}s "
+                        f"or upgrade your Mistral plan"
+                    ),
+                    "mistral_analyzed": False,
+                    "rate_limited": True,
+                    "ocr_skipped": True,
+                },
+            )
+
         client = self._get_client()
         path = Path(file_path)
         if not client:
@@ -147,8 +187,16 @@ class DocumentOcrService:
                 "mistral_analyzed": False,
             }
             if is_rate_limit_error(error_message):
+                global _rate_limit_until
+                cooldown = max(30.0, self.settings.mistral_ocr_rate_limit_cooldown_seconds)
+                _rate_limit_until = datetime.now(timezone.utc).timestamp() + cooldown
                 ocr_json["rate_limited"] = True
                 ocr_json["rate_limited_at"] = datetime.now(timezone.utc).isoformat()
+                ocr_json["ocr_skipped"] = True
+                logger.warning(
+                    "Mistral OCR rate limited; pausing OCR requests for %.0fs",
+                    cooldown,
+                )
             return RecordedDocument(
                 screenshot_path=file_path,
                 ocr_json=ocr_json,

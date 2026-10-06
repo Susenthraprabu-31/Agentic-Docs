@@ -10,6 +10,7 @@ interface Document {
   instrument_number?: string;
   grantor?: string;
   grantee?: string;
+  property_address?: string;
   source_url?: string;
   screenshot_path?: string;
   file_name?: string;
@@ -34,12 +35,24 @@ interface Document {
     prompt_tokens?: number;
     completion_tokens?: number;
     duration_ms?: number;
+    searched_name?: string;
+    property_address?: string;
+    address?: string;
+    party_name?: string;
+    card_index?: string;
   };
+}
+
+export interface NameSearchGroup {
+  name: string;
+  documents: Document[];
+  document_count?: number;
 }
 
 interface Props {
   documents: Document[];
   runId?: string;
+  nameSearchGroups?: NameSearchGroup[];
 }
 
 type DocumentCategory = "assessor" | "recorder" | "ai" | "other";
@@ -48,6 +61,14 @@ function getDocumentCategory(doc: Document): DocumentCategory {
   const source = doc.ocr_json?.source;
   if (source === "ai_agent" || doc.document_type === "AI Title Analysis") return "ai";
   if (source === "assessor" || source === "assessor_sales") return "assessor";
+  const folderName = doc.folder_name || doc.ocr_json?.folder_name || "";
+  if (
+    source === "name_searcher" ||
+    folderName.startsWith("name_search_") ||
+    folderName.startsWith("name_search/")
+  ) {
+    return "recorder";
+  }
   if (
     source === "recorder" ||
     !source ||
@@ -64,8 +85,117 @@ function sourceLabel(doc: Document): string {
   if (source === "ai_agent") return "OpenAI Agent";
   if (source === "assessor_sales") return "Assessor Sales";
   if (source === "assessor") return "Assessor";
+  if (source === "name_searcher") {
+    const searchedName = doc.ocr_json?.searched_name;
+    if (searchedName && isBookPageLabel(String(searchedName))) return "Recorder";
+    return "Name Search";
+  }
   if (source) return String(source);
   return "Recorder";
+}
+
+function getSearchedName(doc: Document): string | null {
+  const name = doc.ocr_json?.searched_name;
+  return name ? String(name).trim() : null;
+}
+
+function isBookPageLabel(value: string): boolean {
+  return /^\s*\d+\s*[/-]\s*\d+\s*$/i.test(value.trim());
+}
+
+function isPrimaryRecorderDocument(doc: Document): boolean {
+  const source = doc.ocr_json?.source;
+  if (source === "assessor" || source === "assessor_sales" || source === "ai_agent") return false;
+  if (getDocumentCategory(doc) !== "recorder") return false;
+  const searchedName = getSearchedName(doc);
+  if (!searchedName) return true;
+  return isBookPageLabel(searchedName);
+}
+
+function getPrimaryRecorderDocuments(
+  documents: Document[],
+  options?: {
+    providedPrimary?: Document[];
+    nameSearchGroups?: NameSearchGroup[];
+  },
+): Document[] {
+  const seen = new Set<string>();
+  const primary: Document[] = [];
+
+  const add = (doc: Document) => {
+    const ocr = doc.ocr_json || {};
+    const key =
+      doc.id ||
+      [
+        doc.book_page || "",
+        doc.instrument_number || "",
+        doc.document_type || "",
+        doc.grantor || "",
+        doc.grantee || "",
+        ocr.party_name || "",
+        ocr.property_address || "",
+        ocr.searched_name || "",
+        ocr.card_index || "",
+      ].join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    primary.push(doc);
+  };
+
+  for (const doc of options?.providedPrimary || []) {
+    if (isPrimaryRecorderDocument(doc)) add(doc);
+  }
+  for (const doc of documents) {
+    if (isPrimaryRecorderDocument(doc)) add(doc);
+  }
+  for (const group of options?.nameSearchGroups || []) {
+    if (isBookPageLabel(group.name)) {
+      for (const doc of group.documents || []) {
+        if (isPrimaryRecorderDocument(doc)) add(doc);
+      }
+    }
+  }
+
+  return primary;
+}
+
+function buildNameSearchGroups(
+  documents: Document[],
+  providedGroups?: NameSearchGroup[],
+): NameSearchGroup[] {
+  const isNameSearchDocument = (doc: Document) => {
+    const searchedName = getSearchedName(doc);
+    return Boolean(searchedName && !isBookPageLabel(searchedName));
+  };
+
+  if (providedGroups?.length) {
+    return providedGroups
+      .filter((group) => group.name && !isBookPageLabel(group.name))
+      .map((group) => ({
+        name: group.name,
+        documents: (group.documents || []).filter(isNameSearchDocument),
+        document_count: group.document_count ?? (group.documents || []).length,
+      }))
+      .filter((group) => group.documents.length > 0);
+  }
+
+  const order: string[] = [];
+  const grouped = new Map<string, Document[]>();
+  for (const doc of documents) {
+    const searchedName = getSearchedName(doc);
+    if (!searchedName || isBookPageLabel(searchedName)) continue;
+    if (!grouped.has(searchedName)) {
+      grouped.set(searchedName, []);
+      order.push(searchedName);
+    }
+    grouped.get(searchedName)!.push(doc);
+  }
+
+  return order.map((name) => ({
+    name,
+    documents: grouped.get(name) || [],
+    document_count: (grouped.get(name) || []).length,
+  }));
 }
 
 function resolvePreviewUrl(doc: Document): string | null {
@@ -98,19 +228,27 @@ function hasDownloadablePdf(doc: Document): boolean {
   const path = doc.screenshot_path || ocr.download_path || "";
   if (path.toLowerCase().endsWith(".pdf")) return true;
   if (ocr.source === "assessor" && (ocr.file_name || doc.file_name)) return true;
-  if (doc.folder_name?.startsWith("recorder_") || ocr.folder_name?.startsWith("recorder_")) return true;
+  const folderName = doc.folder_name || ocr.folder_name || "";
+  if (folderName.startsWith("recorder_")) return true;
+  if (folderName.startsWith("name_search_") || folderName.startsWith("name_search/")) return true;
   return Boolean(doc.file_name && doc.file_name.endsWith(".pdf"));
 }
 
 function resolveFolderAndFile(doc: Document): { folderName: string | null; fileName: string } {
   const ocr = doc.ocr_json || {};
+  const searchedName = ocr.searched_name ? String(ocr.searched_name).trim() : "";
+  const nameSlug = searchedName
+    ? searchedName.replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48)
+    : "";
   const folderName =
     doc.folder_name ||
     ocr.folder_name ||
     (ocr.source === "assessor"
       ? null
       : ocr.book_number && ocr.page_number
-        ? `recorder_${ocr.book_number}_${ocr.page_number}`
+        ? searchedName
+          ? `name_search/${nameSlug}/${ocr.book_number}_${ocr.page_number}`
+          : `recorder_${ocr.book_number}_${ocr.page_number}`
         : null);
   const fileName =
     doc.file_name ||
@@ -119,6 +257,16 @@ function resolveFolderAndFile(doc: Document): { folderName: string | null; fileN
     (folderName && ocr.source !== "assessor" ? `${folderName}.pdf` : null) ||
     "recorder_document.pdf";
   return { folderName, fileName };
+}
+
+function getDocumentAddress(doc: Document): string {
+  const ocr = doc.ocr_json || {};
+  return (
+    doc.property_address ||
+    ocr.property_address ||
+    ocr.address ||
+    ""
+  ).trim();
 }
 
 function DocumentTable({
@@ -149,6 +297,7 @@ function DocumentTable({
             <th className="py-2.5 px-3">Instrument #</th>
             <th className="py-2.5 px-3">Grantor</th>
             <th className="py-2.5 px-3">Grantee</th>
+            <th className="py-2.5 px-3">Address</th>
             <th className="py-2.5 px-3">Source</th>
             <th className="py-2.5 px-3">Action</th>
           </tr>
@@ -159,6 +308,7 @@ function DocumentTable({
             const bp =
               doc.book_page ||
               (ocr.book_number && ocr.page_number ? `${ocr.book_number}/${ocr.page_number}` : "—");
+            const address = getDocumentAddress(doc);
             const { fileName } = resolveFolderAndFile(doc);
             return (
               <tr key={doc.id || i} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 transition-colors">
@@ -172,6 +322,15 @@ function DocumentTable({
                 </td>
                 <td className="py-2.5 px-3 text-slate-800 dark:text-zinc-200">{doc.grantor || "—"}</td>
                 <td className="py-2.5 px-3 text-slate-800 dark:text-zinc-200">{doc.grantee || "—"}</td>
+                <td
+                  className={`py-2.5 px-3 text-xs ${
+                    address
+                      ? "font-semibold text-emerald-700 dark:text-emerald-300"
+                      : "text-slate-400 dark:text-zinc-500"
+                  }`}
+                >
+                  {address || "—"}
+                </td>
                 <td className="py-2.5 px-3 text-xs text-slate-500 dark:text-zinc-400">{sourceLabel(doc)}</td>
                 <td className="py-2.5 px-3">
                   {hasDownloadablePdf(doc) && runId ? (
@@ -442,7 +601,7 @@ function DocumentSection({
   );
 }
 
-export default function DocumentsList({ documents, runId }: Props) {
+export default function DocumentsList({ documents, runId, nameSearchGroups }: Props) {
   const [downloading, setDownloading] = React.useState(false);
 
   const assessorDocs = documents.filter((d) => getDocumentCategory(d) === "assessor");
@@ -450,8 +609,11 @@ export default function DocumentsList({ documents, runId }: Props) {
   const aiDocs = documents.filter((d) => getDocumentCategory(d) === "ai");
   const otherDocs = documents.filter((d) => getDocumentCategory(d) === "other");
 
+  const groupedNameSearches = buildNameSearchGroups(recorderDocs, nameSearchGroups);
+  const primaryRecorderDocs = recorderDocs.filter((d) => !getSearchedName(d));
+
   const assessorCards = assessorDocs.filter((d) => d.ocr_json?.source === "assessor" && hasDownloadablePdf(d));
-  const recorderCards = recorderDocs.filter((d) => hasDownloadablePdf(d));
+  const recorderCards = primaryRecorderDocs.filter((d) => hasDownloadablePdf(d));
 
   if (!documents.length) {
     return (
@@ -511,14 +673,28 @@ export default function DocumentsList({ documents, runId }: Props) {
 
       <DocumentSection
         title="Recorder Documents"
-        description="Official recorded deeds and instruments from the county clerk."
-        documents={[...recorderDocs, ...otherDocs]}
+        description="Official recorded deeds and instruments from the original recorder search."
+        documents={[...primaryRecorderDocs, ...otherDocs]}
         cardDocuments={recorderCards}
         runId={runId}
         downloading={downloading}
         onDownload={handleDownload}
         accent="recorder"
       />
+
+      {groupedNameSearches.map((group) => (
+        <DocumentSection
+          key={group.name}
+          title={`Name Search: ${group.name}`}
+          description={`${group.document_count ?? group.documents.length} record(s) found for this party name search.`}
+          documents={group.documents}
+          cardDocuments={group.documents.filter((d) => hasDownloadablePdf(d))}
+          runId={runId}
+          downloading={downloading}
+          onDownload={handleDownload}
+          accent="recorder"
+        />
+      ))}
 
       {aiDocs.length > 0 && (
         <section className="mt-8 pt-6 border-t-2 border-purple-200 dark:border-purple-900/50">
@@ -534,3 +710,17 @@ export default function DocumentsList({ documents, runId }: Props) {
     </div>
   );
 }
+
+export type { Document };
+export {
+  getDocumentCategory,
+  getDocumentAddress,
+  getSearchedName,
+  isBookPageLabel,
+  isPrimaryRecorderDocument,
+  getPrimaryRecorderDocuments,
+  buildNameSearchGroups,
+  DocumentTable,
+  hasDownloadablePdf,
+  resolveFolderAndFile,
+};

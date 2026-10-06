@@ -19,8 +19,17 @@ logger = logging.getLogger(__name__)
 
 TAX_TABS = ("Taxes", "Assessments", "Legal Description", "Payment History")
 
-# How many most-recent annual bills to open via the info (i) icon and download.
+# How many most-recent annual bills to open via the info (i) icon and download (current search).
 ANNUAL_BILLS_TO_CAPTURE = 2
+
+
+def resolve_annual_bills_capture_count(search_scope: str, bill_row_count: int) -> int:
+    """Full search captures every account-history bill; current search keeps the recent subset."""
+    if bill_row_count <= 0:
+        return 0
+    if (search_scope or "full").lower() == "full":
+        return bill_row_count
+    return min(ANNUAL_BILLS_TO_CAPTURE, bill_row_count)
 
 # Detect when county-taxes iframe has real account data (not just section headers / spinners).
 COUNTY_TAXES_CONTENT_READY_JS = """
@@ -179,6 +188,8 @@ def _has_usable_tax_data(record: TaxRecord, scraped: dict) -> bool:
 
 
 class FloridaTaxDriver(BaseDriver):
+    search_scope: str = "full"
+
     async def _scrape_open_tax_page(
         self,
         tax_page: Page,
@@ -257,7 +268,9 @@ class FloridaTaxDriver(BaseDriver):
         portal_url: Optional[str] = None,
         query_type: Optional[QueryType] = None,
         query_value: Optional[str] = None,
+        search_scope: str = "full",
     ) -> Optional[TaxRecord]:
+        self.search_scope = search_scope if search_scope in ("current", "full") else "full"
         original_page = self.page
         tax_page: Page | None = None
         search_type = query_type or QueryType.PARCEL
@@ -1156,7 +1169,12 @@ class FloridaTaxDriver(BaseDriver):
         bill_rows = await self._wait_for_account_history_rows(
             page, active_frame, min_rows=1, timeout_seconds=45
         )
-        capture_count = min(ANNUAL_BILLS_TO_CAPTURE, len(bill_rows))
+        capture_count = resolve_annual_bills_capture_count(self.search_scope, len(bill_rows))
+        if capture_count:
+            await self._emit_status(
+                f"Capturing {capture_count} tax bill{'s' if capture_count != 1 else ''} "
+                f"({'Full Search' if self.search_scope == 'full' else 'Current Search'})..."
+            )
 
         if not bills_scraped:
             for idx in range(capture_count):
@@ -1278,6 +1296,8 @@ class FloridaTaxDriver(BaseDriver):
             "last_payment": summary_data.get("last_payment"),
             "account_history": summary_data.get("account_history"),
             "last_two_bills": bills_scraped,
+            "search_scope": self.search_scope,
+            "bills_captured_count": len(bills_scraped),
             "downloaded_bills": [
                 {
                     "bill": b.get("bill_summary", {}).get("bill") or b.get("bill_title") or "",

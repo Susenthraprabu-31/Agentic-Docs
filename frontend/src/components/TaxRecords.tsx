@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { getDocumentFileUrl } from "../api/client";
 
 interface TaxTabTable {
   headers?: string[];
@@ -39,6 +41,8 @@ interface BillDetail {
   parcel_details?: Record<string, string>;
   exemptions?: Record<string, string>;
   legal_description?: string;
+  pdf_path?: string;
+  pdf_downloaded?: boolean;
   location?: {
     range?: string;
     township?: string;
@@ -46,6 +50,78 @@ interface BillDetail {
     block?: string;
     use_code?: string;
   };
+}
+
+interface DownloadedBill {
+  bill?: string;
+  pdf_path?: string;
+  pdf_downloaded?: boolean;
+}
+
+interface TaxBillDocument {
+  id?: string;
+  document_type?: string;
+  ocr_json?: {
+    bill?: string;
+    download_path?: string;
+    source?: string;
+  };
+}
+
+function normalizeBillLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function billLabelsMatch(a: string, b: string): boolean {
+  const left = normalizeBillLabel(a);
+  const right = normalizeBillLabel(b);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+function getBillLabel(bill: BillDetail, fallback?: string): string {
+  return bill.bill_summary?.bill || bill.bill_title || fallback || "Annual Bill";
+}
+
+function findTaxDocumentForBill(billLabel: string, taxDocuments: TaxBillDocument[]): TaxBillDocument | undefined {
+  return taxDocuments.find((doc) => billLabelsMatch(String(doc.ocr_json?.bill || ""), billLabel));
+}
+
+function TaxBillPdfActions({
+  docId,
+  runId,
+  compact = false,
+}: {
+  docId?: string;
+  runId?: string;
+  compact?: boolean;
+}) {
+  if (!docId) {
+    return <span className="text-[11px] text-slate-400 dark:text-zinc-500 italic">No PDF</span>;
+  }
+
+  const buttonClass = compact
+    ? "px-2 py-0.5 text-[11px] font-semibold rounded border transition-colors"
+    : "px-3 py-1 text-xs font-semibold rounded-md border transition-colors";
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {runId && (
+        <Link
+          to={`/reports/run/${runId}/documents/${docId}`}
+          className={`${buttonClass} bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/40 hover:bg-sky-100 dark:hover:bg-sky-900/50`}
+        >
+          View
+        </Link>
+      )}
+      <a
+        href={getDocumentFileUrl(docId, false)}
+        className={`${buttonClass} bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-zinc-700`}
+      >
+        Download
+      </a>
+    </div>
+  );
 }
 
 interface TaxRecordData {
@@ -65,6 +141,9 @@ interface TaxRecordData {
     exemptions_summary?: string;
     account_history?: AccountHistoryRow[];
     last_two_bills?: BillDetail[];
+    downloaded_bills?: DownloadedBill[];
+    search_scope?: string;
+    bills_captured_count?: number;
     yearly_due_summary?: Array<{ year?: string; label?: string; due?: string }>;
     tabs?: Record<string, TaxTabData>;
   };
@@ -72,12 +151,22 @@ interface TaxRecordData {
 
 interface Props {
   taxRecord?: TaxRecordData | null;
+  taxDocuments?: TaxBillDocument[];
+  runId?: string;
+  embedded?: boolean;
 }
 
-export default function TaxRecords({ taxRecord }: Props) {
+export default function TaxRecords({ taxRecord, taxDocuments = [], runId, embedded = false }: Props) {
   const [selectedBillIdx, setSelectedBillIdx] = useState(0);
+  const normalizedTaxDocuments = useMemo(
+    () => taxDocuments.filter((doc) => doc.document_type === "tax_bill" || doc.ocr_json?.source === "tax_bill"),
+    [taxDocuments],
+  );
 
   if (!taxRecord) {
+    if (embedded) {
+      return <p className="text-sm text-slate-500 dark:text-zinc-400 italic">No tax record data found for this run.</p>;
+    }
     return (
       <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 transition-colors">
         <h3 className="font-bold text-slate-900 dark:text-zinc-100 mb-2">Tax Records</h3>
@@ -91,13 +180,30 @@ export default function TaxRecords({ taxRecord }: Props) {
   const history = tax.account_history || [];
   const bills = tax.last_two_bills || [];
   const activeBill = bills[selectedBillIdx] || bills[0];
+  const resolveBillDocumentId = (billLabel: string, bill?: BillDetail): string | undefined => {
+    const matched = findTaxDocumentForBill(billLabel, normalizedTaxDocuments);
+    if (matched?.id) return matched.id;
+    if (bill?.pdf_downloaded && bill.pdf_path) {
+      const byPath = normalizedTaxDocuments.find(
+        (doc) => String(doc.ocr_json?.download_path || "") === bill.pdf_path,
+      );
+      if (byPath?.id) return byPath.id;
+    }
+    return undefined;
+  };
+  const billDetailsTitle =
+    history.length > 0
+      ? `Bill Details (${bills.length} of ${history.length} Captured)`
+      : `Bill Details (${bills.length} Captured)`;
+  const missingBillCount = Math.max(history.length - bills.length, 0);
 
   const isPaid = (tax.amount_due_message || "").toLowerCase().includes("paid in full") ||
     tax.amount_due === 0;
 
-  return (
-    <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 space-y-6 transition-colors">
+  const content = (
+    <>
       {/* Header */}
+      {!embedded && (
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/[0.08]">
         <div>
           <div className="flex items-center gap-2">
@@ -130,6 +236,7 @@ export default function TaxRecords({ taxRecord }: Props) {
           </a>
         )}
       </div>
+      )}
 
       {/* Account Info Grid */}
       <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-white/[0.06] text-sm">
@@ -169,10 +276,14 @@ export default function TaxRecords({ taxRecord }: Props) {
                   <th className="px-3 py-2">Amount Due</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Date / Action</th>
+                  <th className="px-3 py-2">Official PDF</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05] bg-white dark:bg-[#161b22]">
-                {history.map((row, idx) => (
+                {history.map((row, idx) => {
+                  const billLabel = row.bill || `Bill #${idx + 1}`;
+                  const billDocId = resolveBillDocumentId(billLabel);
+                  return (
                   <tr key={idx} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 transition-colors">
                     <td className="px-3 py-2 font-semibold text-slate-900 dark:text-zinc-100">{row.bill || "—"}</td>
                     <td className="px-3 py-2 font-mono text-slate-800 dark:text-zinc-200">{row.amount_due || "$0.00"}</td>
@@ -188,6 +299,45 @@ export default function TaxRecords({ taxRecord }: Props) {
                     <td className="px-3 py-2 text-slate-500 dark:text-zinc-400">
                       {[row.date, row.action].filter(Boolean).join(" • ") || "—"}
                     </td>
+                    <td className="px-3 py-2">
+                      <TaxBillPdfActions docId={billDocId} runId={runId} compact />
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {normalizedTaxDocuments.length > 0 && (
+        <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/[0.08]">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 uppercase tracking-wider">
+              Official Tax Bill PDFs
+            </h4>
+            <span className="text-xs text-slate-500 dark:text-zinc-400">
+              {normalizedTaxDocuments.length} document{normalizedTaxDocuments.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-white/[0.08]">
+            <table className="min-w-full text-xs text-left">
+              <thead className="bg-slate-100 dark:bg-zinc-900 text-slate-800 dark:text-zinc-200 uppercase font-semibold border-b border-slate-200 dark:border-white/[0.08]">
+                <tr>
+                  <th className="px-3 py-2">Bill</th>
+                  <th className="px-3 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05] bg-white dark:bg-[#161b22]">
+                {normalizedTaxDocuments.map((doc) => (
+                  <tr key={doc.id || String(doc.ocr_json?.bill)} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30">
+                    <td className="px-3 py-2 font-semibold text-slate-900 dark:text-zinc-100">
+                      {String(doc.ocr_json?.bill || "Tax Bill")}
+                    </td>
+                    <td className="px-3 py-2">
+                      <TaxBillPdfActions docId={doc.id} runId={runId} compact />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -196,18 +346,23 @@ export default function TaxRecords({ taxRecord }: Props) {
         </div>
       )}
 
-      {/* Last Two Bill Detailed Breakdowns */}
+      {/* Bill detailed breakdowns */}
       {bills.length > 0 && (
         <div className="pt-2 space-y-4 border-t border-slate-200 dark:border-white/[0.08]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100 uppercase tracking-wider flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 inline-block"></span>
-                Bill Details (Last {bills.length} Summaries Captured)
+                {billDetailsTitle}
               </h4>
               <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                 Opened via the county portal information button with itemized assessments and taxing authority millages.
               </p>
+              {missingBillCount > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  {missingBillCount} bill{missingBillCount === 1 ? "" : "s"} still missing — re-run the Tax node with Full Search to refresh.
+                </p>
+              )}
             </div>
 
             {/* Bill Selector Tabs */}
@@ -236,6 +391,16 @@ export default function TaxRecords({ taxRecord }: Props) {
           {/* Active Bill Content */}
           {activeBill && (
             <div className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-zinc-900/40 p-5 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100">
+                  Official Document
+                </h5>
+                <TaxBillPdfActions
+                  docId={resolveBillDocumentId(getBillLabel(activeBill), activeBill)}
+                  runId={runId}
+                />
+              </div>
+
               {/* Summary KPIs */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white dark:bg-[#161b22] p-4 rounded-lg border border-slate-200 dark:border-white/[0.08]">
                 <div>
@@ -446,6 +611,16 @@ export default function TaxRecords({ taxRecord }: Props) {
             ))}
         </>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-6">{content}</div>;
+  }
+
+  return (
+    <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 space-y-6 transition-colors">
+      {content}
     </div>
   );
 }

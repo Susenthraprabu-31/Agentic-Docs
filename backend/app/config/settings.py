@@ -14,8 +14,12 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     mistral_api_key: str = ""
     mistral_ocr_model: str = "mistral-ocr-4-1"
+    mistral_ocr_enabled: bool = True
     mistral_ocr_max_retries: int = 3
     mistral_ocr_retry_base_seconds: float = 2.0
+    mistral_ocr_rate_limit_cooldown_seconds: float = 300.0
+    gpt_recorder_ocr_enabled: bool = True
+    gpt_recorder_ocr_model: str = "gpt-4o"
     port: int = 8000
     environment: str = "development"
     playwright_headless: bool = True

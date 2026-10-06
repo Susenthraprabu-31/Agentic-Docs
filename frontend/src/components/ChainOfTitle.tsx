@@ -1,3 +1,6 @@
+import type { Document, NameSearchGroup } from "./DocumentsList";
+import { getPrimaryRecorderDocuments } from "./DocumentsList";
+
 export interface ChainEntry {
   document_type?: string;
   recording_date?: string;
@@ -36,9 +39,15 @@ function entryScore(entry: ChainEntry): number {
   ].filter(Boolean).length;
 }
 
+export interface MergeChainOptions {
+  recorderPrimaryDocuments?: Record<string, unknown>[];
+  nameSearchGroups?: NameSearchGroup[];
+}
+
 export function mergeChainEntries(
   documents: Record<string, unknown>[],
-  rawChain: ChainEntry[] = []
+  rawChain: ChainEntry[] = [],
+  options?: MergeChainOptions,
 ): ChainEntry[] {
   const merged = new Map<string, ChainEntry>();
 
@@ -50,7 +59,12 @@ export function mergeChainEntries(
     }
   };
 
-  for (const doc of documents) {
+  const chainDocuments = getPrimaryRecorderDocuments(documents as Document[], {
+    providedPrimary: options?.recorderPrimaryDocuments as Document[] | undefined,
+    nameSearchGroups: options?.nameSearchGroups,
+  });
+
+  for (const doc of chainDocuments) {
     const ocr = doc.ocr_json as Record<string, unknown> | undefined;
     add({
       document_type: doc.document_type as string | undefined,
@@ -103,7 +117,7 @@ export default function ChainOfTitle({ entries, currentOwner }: Props) {
     <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-sm border border-slate-200 dark:border-white/[0.08] p-6 transition-colors">
       <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100 mb-1">Chain of Title</h3>
       <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">
-        Ownership history from Sales Information on the assessor report — newest transfers first.
+        Assessor sales history plus recorded deeds from the recorder search — newest transfers first.
       </p>
 
       {currentOwner && (

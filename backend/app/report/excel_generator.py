@@ -7,6 +7,150 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from app.extraction.book_page import parse_book_page
+
+
+def _normalize_book_page_key(value: Any) -> str:
+    parsed = parse_book_page(str(value or "").strip())
+    if parsed:
+        return f"{parsed[0]}/{parsed[1]}"
+    cleaned = re.sub(r"\s+", "", str(value or "").strip().upper())
+    cleaned = cleaned.replace("-", "/")
+    return cleaned
+
+
+def _parse_date_sort_key(value: Any) -> tuple[int, int, int]:
+    s = str(value or "").strip()
+    for pattern in (
+        r"^(\d{4})-(\d{1,2})-(\d{1,2})",
+        r"^(\d{1,2})/(\d{1,2})/(\d{4})",
+        r"^(\d{1,2})-(\d{1,2})-(\d{4})",
+    ):
+        match = re.match(pattern, s)
+        if match:
+            if pattern.startswith(r"^(\d{4})"):
+                y, m, d = match.groups()
+            else:
+                m, d, y = match.groups()
+            return (int(y), int(m), int(d))
+    return (0, 0, 0)
+
+
+def _chain_entry_score(entry: dict[str, Any]) -> int:
+    return sum(
+        1
+        for key in ("grantor", "grantee", "instrument_number", "book_page", "recording_date", "sale_price")
+        if entry.get(key)
+    )
+
+
+def _document_to_chain_entry(doc: dict[str, Any]) -> dict[str, Any]:
+    ocr = doc.get("ocr_json") or {}
+    book_page = str(doc.get("book_page") or "").strip()
+    if not book_page and ocr.get("book_number") and ocr.get("page_number"):
+        book_page = f"{ocr['book_number']}/{ocr['page_number']}"
+    return {
+        "grantor": doc.get("grantor") or "",
+        "grantee": doc.get("grantee") or "",
+        "document_type": doc.get("document_type") or "DEED",
+        "recording_date": doc.get("recording_date") or ocr.get("recording_date") or "",
+        "book_page": book_page,
+        "instrument_number": doc.get("instrument_number") or ocr.get("clerk_file_number") or "",
+        "sale_price": ocr.get("sale_price") or doc.get("sale_price"),
+        "comments": doc.get("comments") or doc.get("notes") or "",
+    }
+
+
+def _assessor_chain_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "grantor": entry.get("grantor") or "",
+        "grantee": entry.get("grantee") or "",
+        "document_type": entry.get("document_type") or "SALE",
+        "recording_date": entry.get("recording_date") or entry.get("sale_date") or "",
+        "book_page": entry.get("book_page") or "",
+        "instrument_number": entry.get("instrument_number") or "",
+        "sale_price": entry.get("sale_price"),
+        "comments": entry.get("comments") or entry.get("notes") or "",
+    }
+
+
+def _enrich_chain_entry(entry: dict[str, Any], recorder_by_book_page: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    enriched = dict(entry)
+    key = _normalize_book_page_key(enriched.get("book_page") or "")
+    match = recorder_by_book_page.get(key)
+    if not match:
+        return enriched
+
+    recorder_entry = _document_to_chain_entry(match)
+    for field in ("grantor", "grantee", "instrument_number", "recording_date"):
+        if not enriched.get(field) and recorder_entry.get(field):
+            enriched[field] = recorder_entry[field]
+
+    recorder_type = str(recorder_entry.get("document_type") or "").strip()
+    current_type = str(enriched.get("document_type") or "").strip().upper()
+    if recorder_type and current_type in ("", "SALE", "TRANSFER"):
+        enriched["document_type"] = recorder_type
+
+    if not enriched.get("sale_price") and recorder_entry.get("sale_price"):
+        enriched["sale_price"] = recorder_entry["sale_price"]
+    return enriched
+
+
+def build_chain_sheet_entries(report_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Merge assessor sales history with primary recorder deeds for the Excel chain sheet."""
+    from app.extraction.miami_dade_name_searches import group_documents_by_name_search
+
+    raw_chain = list(report_data.get("chain_of_title") or [])
+    if not raw_chain:
+        property_data = report_data.get("property") or {}
+        raw_chain = list((property_data.get("raw_json") or {}).get("chain_of_title") or [])
+
+    documents = report_data.get("documents") or []
+    recorder_primary = list(report_data.get("recorder_primary_documents") or [])
+    if not recorder_primary and documents:
+        _, recorder_primary = group_documents_by_name_search(documents)
+
+    recorder_by_book_page: dict[str, dict[str, Any]] = {}
+    for doc in recorder_primary:
+        if not isinstance(doc, dict):
+            continue
+        entry = _document_to_chain_entry(doc)
+        key = _normalize_book_page_key(entry.get("book_page") or "")
+        if key:
+            recorder_by_book_page[key] = doc
+
+    merged: dict[str, dict[str, Any]] = {}
+
+    def add_entry(entry: dict[str, Any]) -> None:
+        enriched = _enrich_chain_entry(entry, recorder_by_book_page)
+        key = _normalize_book_page_key(enriched.get("book_page") or "")
+        if not key:
+            key = "|".join(
+                [
+                    str(enriched.get("recording_date") or ""),
+                    str(enriched.get("instrument_number") or ""),
+                    str(enriched.get("grantor") or ""),
+                    str(enriched.get("grantee") or ""),
+                ]
+            )
+        existing = merged.get(key)
+        if not existing or _chain_entry_score(enriched) > _chain_entry_score(existing):
+            merged[key] = enriched
+
+    for entry in raw_chain:
+        if isinstance(entry, dict):
+            add_entry(_assessor_chain_entry(entry))
+
+    for doc in recorder_primary:
+        if isinstance(doc, dict):
+            add_entry(_document_to_chain_entry(doc))
+
+    return sorted(
+        merged.values(),
+        key=lambda entry: _parse_date_sort_key(entry.get("recording_date")),
+        reverse=True,
+    )
+
 
 def _format_date(val: Any) -> str:
     """Format various date string formats to DD-MM-YYYY standard for title chain sheets."""
@@ -110,15 +254,8 @@ def generate_chain_sheet_excel(
     property_data = report_data.get("property") or {}
     tax_data = report_data.get("tax_record") or {}
     raw_tax = tax_data.get("raw_json") or {}
-    chain_of_title = report_data.get("chain_of_title") or []
+    chain_of_title = build_chain_sheet_entries(report_data)
     documents = report_data.get("documents") or []
-
-    # If chain_of_title is empty, build from documents
-    if not chain_of_title and documents:
-        chain_of_title = [
-            d for d in documents
-            if d.get("document_type") not in ("gis_map", "AI Title Analysis", "AI Chatbot Response")
-        ]
 
     # Resolve core values
     parcel = (
@@ -279,7 +416,7 @@ def generate_chain_sheet_excel(
         instr = str(doc.get("instrument_number") or "")
 
         comments = doc.get("comments") or doc.get("notes") or ""
-        amount = doc.get("amount") or doc.get("consideration")
+        amount = doc.get("amount") or doc.get("consideration") or doc.get("sale_price")
         if amount and not comments:
             comments = _format_amount(amount)
         elif not comments and "LOT" in legal:
@@ -348,17 +485,27 @@ def generate_chain_sheet_excel(
     ws1.cell(row=current_row, column=1, value="Search by Name:").font = font_bold
     current_row += 1
 
-    # Gather search names from owner and grantees
+    # Gather search names from owner, name searches, and chain grantees
     search_names: list[str] = []
     if owner_name:
         search_names.append(owner_name)
     parts = owner_name.split()
     if len(parts) >= 2:
         search_names.append(f"{parts[-1]}, {' '.join(parts[:-1])}")
-    for d in chain_of_title[:5]:
+
+    for entry in report_data.get("name_searches") or []:
+        if isinstance(entry, dict):
+            name = str(entry.get("name") or "").strip().upper()
+            if name and name not in search_names:
+                search_names.append(name)
+
+    for d in chain_of_title[:8]:
         g = str(d.get("grantee") or "").upper().strip()
         if g and g not in search_names:
             search_names.append(g)
+        g2 = str(d.get("grantor") or "").upper().strip()
+        if g2 and g2 not in search_names:
+            search_names.append(g2)
 
     for name in search_names[:6]:
         ws1.cell(row=current_row, column=2, value=name).font = font_regular

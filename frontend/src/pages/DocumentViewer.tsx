@@ -63,9 +63,13 @@ function SectionTitle({ title }: { title: string }) {
 
 function formatOcrError(message: string): string {
   if (/rate limit|rate_limited|\b429\b/i.test(message)) {
-    return "Mistral OCR rate limit reached. Recorder metadata is shown instead. Wait about a minute, then click Re-analyze.";
+    return "OCR rate limit reached. Recorder metadata is shown instead. Wait a moment, then click Re-analyze.";
   }
   return message;
+}
+
+function recorderViewerUsesGptOcr(ocr: Record<string, unknown> | undefined): boolean {
+  return Boolean(ocr?.gpt_analyzed);
 }
 
 function isRecentRateLimit(ocr: Record<string, unknown> | undefined): boolean {
@@ -139,32 +143,29 @@ export default function DocumentViewer() {
         setCounty(String(report.report_json?.county || ""));
         setState(String(report.report_json?.state || "FL"));
 
+        const ocrJson = (document.ocr_json || {}) as Record<string, unknown>;
+
         if (document.ocr_warning) {
           setOcrWarning(document.ocr_warning);
-        } else if (document.ocr_status === "fallback") {
+        } else if (document.ocr_status === "fallback" && !recorderViewerUsesGptOcr(ocrJson)) {
           setOcrWarning(
-            "Showing recorder metadata while Mistral OCR is unavailable. Click Re-analyze to retry full OCR.",
+            "Showing recorder metadata while GPT OCR is unavailable. Click Re-analyze to retry full OCR.",
           );
         }
 
-        const ocrJson = (document.ocr_json || {}) as Record<string, unknown>;
-        const needsOcr =
-          document.ocr_status !== "ready" &&
-          document.ocr_status !== "fallback" &&
-          !isRecentRateLimit(ocrJson) &&
-          !(document.recording_details && Object.keys(document.recording_details).length > 0);
+        const needsGptOcr = !recorderViewerUsesGptOcr(ocrJson) && !isRecentRateLimit(ocrJson);
 
-        if (needsOcr) {
+        if (needsGptOcr) {
           setOcrLoading(true);
           try {
-            const analyzed = await analyzeDocumentOcr(docId);
+            const analyzed = await analyzeDocumentOcr(docId, false, "gpt");
             if (!cancelled) {
               setDoc(analyzed);
               setOcrWarning(analyzed.ocr_warning || null);
-              if (analyzed.ocr_status === "fallback") {
+              if (analyzed.ocr_status === "fallback" && !recorderViewerUsesGptOcr(analyzed.ocr_json)) {
                 setOcrWarning(
                   analyzed.ocr_warning ||
-                    "Mistral OCR rate limit reached. Showing recorder metadata instead.",
+                    "GPT OCR could not analyze this document. Showing recorder metadata instead.",
                 );
               }
             }
@@ -235,12 +236,12 @@ export default function DocumentViewer() {
     setOcrError(null);
     setOcrWarning(null);
     try {
-      const analyzed = await analyzeDocumentOcr(docId, true);
+      const analyzed = await analyzeDocumentOcr(docId, true, "gpt");
       setDoc(analyzed);
-      if (analyzed.ocr_warning || analyzed.ocr_status === "fallback") {
+      if (analyzed.ocr_warning || (analyzed.ocr_status === "fallback" && !recorderViewerUsesGptOcr(analyzed.ocr_json))) {
         setOcrWarning(
           analyzed.ocr_warning ||
-            "Mistral OCR rate limit reached. Showing recorder metadata instead.",
+            "GPT OCR could not analyze this document. Showing recorder metadata instead.",
         );
       }
     } catch (ocrErr) {
@@ -412,7 +413,7 @@ export default function DocumentViewer() {
             <div className="p-4">
               {ocrLoading && (
                 <div className="mb-4 rounded-lg border border-teal-200 dark:border-teal-900/40 bg-teal-50 dark:bg-teal-950/20 px-3 py-2 text-xs text-teal-700 dark:text-teal-300">
-                  Running Mistral OCR on this document...
+                  Running GPT OCR on this recorder document...
                 </div>
               )}
               {ocrWarning && (

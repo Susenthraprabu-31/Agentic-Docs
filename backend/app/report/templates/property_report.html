@@ -385,7 +385,8 @@
        3. RECORDED TRANSACTIONS
        ═══════════════════════════════ -->
   <h2>Recorded Transactions</h2>
-  {% if documents %}
+  {% set primary_docs = recorder_primary_documents if recorder_primary_documents is defined else documents %}
+  {% if primary_docs %}
   <table>
     <thead>
       <tr>
@@ -393,7 +394,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for doc in documents %}
+      {% for doc in primary_docs %}
       <tr>
         <td>
           {% if doc.document_type %}
@@ -458,9 +459,35 @@
   <!-- ═══════════════════════════════
        3b. NAME SEARCHES
        ═══════════════════════════════ -->
-  <h2>Name Searches</h2>
-  <p class="meta">Party names searched by the Name Searcher node during this run.</p>
-  {% if name_searches %}
+  <h2>Name Search Results</h2>
+  <p class="meta">Documents grouped by the party name searched in the Name Searcher node.</p>
+  {% if name_search_groups %}
+    {% for group in name_search_groups %}
+    <h3 style="margin-top: 20px; margin-bottom: 8px; font-size: 16px; color: #1e293b;">
+      {{ group.name }}
+      <span style="font-size: 12px; color: #64748b; font-weight: 500;">({{ group.document_count }} record{{ '' if group.document_count == 1 else 's' }})</span>
+    </h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th><th>Date</th><th>Book / Page</th><th>Instrument #</th><th>Grantor</th><th>Grantee</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in group.documents %}
+        <tr>
+          <td>{{ doc.document_type or '—' }}</td>
+          <td>{{ doc.recording_date or '—' }}</td>
+          <td>{{ doc.book_page or '—' }}</td>
+          <td>{{ doc.instrument_number or '—' }}</td>
+          <td>{{ doc.grantor or '—' }}</td>
+          <td>{{ doc.grantee or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+  {% elif name_searches %}
   <table>
     <thead>
       <tr>

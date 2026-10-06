@@ -2,7 +2,7 @@ import io
 import uuid
 import openpyxl
 import pytest
-from app.report.excel_generator import generate_chain_sheet_excel
+from app.report.excel_generator import build_chain_sheet_entries, generate_chain_sheet_excel
 from app.report.report_builder import ReportBuilder
 
 
@@ -91,27 +91,126 @@ def test_generate_chain_sheet_excel_structure_and_styling():
     header_fill = ws1["C15"].fill.start_color.rgb
     assert "FCE4D6" in str(header_fill).upper()
 
-    # Check first conveyance row (Row 16)
-    assert ws1["A16"].value == "AP 620 LLC"
-    assert ws1["B16"].value == "BENJAMIN LEON JR AND SILVIA LEON"
-    assert ws1["C16"].value == "WARRANTY DEED"
-    assert ws1["D16"].value == "21-12-2010"
-    assert ws1["E16"].value == "27529/1785"
-    assert ws1["F16"].value == "2010 R 853064"
-    assert ws1["G16"].value == "Lot 25"
+    # Rows are sorted newest first
+    assert ws1["A16"].value == "JOHN H RUIZ"
+    assert ws1["B16"].value == "CITY NATIONAL BANK OF FLORIDA"
+    assert ws1["C16"].value == "MORTGAGE"
+    assert ws1["D16"].value == "12-04-2022"
+    assert ws1["E16"].value == "33126/1399"
+    assert ws1["F16"].value == "2022 R 301183"
+
+    assert ws1["A17"].value == "BENJAMIN LEON JR AND SILVIA LEON"
+    assert ws1["B17"].value == "JOHN H RUIZ"
+    assert ws1["C17"].value == "WARRANTY DEED"
+
+    assert ws1["A18"].value == "AP 620 LLC"
+    assert ws1["B18"].value == "BENJAMIN LEON JR AND SILVIA LEON"
+    assert ws1["C18"].value == "WARRANTY DEED"
+    assert ws1["D18"].value == "21-12-2010"
+    assert ws1["E18"].value == "27529/1785"
+    assert ws1["F18"].value == "2010 R 853064"
+    assert ws1["G18"].value == "Lot 25"
 
     # Check Order Type cell fill on row 16
     row_fill = ws1["C16"].fill.start_color.rgb
     assert "FCE4D6" in str(row_fill).upper()
 
-    # Check Mortgage row
-    assert ws1["C18"].value == "MORTGAGE"
-    assert "$20,000,000.00" in str(ws1["G18"].value)
+    # Check Mortgage amount comment on newest row
+    assert "$20,000,000.00" in str(ws1["G16"].value)
 
     # Check Command sheet
     ws2 = wb["Command"]
     assert "CHAIN SHEET AUDIT" in str(ws2["A1"].value)
     assert ws2["B3"].value == "run-test-1508692"
+
+
+def test_build_chain_sheet_entries_enriches_assessor_sales_with_recorder_deed():
+    report_data = {
+        "chain_of_title": [
+            {
+                "document_type": "Sale",
+                "recording_date": "2019-10-30",
+                "book_page": "31687-1679",
+                "sale_price": 387500,
+            },
+            {
+                "document_type": "Sale",
+                "recording_date": "2017-06-13",
+                "book_page": "30576-2086",
+                "sale_price": 4268000,
+            },
+        ],
+        "recorder_primary_documents": [
+            {
+                "document_type": "DEED - DEE",
+                "recording_date": "2019-11-13",
+                "book_page": "31687/1679",
+                "instrument_number": "2019 R 711430",
+                "grantor": "D R HORTON INC",
+                "grantee": "MORALES JUAN A",
+                "ocr_json": {"source": "recorder"},
+            }
+        ],
+    }
+
+    entries = build_chain_sheet_entries(report_data)
+    assert len(entries) == 2
+
+    vesting = next(e for e in entries if _normalize_book_page(e.get("book_page")) == "31687/1679")
+    assert vesting["grantor"] == "D R HORTON INC"
+    assert vesting["grantee"] == "MORALES JUAN A"
+    assert vesting["instrument_number"] == "2019 R 711430"
+    assert vesting["document_type"] == "DEED - DEE"
+    assert vesting["sale_price"] == 387500
+
+
+def _normalize_book_page(value):
+    from app.report.excel_generator import _normalize_book_page_key
+
+    return _normalize_book_page_key(value)
+
+
+def test_generate_chain_sheet_excel_includes_recorder_grantor_grantee():
+    report_data = {
+        "run_id": "run-test-chain-merge",
+        "property": {
+            "apn": "30-6924-001-0030",
+            "owner_name": "JUAN A MORALES",
+            "legal_description": "SUMMERVILLE VILLAS LOT 3 BLK 1",
+        },
+        "chain_of_title": [
+            {
+                "document_type": "Sale",
+                "recording_date": "2019-10-30",
+                "book_page": "31687-1679",
+                "sale_price": 387500,
+            }
+        ],
+        "recorder_primary_documents": [
+            {
+                "document_type": "DEED - DEE",
+                "recording_date": "2019-11-13",
+                "book_page": "31687/1679",
+                "instrument_number": "2019 R 711430",
+                "grantor": "D R HORTON INC",
+                "grantee": "MORALES JUAN A",
+            }
+        ],
+        "name_searches": [
+            {"name": "MORALES JUAN A", "source": "31687/1679"},
+            {"name": "D R HORTON INC", "source": "31687/1679"},
+        ],
+    }
+
+    excel_io = generate_chain_sheet_excel(report_data)
+    wb = openpyxl.load_workbook(excel_io)
+    ws1 = wb["Sheet1"]
+
+    assert ws1["A16"].value == "D R HORTON INC"
+    assert ws1["B16"].value == "MORALES JUAN A"
+    assert ws1["C16"].value == "DEED - DEE"
+    assert ws1["F16"].value == "2019 R 711430"
+    assert "$387,500.00" in str(ws1["G16"].value)
 
 
 @pytest.mark.asyncio

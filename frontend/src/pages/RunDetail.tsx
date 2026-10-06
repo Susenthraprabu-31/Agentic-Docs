@@ -43,7 +43,15 @@ export default function RunDetail() {
       : String(property?.owner_name || "");
   const chainEntries = mergeChainEntries(
     documents as Record<string, unknown>[],
-    (rawJson.chain_of_title as Record<string, string>[]) || []
+    (rawJson.chain_of_title as Record<string, string>[]) || [],
+    {
+      recorderPrimaryDocuments: (report?.report_json?.recorder_primary_documents || []) as Record<string, unknown>[],
+      nameSearchGroups: (report?.report_json?.name_search_groups || []) as Parameters<
+        typeof mergeChainEntries
+      >[2] extends { nameSearchGroups?: infer G }
+        ? G
+        : never,
+    },
   );
 
   const planJson = (runDetail?.run?.plan_json as Record<string, unknown>) || {};
@@ -141,7 +149,13 @@ export default function RunDetail() {
         </div>
       )}
 
-      {taxRecord && <TaxRecords taxRecord={taxRecord as Parameters<typeof TaxRecords>[0]["taxRecord"]} />}
+      {taxRecord && (
+        <TaxRecords
+          taxRecord={taxRecord as Parameters<typeof TaxRecords>[0]["taxRecord"]}
+          taxDocuments={(documents as Parameters<typeof TaxRecords>[0]["taxDocuments"]) || []}
+          runId={runId}
+        />
+      )}
 
       {runDetail?.run.status === "completed" && (
         <>

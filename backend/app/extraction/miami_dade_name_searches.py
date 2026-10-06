@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.extraction.book_page import parse_book_page
+
 _ET_AL_RE = re.compile(r"\s+ET\s+AL\.?$", re.I)
 _NOISE_RE = re.compile(
     r"^(party name|party type|direct|reverse|parties|sources?)$",
@@ -38,6 +40,45 @@ def normalize_party_name(raw: str) -> str:
     """Normalize a party name for display in Name Searches."""
     name = re.sub(r"\s+", " ", str(raw or "").strip())
     name = _ET_AL_RE.sub("", name).strip(" ,;/")
+    return name.upper()
+
+
+_ENTITY_SUFFIX_TOKENS = {
+    "INC",
+    "LLC",
+    "LTD",
+    "CORP",
+    "CO",
+    "LP",
+    "LLP",
+    "CORPORATION",
+    "COMPANY",
+}
+
+
+def sanitize_miami_dade_party_name_for_search(raw: str) -> str:
+    """Prepare a party name for Miami-Dade Name/Document search entry."""
+    name = re.sub(r"\s+", " ", str(raw or "").strip())
+    name = _ET_AL_RE.sub("", name).strip(" ,;/")
+    if not name:
+        return ""
+    name = name.upper()
+
+    if "," in name:
+        left, right = [part.strip() for part in name.split(",", 1)]
+        if left and right:
+            left_token = left.split()[0] if left.split() else left
+            right_token = right.split()[-1] if right.split() else right
+            if left_token in _ENTITY_SUFFIX_TOKENS:
+                name = f"{right} {left}".strip()
+            elif right_token in _ENTITY_SUFFIX_TOKENS:
+                name = f"{left} {right}".strip()
+            else:
+                name = f"{left} {right}".strip()
+
+    name = re.sub(r"[,;/]", " ", name)
+    name = re.sub(r"[^\w\s#&]", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
     return name.upper()
 
 
@@ -223,7 +264,7 @@ def is_entity_party_name(name: str) -> bool:
 
 def parse_miami_dade_party_name_fields(name: str) -> dict[str, str]:
     """Split a normalized recorder party name into Miami-Dade form fields."""
-    normalized = normalize_party_name(name)
+    normalized = sanitize_miami_dade_party_name_for_search(name)
     if not normalized:
         return {"kind": "unknown"}
 
@@ -233,6 +274,15 @@ def parse_miami_dade_party_name_fields(name: str) -> dict[str, str]:
     tokens = normalized.split()
     if len(tokens) >= 2:
         last_name = tokens[0]
+        # "MORALES A" is a last-name + middle-initial search, not first name "A".
+        if len(tokens) == 2 and len(tokens[1]) == 1:
+            return {
+                "kind": "person",
+                "last_name": last_name,
+                "first_name": "",
+                "middle_name": tokens[1],
+                "full_name": normalized,
+            }
         first_name = tokens[1]
         middle_name = " ".join(tokens[2:]) if len(tokens) > 2 else ""
         return {
@@ -240,6 +290,15 @@ def parse_miami_dade_party_name_fields(name: str) -> dict[str, str]:
             "last_name": last_name,
             "first_name": first_name,
             "middle_name": middle_name,
+            "full_name": normalized,
+        }
+
+    if len(tokens) == 1:
+        return {
+            "kind": "person",
+            "last_name": tokens[0],
+            "first_name": "",
+            "middle_name": "",
             "full_name": normalized,
         }
 
@@ -349,6 +408,85 @@ def build_name_searcher_report_entries(
             }
         )
     return entries
+
+
+def is_book_page_label(raw: str) -> bool:
+    """Return True when a value looks like a recorder book/page label, not a party name."""
+    return parse_book_page(str(raw or "").strip()) is not None
+
+
+def is_recorder_report_document(doc: dict[str, Any]) -> bool:
+    """Return True when a document belongs to recorder/name-search, not assessor or AI."""
+    if not isinstance(doc, dict):
+        return False
+    ocr = doc.get("ocr_json") or {}
+    if not isinstance(ocr, dict):
+        ocr = {}
+    source = str(ocr.get("source") or ocr.get("storage_category") or "").strip().lower()
+    if source in ("assessor", "assessor_sales", "ai_agent", "chatbot", "gis"):
+        return False
+    if doc.get("document_type") in ("AI Title Analysis", "AI Chatbot Response", "gis_map"):
+        return False
+    folder = str(doc.get("folder_name") or ocr.get("folder_name") or "").lower()
+    if folder.startswith("assessor"):
+        return False
+    if source in ("recorder", "name_searcher"):
+        return True
+    if folder.startswith("recorder_") or folder.startswith("name_search"):
+        return True
+    if ocr.get("book_number") and ocr.get("page_number"):
+        return True
+    if doc.get("book_page"):
+        return True
+    return False
+
+
+def group_documents_by_name_search(
+    documents: list[dict[str, Any]],
+    name_searches: list[dict[str, str]] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split documents into name-search groups and primary recorder documents."""
+    order: list[str] = []
+    if name_searches:
+        for entry in name_searches:
+            if not isinstance(entry, dict):
+                continue
+            name = normalize_party_name(str(entry.get("name") or ""))
+            if name and name not in order:
+                order.append(name)
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    primary: list[dict[str, Any]] = []
+
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+        if not is_recorder_report_document(doc):
+            continue
+        ocr = doc.get("ocr_json") or {}
+        if not isinstance(ocr, dict):
+            ocr = {}
+        searched = normalize_party_name(str(ocr.get("searched_name") or ""))
+        if searched and not is_book_page_label(searched):
+            groups.setdefault(searched, []).append(doc)
+            if searched not in order:
+                order.append(searched)
+            continue
+        primary.append(doc)
+
+    grouped: list[dict[str, Any]] = []
+    for name in order:
+        docs = groups.get(name) or []
+        if not docs:
+            continue
+        grouped.append(
+            {
+                "name": name,
+                "documents": docs,
+                "document_count": len(docs),
+            }
+        )
+    return grouped, primary
 
 
 def resolve_name_searches_for_report(

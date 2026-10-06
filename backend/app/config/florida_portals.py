@@ -99,6 +99,9 @@ def build_miami_dade_property_search_url(folio: str, base_url: Optional[str] = N
 # Miami-Dade Clerk official records
 MIAMI_DADE_RECORDER_HOST = "miamidadeclerk.gov"
 MIAMI_DADE_RECORDER_SEARCH_URL = "https://onlineservices.miamidadeclerk.gov/officialrecords"
+MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL = (
+    "https://onlineservices.miamidadeclerk.gov/officialrecords"
+)
 
 # Broward Clerk (AcclaimWeb)
 BROWARD_RECORDER_HOST = "officialrecords.broward.org"

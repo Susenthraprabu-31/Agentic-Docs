@@ -107,14 +107,15 @@ async def test_platform_detector_node_sets_platforms():
 # ── NormalizerNode ───────────────────────────────────────────────────────────
 
 
-def test_deduplicate_records_prefers_assessor():
+def test_deduplicate_records_keeps_assessor_and_tax_for_same_apn():
     records = [
         {"source": "tax_record", "apn": "123", "owner_name": "Tax Owner"},
         {"source": "assessor", "apn": "123", "owner_name": "Assessor Owner"},
     ]
     result = deduplicate_records(records)
-    assert len(result) == 1
-    assert result[0]["owner_name"] == "Assessor Owner"
+    assert len(result) == 2
+    sources = {row["source"] for row in result}
+    assert sources == {"tax_record", "assessor"}
 
 
 def test_deduplicate_documents_by_instrument():
@@ -141,7 +142,7 @@ async def test_normalizer_node_deduplicates():
         {"instrument_number": "I1"},
     ]
     result = await node.run(ctx)
-    assert len(result.records) == 2
+    assert len(result.records) == 3
     assert len(result.documents) == 1
 
 

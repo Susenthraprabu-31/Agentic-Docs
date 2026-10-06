@@ -2,6 +2,7 @@ import logging
 import re
 
 from app.config.florida_portals import (
+    MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL,
     is_florida_recorder,
     is_miami_dade_recorder,
     is_myflorida_county_recorder,
@@ -30,6 +31,7 @@ from app.drivers.recorder.miami_dade_recorder import (
 )
 from app.extraction.book_page import format_book_page_label, parse_book_page
 from app.extraction.html_extractors import extract_documents_from_html
+from app.extraction.miami_dade_name_searches import sanitize_miami_dade_party_name_for_search
 from app.extraction.schemas import QueryType, RecordedDocument
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,9 @@ def _format_recorder_search_value(query_type: QueryType, query_value: str, page_
             return format_book_page_label(parsed[0], parsed[1])
         return value
 
+    if query_type == QueryType.OWNER and is_miami_dade_recorder(page_url):
+        return sanitize_miami_dade_party_name_for_search(value)
+
     if query_type == QueryType.OWNER and "," not in value:
         parts = value.split()
         if len(parts) >= 2 and not re.search(r"\d{3,}", value):
@@ -84,28 +89,48 @@ class GilaRecorderDriver(BaseDriver):
         search_limit: int | None = None,
     ) -> list[RecordedDocument]:
         await self._emit_status("Opening county recorder portal...")
+        notes = (self.playwright_notes or "").strip()
+        search_value = _format_recorder_search_value(query_type, query_value, recorder_url)
+        is_miami_owner_search = (
+            query_type == QueryType.OWNER
+            and is_miami_dade_recorder(recorder_url)
+            and bool(search_value.strip())
+        )
+        current_url = (self.page.url or "").lower() if self.page else ""
+        already_on_name_document = "/name/document" in current_url
+
+        navigation_url = recorder_url
         recorder_wait_selector = None
         if is_miami_dade_recorder(recorder_url):
-            recorder_wait_selector = (
-                "#bookType, #recordingBookNumber, input[type='text'], form, button"
-            )
-        try:
-            await self.safe_goto(
-                recorder_url,
-                wait_selector=recorder_wait_selector,
-                timeout=60_000,
-            )
-        except Exception as exc:
-            if _is_retriable_navigation_error(exc):
-                await self._emit_status("Recorder portal slow to load, retrying...")
-                await self.polite_delay(2.0)
+            if is_miami_owner_search:
+                navigation_url = MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL
+                recorder_wait_selector = (
+                    "#lastName, input[name='lastName'], #companyName, "
+                    "input[name='companyName'], button.button-green"
+                )
+            else:
+                recorder_wait_selector = (
+                    "#bookType, #recordingBookNumber, input[type='text'], form, button"
+                )
+
+        if not (is_miami_owner_search and already_on_name_document):
+            try:
                 await self.safe_goto(
-                    recorder_url,
+                    navigation_url,
                     wait_selector=recorder_wait_selector,
                     timeout=60_000,
                 )
-            else:
-                raise
+            except Exception as exc:
+                if _is_retriable_navigation_error(exc):
+                    await self._emit_status("Recorder portal slow to load, retrying...")
+                    await self.polite_delay(2.0)
+                    await self.safe_goto(
+                        navigation_url,
+                        wait_selector=recorder_wait_selector,
+                        timeout=60_000,
+                    )
+                else:
+                    raise
 
         if await self.is_cloudflare_blocked():
             cleared = await self.wait_for_cloudflare_clear(max_wait=90)
@@ -114,10 +139,8 @@ class GilaRecorderDriver(BaseDriver):
                 return []
 
         await self.dismiss_netronline_modals()
-        await self._click_disclaimer()
-
-        notes = (self.playwright_notes or "").strip()
-        search_value = _format_recorder_search_value(query_type, query_value, self.page.url)
+        if not (is_miami_owner_search and already_on_name_document):
+            await self._click_disclaimer()
 
         if is_florida_recorder(recorder_url) or is_florida_recorder(self.page.url):
             await self._emit_status("Opening Florida clerk official records search...")

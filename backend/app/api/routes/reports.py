@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app.db.repositories.documents_repository import DocumentsRepository
 from app.db.repositories.records_repository import RecordsRepository
 from app.extraction.document_ocr import DocumentOcrService, is_rate_limit_error
+from app.extraction.gpt_recorder_ocr import GptRecorderOcrService
 from app.extraction.recording_details_parser import build_recording_details_from_document
 from app.storage.document_asset_storage import DocumentAssetStorage
 from app.storage.document_paths import resolve_document_preview_path, resolve_document_preview_url
@@ -20,6 +21,7 @@ from app.report.report_builder import ReportBuilder
 router = APIRouter(prefix="/reports", tags=["reports"])
 documents_repo = DocumentsRepository()
 ocr_service = DocumentOcrService()
+gpt_recorder_ocr_service = GptRecorderOcrService()
 document_storage = DocumentAssetStorage()
 
 
@@ -242,9 +244,19 @@ def _resolve_document_ocr_source(doc: dict, file_path: Path | None = None) -> Pa
     return None
 
 
+def _is_recorder_viewer_document(doc: dict) -> bool:
+    """Recorder viewer OCR is limited to recorded documents, not tax/assessor exports."""
+    ocr = doc.get("ocr_json") or {}
+    source = str(ocr.get("source") or "").lower()
+    doc_type = str(doc.get("document_type") or "").lower()
+    if doc_type == "tax_bill" or source in {"tax_bill", "assessor", "assessor_sales"}:
+        return False
+    return True
+
+
 def _ocr_status_for(doc: dict) -> str:
     ocr = doc.get("ocr_json") or {}
-    if ocr.get("mistral_analyzed"):
+    if ocr.get("gpt_analyzed") or ocr.get("mistral_analyzed"):
         return "ready"
     if ocr.get("ocr_fallback") and ocr.get("recording_details"):
         return "fallback"
@@ -286,9 +298,21 @@ def _serialize_document_response(doc: dict, file_path: Path | None = None) -> di
     }
 
 
-async def _analyze_document_ocr(doc: dict, *, force: bool = False) -> dict:
+async def _analyze_document_ocr(
+    doc: dict,
+    *,
+    force: bool = False,
+    engine: str = "mistral",
+) -> dict:
+    engine = (engine or "mistral").lower()
+    if engine not in {"gpt", "mistral"}:
+        raise HTTPException(status_code=400, detail="engine must be 'gpt' or 'mistral'")
+    if engine == "gpt" and not _is_recorder_viewer_document(doc):
+        raise HTTPException(status_code=400, detail="GPT OCR is only available for recorder documents")
+
     ocr = doc.get("ocr_json") or {}
-    if ocr.get("mistral_analyzed") and ocr.get("recording_details") and not force:
+    analyzed_key = "gpt_analyzed" if engine == "gpt" else "mistral_analyzed"
+    if ocr.get(analyzed_key) and ocr.get("recording_details") and not force:
         return doc
 
     file_path = _resolve_document_file(doc)
@@ -296,14 +320,15 @@ async def _analyze_document_ocr(doc: dict, *, force: bool = False) -> dict:
     if not source_path:
         raise HTTPException(status_code=404, detail="No OCR source file found for this document")
 
-    extracted = await ocr_service.extract_document(
+    extractor = gpt_recorder_ocr_service if engine == "gpt" else ocr_service
+    extracted = await extractor.extract_document(
         str(source_path),
         doc.get("document_type"),
     )
     extracted_ocr = extracted.ocr_json or {}
     error_message = str(extracted_ocr.get("error") or "")
     if error_message:
-        if is_rate_limit_error(error_message):
+        if engine == "mistral" and is_rate_limit_error(error_message):
             fallback_details = build_recording_details_from_document(doc, ocr)
             merged_ocr = {
                 **ocr,
@@ -326,9 +351,35 @@ async def _analyze_document_ocr(doc: dict, *, force: bool = False) -> dict:
             )
             return response
 
+        if engine == "gpt":
+            fallback_details = build_recording_details_from_document(doc, ocr)
+            merged_ocr = {
+                **ocr,
+                **extracted_ocr,
+                "recording_details": fallback_details,
+                "ocr_fallback": True,
+                "gpt_analyzed": False,
+            }
+            updates = {"ocr_json": merged_ocr}
+            doc_id = doc.get("id")
+            if not doc_id:
+                raise HTTPException(status_code=500, detail="Document is missing an id")
+            updated = documents_repo.update(doc_id, updates)
+            result = updated or {**doc, **updates}
+            file_path = _resolve_document_file(result)
+            response = _serialize_document_response(result, file_path)
+            response["ocr_warning"] = (
+                "GPT OCR could not analyze this document. Showing recorder metadata already saved. "
+                "Click Re-analyze to retry."
+            )
+            return response
+
         raise HTTPException(status_code=502, detail=error_message)
 
     merged_ocr = {**ocr, **extracted_ocr}
+    if engine == "gpt":
+        merged_ocr["ocr_engine"] = "gpt"
+        merged_ocr.pop("ocr_fallback", None)
     recording_details = merged_ocr.get("recording_details") or {}
     merged_ocr = document_storage.upload_and_merge(
         doc.get("run_id") or "",
@@ -457,27 +508,40 @@ async def _ensure_tax_official_pdf(run_id: str) -> Path | None:
     return out_pdf if out_pdf.exists() and out_pdf.stat().st_size > 0 else None
 
 
-def _collect_official_document_paths(run_id: str) -> list[tuple[str, str, Path]]:
+def _name_search_subfolder(searched_name: str) -> str:
+    slug = re.sub(r"[^\w]+", "_", (searched_name or "").strip().upper()).strip("_")
+    return slug[:48] if slug else "unknown"
+
+
+def _collect_official_document_paths(run_id: str) -> list[tuple[str, str, Path, str]]:
     """Gather recorder, assessor, and tax official PDFs for this run.
 
-    Returns tuples of (category, label, path) where category is ``recorder``,
-    ``assessor``, or ``tax``.
+    Returns tuples of (category, label, path, subfolder) where category is
+    ``recorder``, ``assessor``, ``tax``, or ``name_search``.
     """
     docs_repo = DocumentsRepository()
     records_repo = RecordsRepository()
-    tax_results: list[tuple[str, str, Path]] = []
-    recorder_results: list[tuple[str, str, Path]] = []
-    assessor_results: list[tuple[str, str, Path]] = []
+    tax_results: list[tuple[str, str, Path, str]] = []
+    recorder_results: list[tuple[str, str, Path, str]] = []
+    name_search_results: list[tuple[str, str, Path, str]] = []
+    assessor_results: list[tuple[str, str, Path, str]] = []
     seen: set[str] = set()
 
-    def add(category: str, bucket: list[tuple[str, str, Path]], label: str, path: Path | None) -> None:
+    def add(
+        category: str,
+        bucket: list[tuple[str, str, Path, str]],
+        label: str,
+        path: Path | None,
+        *,
+        subfolder: str = "",
+    ) -> None:
         if not path:
             return
         key = str(path)
         if key in seen:
             return
         seen.add(key)
-        bucket.append((category, label, path))
+        bucket.append((category, label, path, subfolder))
 
     for doc in docs_repo.list_by_run(run_id):
         if doc.get("run_id") not in (None, run_id):
@@ -495,7 +559,18 @@ def _collect_official_document_paths(run_id: str) -> list[tuple[str, str, Path]]
             add("assessor", assessor_results, label, _resolve_assessor_pdf(doc))
             continue
         label = _recorder_doc_label(doc)
-        add("recorder", recorder_results, label, _resolve_recorder_pdf(doc))
+        pdf_path = _resolve_recorder_pdf(doc)
+        if ocr.get("source") == "name_searcher":
+            searched = str(ocr.get("searched_name") or "name_search").strip()
+            add(
+                "name_search",
+                name_search_results,
+                label,
+                pdf_path,
+                subfolder=_name_search_subfolder(searched),
+            )
+            continue
+        add("recorder", recorder_results, label, pdf_path)
 
     tax_record = next(
         (r for r in records_repo.list_by_run(run_id) if r.get("source") == "tax_record"),
@@ -520,16 +595,22 @@ def _collect_official_document_paths(run_id: str) -> list[tuple[str, str, Path]]
                     for pdf in sorted(tax_run_dir.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True):
                         add("tax", tax_results, pdf.stem.replace("_", " "), _resolve_pdf_path(pdf))
 
-    return assessor_results + recorder_results + tax_results
+    return assessor_results + recorder_results + name_search_results + tax_results
 
 
-def _build_official_documents_zip(run_id: str, docs: list[tuple[str, str, Path]]) -> io.BytesIO:
+def _build_official_documents_zip(run_id: str, docs: list[tuple[str, str, Path, str]]) -> io.BytesIO:
     zip_buffer = io.BytesIO()
     used_names: set[str] = set()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for category, label, path in docs:
+        for entry in docs:
+            category, label, path = entry[0], entry[1], entry[2]
+            subfolder = entry[3] if len(entry) > 3 else ""
             safe_label = re.sub(r"[^\w\-.]+", "_", label).strip("_") or "document"
-            arcname = f"{category}/{safe_label}{path.suffix}"
+            safe_subfolder = re.sub(r"[^\w\-.]+", "_", subfolder).strip("_") if subfolder else ""
+            if category == "name_search" and safe_subfolder:
+                arcname = f"{category}/{safe_subfolder}/{safe_label}{path.suffix}"
+            else:
+                arcname = f"{category}/{safe_label}{path.suffix}"
             if arcname in used_names:
                 stem = Path(arcname).stem
                 suffix = Path(arcname).suffix
@@ -602,7 +683,7 @@ async def download_run_document(run_id: str):
     if not docs:
         generated = await _ensure_tax_official_pdf(run_id)
         if generated and is_valid_pdf(generated):
-            docs = [("tax", "Tax Bills", generated)]
+            docs = [("tax", "Tax Bills", generated, "")]
     if not docs:
         raise HTTPException(
             status_code=404,
@@ -726,13 +807,17 @@ async def get_document(doc_id: str) -> dict:
 
 
 @router.post("/documents/{doc_id}/ocr")
-async def analyze_document_ocr(doc_id: str, force: bool = Query(default=False)) -> dict:
-    """Run Mistral OCR on a document and persist structured recording details."""
+async def analyze_document_ocr(
+    doc_id: str,
+    force: bool = Query(default=False),
+    engine: str = Query(default="mistral"),
+) -> dict:
+    """Run OCR on a document. Recorder viewer uses GPT; pipeline ingestion keeps Mistral."""
     doc = _fetch_document_record(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    result = await _analyze_document_ocr(doc, force=force)
+    result = await _analyze_document_ocr(doc, force=force, engine=engine)
     if isinstance(result, dict) and result.get("id"):
         return result
 

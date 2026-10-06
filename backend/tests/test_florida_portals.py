@@ -14,6 +14,7 @@ from app.config.florida_portals import (
     is_florida_recorder,
     is_myflorida_county_recorder,
     MIAMI_DADE_SEARCH_URL,
+    MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL,
     MIAMI_DADE_RECORDER_SEARCH_URL,
     normalize_florida_pa_parcel,
     normalize_florida_parcel,
@@ -42,6 +43,7 @@ def test_miami_dade_detection():
     assert is_miami_dade_assessor("https://www.miamidade.gov/Apps/PA/propertysearch/#/")
     assert is_miami_dade_recorder("https://www.miamidadeclerk.gov/clerk/home.page")
     assert is_miami_dade_recorder("https://onlineservices.miamidadeclerk.gov/officialrecords")
+    assert MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL.endswith("/officialrecords/Name/Document")
 
 
 def test_resolve_miami_dade_urls():

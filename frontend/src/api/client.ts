@@ -127,6 +127,12 @@ export interface ReportData {
     ai_agent_model?: string;
     ai_agent_meta?: Record<string, unknown>;
     name_searches?: { name: string; source?: string }[];
+    name_search_groups?: {
+      name: string;
+      document_count?: number;
+      documents?: Record<string, unknown>[];
+    }[];
+    recorder_primary_documents?: Record<string, unknown>[];
     generated_at?: string;
   };
   pdf_path?: string;
@@ -393,8 +399,15 @@ export async function getDocumentById(docId: string): Promise<DocumentDetail> {
   return res.json();
 }
 
-export async function analyzeDocumentOcr(docId: string, force = false): Promise<DocumentDetail> {
-  const suffix = force ? "?force=true" : "";
+export async function analyzeDocumentOcr(
+  docId: string,
+  force = false,
+  engine: "gpt" | "mistral" = "gpt",
+): Promise<DocumentDetail> {
+  const params = new URLSearchParams();
+  if (force) params.set("force", "true");
+  params.set("engine", engine);
+  const suffix = `?${params.toString()}`;
   const res = await fetch(apiPath(`/reports/documents/${docId}/ocr${suffix}`), {
     method: "POST",
   });

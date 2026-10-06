@@ -5,11 +5,17 @@ export interface NameSearchEntry {
   source?: string;
 }
 
-interface Props {
-  entries: NameSearchEntry[];
+interface NameSearchGroupSummary {
+  name: string;
+  document_count?: number;
 }
 
-export default function NameSearches({ entries }: Props) {
+interface Props {
+  entries: NameSearchEntry[];
+  groups?: NameSearchGroupSummary[];
+}
+
+export default function NameSearches({ entries, groups = [] }: Props) {
   const [open, setOpen] = React.useState(true);
 
   if (!entries.length) {
@@ -42,7 +48,7 @@ export default function NameSearches({ entries }: Props) {
               Name Searches
             </h3>
             <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Names actually searched by the Name Searcher node in this run
+              Party names searched — documents are grouped under each name below
             </p>
           </div>
         </div>
@@ -53,22 +59,30 @@ export default function NameSearches({ entries }: Props) {
 
       {open && (
         <div className="border-t border-slate-100 dark:border-white/[0.06]">
-          <div className="grid grid-cols-[1fr_auto] gap-4 px-6 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400 border-b border-slate-100 dark:border-white/[0.06]">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-4 px-6 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400 border-b border-slate-100 dark:border-white/[0.06]">
             <div>Name</div>
+            <div className="text-right">Records</div>
             <div className="text-right">Source</div>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-            {entries.map((entry) => (
-              <div
-                key={`${entry.name}|${entry.source || ""}`}
-                className="grid grid-cols-[1fr_auto] gap-4 px-6 py-2.5 text-sm"
-              >
-                <div className="font-mono text-slate-900 dark:text-zinc-100 break-words">{entry.name}</div>
-                <div className="text-slate-500 dark:text-zinc-400 text-right whitespace-nowrap">
-                  {entry.source || "—"}
+            {entries.map((entry) => {
+              const group = groups.find((item) => item.name === entry.name);
+              const recordCount = group?.document_count ?? 0;
+              return (
+                <div
+                  key={`${entry.name}|${entry.source || ""}`}
+                  className="grid grid-cols-[1fr_auto_auto] gap-4 px-6 py-2.5 text-sm"
+                >
+                  <div className="font-mono text-slate-900 dark:text-zinc-100 break-words">{entry.name}</div>
+                  <div className="text-slate-700 dark:text-zinc-300 text-right whitespace-nowrap font-semibold">
+                    {recordCount > 0 ? recordCount : "—"}
+                  </div>
+                  <div className="text-slate-500 dark:text-zinc-400 text-right whitespace-nowrap">
+                    {entry.source || "—"}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

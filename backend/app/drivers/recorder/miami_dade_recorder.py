@@ -8,12 +8,14 @@ import os
 import re
 import shutil
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from app.config.florida_portals import (
+    MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL,
     MIAMI_DADE_RECORDER_SEARCH_URL,
     format_miami_dade_address_for_search,
     format_miami_dade_recorder_address_for_search,
@@ -21,8 +23,8 @@ from app.config.florida_portals import (
 from app.extraction.book_page import format_book_page_label, parse_book_page
 from app.drivers.recorder.acclaimweb_recorder import resolve_party_type_from_notes
 from app.extraction.miami_dade_name_searches import (
-    normalize_party_name,
     parse_miami_dade_party_name_fields,
+    sanitize_miami_dade_party_name_for_search,
 )
 from app.extraction.miami_dade_party_scrape import (
     apply_party_names_to_recorded_document,
@@ -123,6 +125,8 @@ DEFAULT_MIAMI_DADE_BOOK_TYPE = ""
 MIAMI_DADE_BOOK_PAGE_SEARCH_TYPES: tuple[str, ...] = ("",)
 
 MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS = 60_000
+# Cap name-search PDF downloads when no explicit search_limit is set (site may return 500+).
+MIAMI_DADE_NAME_SEARCH_DEFAULT_MAX_DOWNLOADS = 50
 
 # Miami-Dade official records uses Formik `<select id="bookType">`.
 # The actual option *values* on the live page are:
@@ -452,6 +456,8 @@ async def miami_dade_open_assessor_recorder_link_and_download(
     book_number: str,
     page_number: str,
     search_limit: Optional[int] = None,
+    *,
+    download_all_cards: bool = False,
 ) -> list[RecordedDocument]:
     """Open the clerk URL from an assessor OR Book-Page hyperlink and download matching PDFs."""
     book_page_label = format_book_page_label(book_number, page_number)
@@ -471,13 +477,28 @@ async def miami_dade_open_assessor_recorder_link_and_download(
         return []
 
     await driver.polite_delay(3.0)
+    current_url = (driver.page.url or "").lower()
+
+    if download_all_cards and "recordpage" in current_url:
+        qs_token = _extract_qs_param(recorder_url) or _extract_qs_param(driver.page.url)
+        if qs_token:
+            search_results_url = (
+                "https://onlineservices.miamidadeclerk.gov/officialrecords/"
+                f"SearchResults?qs={quote(str(qs_token), safe='')}"
+            )
+            try:
+                await driver.page.goto(search_results_url, wait_until="domcontentloaded", timeout=60_000)
+                await driver.polite_delay(2.0)
+                current_url = (driver.page.url or "").lower()
+            except Exception as exc:
+                logger.debug("Could not open SearchResults from assessor qs token: %s", exc)
+
     status = await _wait_for_search_results(
         driver,
         timeout_ms=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,
     )
     await driver.save_browser_preview()
 
-    current_url = driver.page.url.lower()
     if "searchresults" in current_url or status == "results":
         documents = await _download_all_search_results(
             driver,
@@ -487,7 +508,7 @@ async def miami_dade_open_assessor_recorder_link_and_download(
             search_label=book_page_label,
             prefer_fallback_book_page=True,
         )
-    elif "recordpage" in current_url:
+    elif "recordpage" in current_url and not download_all_cards:
         metadata = await _scrape_first_result_metadata(driver) or {}
         metadata["source_url"] = driver.page.url
         party_names = await _collect_document_party_names(driver, metadata)
@@ -535,8 +556,30 @@ async def miami_dade_open_assessor_recorder_link_and_download(
 
 
 async def miami_dade_prepare_recorder_queue_step(driver: "BaseDriver") -> bool:
-    """Reset browser tabs before each assessor sales book/page queue step."""
-    return await _reset_miami_dade_recorder_session(driver)
+    """Reset tabs and reopen Name/Document search between queued Miami-Dade searches."""
+    await driver._emit_status(
+        "Miami-Dade recorder: finished current name search — preparing next Name/Document search..."
+    )
+    await _close_stale_recordpage_tabs(driver)
+    if not await driver.ensure_page_alive():
+        return False
+
+    current_url = (driver.page.url or "").lower()
+    if "officialrecords" not in current_url:
+        if not await _reset_miami_dade_recorder_session(driver):
+            return False
+
+    try:
+        await driver.page.goto(
+            MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL,
+            wait_until="domcontentloaded",
+            timeout=60_000,
+        )
+        await driver.polite_delay(1.5)
+    except Exception as exc:
+        logger.debug("Name/Document queue navigation failed: %s", exc)
+
+    return await _open_name_document_search(driver)
 
 
 async def miami_dade_property_address_search_and_download(
@@ -574,7 +617,7 @@ async def miami_dade_property_address_search_and_download(
 
 def format_miami_dade_party_name_for_search(name: str) -> str:
     """Format a party name for Miami-Dade Name/Document search."""
-    return normalize_party_name(name)
+    return sanitize_miami_dade_party_name_for_search(name)
 
 
 async def miami_dade_party_name_search_and_download(
@@ -586,7 +629,11 @@ async def miami_dade_party_name_search_and_download(
 ) -> list[RecordedDocument]:
     """Search Miami-Dade Name/Document records by party name and download matching PDFs."""
     _monitor_miami_dade_verification(driver)
-    await _reset_miami_dade_recorder_session(driver)
+    current_url = (driver.page.url or "").lower() if driver.page else ""
+    if "/name/document" not in current_url and "searchresults" not in current_url:
+        if "officialrecords" not in current_url:
+            await _reset_miami_dade_recorder_session(driver)
+        await _open_name_document_search(driver)
     normalized = format_miami_dade_party_name_for_search(party_name)
     if not normalized:
         return []
@@ -596,13 +643,25 @@ async def miami_dade_party_name_search_and_download(
         f"Miami-Dade recorder: searching Name/Document for party {party_label!r}..."
     )
 
-    if not await _search_party_name_form(driver, normalized, party_type=party_type):
+    search_status = await _search_party_name_form(driver, normalized, party_type=party_type)
+    if search_status == "empty":
         return []
+    if search_status != "results":
+        await driver._emit_status(
+            "Miami-Dade recorder: search results page did not load — skipping downloads."
+        )
+        return []
+
+    effective_limit = search_limit
+    if not effective_limit or effective_limit <= 0:
+        effective_limit = MIAMI_DADE_NAME_SEARCH_DEFAULT_MAX_DOWNLOADS
 
     documents = await _download_all_search_results(
         driver,
-        search_limit=search_limit,
+        search_limit=effective_limit,
         search_label=party_label,
+        reset_session_after=False,
+        searched_name=party_label,
     )
     pdf_docs = [
         doc
@@ -623,26 +682,857 @@ async def _search_party_name_form(
     party_name: str,
     *,
     party_type: str | None = None,
-) -> bool:
+) -> str:
     """Fill Miami-Dade Name/Document search form, submit, and wait for results."""
     if not await _open_name_document_search(driver):
         await driver._emit_status("Miami-Dade recorder: could not open Name/Document search form.")
-        return False
+        return "submit_failed"
 
+    parsed = parse_miami_dade_party_name_fields(party_name)
     if not await _fill_miami_dade_party_name(driver, party_name):
         await driver._emit_status("Miami-Dade recorder: could not fill party name field.")
         await driver.screenshot_on_failure("miami_dade_party_name_fill_failed")
-        return False
+        return "submit_failed"
 
     await _select_miami_dade_party_type(driver, party_type)
     await driver.polite_delay(0.35)
 
-    await driver._emit_status(f"Submitting Name/Document search for {party_name!r}...")
-    if not await _click_miami_dade_search_button(driver):
+    if not await _verify_name_document_form_values(driver, parsed):
+        await driver._emit_status("Miami-Dade recorder: re-applying party name before search...")
+        if not await _fill_miami_dade_party_name(driver, party_name):
+            return "submit_failed"
+
+    status = await _submit_miami_dade_name_document_form(driver, parsed=parsed)
+    if status == "results":
+        if await _ensure_on_miami_dade_search_results_page(driver):
+            return "results"
+        return "submit_failed"
+    if status == "empty":
+        return "empty"
+    if status == "submit_failed":
         await driver._emit_status("ERROR: Could not submit Miami-Dade party name search.")
         await driver.screenshot_on_failure("miami_dade_party_name_search_failed")
+    elif status == "not_submitted":
+        await driver._emit_status(
+            "ERROR: Miami-Dade search form did not submit — the portal may require "
+            "Register/Login to pass Turnstile verification."
+        )
+        await driver.screenshot_on_failure("miami_dade_party_name_search_not_submitted")
+    return "submit_failed"
+
+
+async def _verify_name_document_form_values(
+    driver: "BaseDriver",
+    parsed: dict[str, str],
+) -> bool:
+    """Verify visible form fields contain the expected party name values."""
+    try:
+        return bool(
+            await driver.page.evaluate(
+                """(payload) => {
+                    const norm = (value) => (value || '').trim().toUpperCase();
+                    if (payload.kind === 'company') {
+                        const expected = norm(payload.company_name);
+                        const selectors = ['#companyName', 'input[name="companyName"]'];
+                        return selectors.some((sel) => {
+                            const el = document.querySelector(sel);
+                            return el && norm(el.value) === expected;
+                        });
+                    }
+                    const last = norm(payload.last_name);
+                    const first = norm(payload.first_name || '');
+                    const middle = norm(payload.middle_name || '');
+                    const lastEl = document.querySelector('#lastName, input[name="lastName"]');
+                    const firstEl = document.querySelector('#firstName, input[name="firstName"]');
+                    const middleEl = document.querySelector('#middleName, input[name="middleName"]');
+                    if (!lastEl || norm(lastEl.value) !== last) return false;
+                    if (first && (!firstEl || norm(firstEl.value) !== first)) return false;
+                    if (middle && (!middleEl || norm(middleEl.value) !== middle)) return false;
+                    return true;
+                }""",
+                parsed,
+            )
+        )
+    except Exception:
         return False
+
+
+async def _is_name_document_search_form_visible(driver: "BaseDriver") -> bool:
+    """Return True when the Name/Document search form is still on screen."""
+    try:
+        return bool(
+            await driver.page.evaluate(
+                """() => {
+                    const url = window.location.href.toLowerCase();
+                    if (url.includes('searchresults') || url.includes('recordpage')) {
+                        return false;
+                    }
+                    const searchBtn = document.querySelector('button.button-green');
+                    const nameField = document.querySelector(
+                        '#lastName, input[name="lastName"], #companyName, input[name="companyName"]'
+                    );
+                    return !!(searchBtn && nameField && nameField.offsetParent !== null);
+                }"""
+            )
+        )
+    except Exception:
+        return False
+
+
+async def _get_miami_dade_name_search_mode(driver: "BaseDriver") -> str | None:
+    """Return 'person' or 'company' based on which Name/Document fields are visible."""
+    try:
+        return await driver.page.evaluate(
+            """() => {
+                const company = document.querySelector('#companyName, input[name="companyName"]');
+                const last = document.querySelector('#lastName, input[name="lastName"]');
+                const companyVisible = !!(company && company.offsetParent !== null);
+                const lastVisible = !!(last && last.offsetParent !== null);
+                if (companyVisible && !lastVisible) return 'company';
+                if (lastVisible && !companyVisible) return 'person';
+                const labels = [...document.querySelectorAll('.fw-bold')];
+                const nameLabel = labels.find((el) =>
+                    /company name|party name/i.test(el.textContent || '')
+                );
+                if (nameLabel) {
+                    return /company name/i.test(nameLabel.textContent || '')
+                        ? 'company'
+                        : 'person';
+                }
+                return null;
+            }"""
+        )
+    except Exception:
+        return None
+
+
+async def _select_miami_dade_name_search_mode(driver: "BaseDriver", kind: str) -> bool:
+    """Select Person or Company on the Miami-Dade Name/Document form.
+
+    The Person/Company toggle is local React state, not a Formik field. Setting the
+    radio's checked property does not run the component onChange handler, so submit
+    can still read Person mode and send an empty party name.
+    """
+    desired = "company" if kind == "company" else "person"
+    if (await _get_miami_dade_name_search_mode(driver)) == desired:
+        return True
+
+    label_sel = (
+        'label[for="companySearchRadio"]'
+        if desired == "company"
+        else 'label[for="personSearchRadio"]'
+    )
+    radio_sel = "#companySearchRadio" if desired == "company" else "#personSearchRadio"
+    wait_field = (
+        "#companyName, input[name='companyName']"
+        if desired == "company"
+        else "#lastName, input[name='lastName']"
+    )
+
+    clicked = False
+    for sel in (label_sel, radio_sel):
+        try:
+            loc = driver.page.locator(sel).first
+            if await loc.count() > 0 and await loc.is_visible(timeout=2_000):
+                await loc.scroll_into_view_if_needed()
+                try:
+                    await loc.click(timeout=3_000)
+                except Exception:
+                    await loc.click(force=True)
+                clicked = True
+                break
+        except Exception:
+            continue
+
+    if not clicked:
+        return False
+
+    try:
+        await driver.page.wait_for_selector(wait_field, state="visible", timeout=5_000)
+    except Exception:
+        pass
+    await driver.polite_delay(0.5)
+    return (await _get_miami_dade_name_search_mode(driver)) == desired
+
+
+def _build_miami_dade_party_name_query(parsed: dict[str, str]) -> str:
+    """Build the partyName query string Miami-Dade sends to standardsearch."""
+    if parsed.get("kind") == "company":
+        return str(parsed.get("company_name") or "").strip()
+    parts = [
+        str(parsed.get("last_name") or "").strip(),
+        str(parsed.get("first_name") or "").strip(),
+        str(parsed.get("middle_name") or "").strip(),
+    ]
+    return " ".join(part for part in parts if part).strip()
+
+
+async def _miami_dade_results_page_has_content(driver: "BaseDriver") -> bool:
+    """Return True when the SearchResults page shows a result count or cards."""
+    try:
+        return bool(
+            await driver.page.evaluate(
+                """() => {
+                    const text = (document.body?.innerText || '').toLowerCase();
+                    if (/\\d+\\s+results?\\s+returned/.test(text)) return true;
+                    if (document.querySelectorAll('.TitleSearchTab').length > 0) return true;
+                    return false;
+                }"""
+            )
+        )
+    except Exception:
+        return False
+
+
+async def _count_miami_dade_visible_result_cards(driver: "BaseDriver") -> int:
+    """Count rendered SearchResults cards after client-side filtering."""
+    try:
+        return int(await driver.page.locator(".TitleSearchTab").count())
+    except Exception:
+        return 0
+
+
+async def _get_miami_dade_results_returned_count(
+    driver: "BaseDriver",
+    *,
+    prefer_visible_cards: bool = False,
+) -> int:
+    """Read the SearchResults count from visible cards or the page header."""
+    if prefer_visible_cards:
+        visible = await _count_miami_dade_visible_result_cards(driver)
+        if visible >= 0:
+            return visible
+
+    try:
+        body_text = await driver.page.inner_text("body")
+        match = re.search(r"(\d+)\s+results?\s+returned", body_text, re.I)
+        if match:
+            return int(match.group(1))
+    except Exception:
+        pass
+    return await _count_miami_dade_visible_result_cards(driver)
+
+
+def _find_miami_dade_results_filter_controls(driver: "BaseDriver"):
+    """Locate the SearchResults filter dropdown, text box, and search icon."""
+    toolbar = driver.page.locator(".filter-search-container").first
+    toggle = toolbar.locator("#filter-dropdown").first
+    input_box = toolbar.locator("input[type='text']").first
+    search_button = toolbar.locator(".cursorPointer").first
+    return toggle, input_box, search_button
+
+
+async def _reset_miami_dade_results_sort(driver: "BaseDriver") -> None:
+    """Reset the sort dropdown so it does not interfere with address filtering."""
+    sort_select = driver.page.locator('select[aria-label="Select sorting type"]').first
+    try:
+        if not await sort_select.is_visible(timeout=1000):
+            return
+        current = (await sort_select.input_value() or "").strip()
+        if current and current.lower() != "select sorting type":
+            await sort_select.select_option(label=re.compile(r"^Select sorting type$", re.I))
+            await driver.polite_delay(0.4)
+    except Exception as exc:
+        logger.debug("Could not reset Miami-Dade results sort dropdown: %s", exc)
+
+
+async def _select_miami_dade_results_filter_type(driver: "BaseDriver", filter_type: str) -> bool:
+    """Open the SearchResults filter dropdown and choose a filter type."""
+    toggle, _, _ = _find_miami_dade_results_filter_controls(driver)
+    try:
+        if not await toggle.is_visible(timeout=3000):
+            await driver._emit_status("Miami-Dade Name Search: filter dropdown not found.")
+            return False
+        await toggle.click(timeout=3000)
+        await driver.polite_delay(0.25)
+        menu_item = driver.page.locator(".dropdown-menu.show .dropdown-item").filter(
+            has_text=re.compile(rf"^{re.escape(filter_type)}$", re.I)
+        )
+        if await menu_item.count() == 0:
+            menu_item = driver.page.locator(".dropdown-item").filter(
+                has_text=re.compile(rf"^{re.escape(filter_type)}$", re.I)
+            )
+        await menu_item.first.click(timeout=3000)
+        await driver.polite_delay(0.35)
+        try:
+            await toggle.filter(has_text=re.compile(rf"^{re.escape(filter_type)}$", re.I)).wait_for(
+                state="visible",
+                timeout=3000,
+            )
+        except Exception:
+            pass
+        return True
+    except Exception as exc:
+        logger.debug("Miami-Dade filter type select failed (%s): %s", filter_type, exc)
+        return False
+
+
+async def _wait_for_miami_dade_results_filter_input_enabled(driver: "BaseDriver") -> bool:
+    """Wait until the SearchResults filter text box is enabled after choosing a filter type."""
+    _, filter_input, _ = _find_miami_dade_results_filter_controls(driver)
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            if await filter_input.is_visible() and not await filter_input.is_disabled():
+                return True
+        except Exception:
+            pass
+        await asyncio.sleep(0.15)
+    return False
+
+
+async def _fill_miami_dade_results_filter_input(driver: "BaseDriver", value: str) -> bool:
+    """Fill the SearchResults filter text box next to the filter dropdown."""
+    _, filter_input, _ = _find_miami_dade_results_filter_controls(driver)
+    street = value.strip()
+    if not street:
+        return False
+    try:
+        if not await _wait_for_miami_dade_results_filter_input_enabled(driver):
+            return False
+
+        await filter_input.click(timeout=2000)
+        await filter_input.press("Control+A")
+        await filter_input.press("Backspace")
+        await filter_input.press_sequentially(street, delay=25)
+        await driver.polite_delay(0.2)
+        current = (await filter_input.input_value() or "").strip()
+        if current.lower() != street.lower():
+            await filter_input.evaluate(_SET_REACT_INPUT_VALUE_JS, street)
+            await driver.polite_delay(0.15)
+            current = (await filter_input.input_value() or "").strip()
+        if current.lower() != street.lower():
+            return False
+        return True
+    except Exception as exc:
+        logger.debug("Miami-Dade filter input fill failed: %s", exc)
+        return False
+
+
+async def _click_miami_dade_results_filter_search(driver: "BaseDriver") -> bool:
+    """Submit the SearchResults filter using Enter or the magnifying-glass icon."""
+    _, filter_input, search_button = _find_miami_dade_results_filter_controls(driver)
+    if filter_input:
+        try:
+            if await filter_input.is_visible(timeout=1000):
+                await filter_input.press("Enter")
+                await driver.polite_delay(0.35)
+                return True
+        except Exception:
+            pass
+    try:
+        if await search_button.is_visible(timeout=1000):
+            await search_button.click(timeout=3000)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+async def _wait_for_miami_dade_applied_filter(driver: "BaseDriver", filter_type: str) -> None:
+    """Wait until the SearchResults page shows the requested applied filter chip."""
+    deadline = time.monotonic() + 5.0
+    target = filter_type.strip().lower()
+    while time.monotonic() < deadline:
+        try:
+            chips = driver.page.locator(".border-primary-subtle")
+            count = await chips.count()
+            for i in range(count):
+                text = (await chips.nth(i).inner_text() or "").lower()
+                if text.startswith(f"{target}:"):
+                    await driver.polite_delay(0.25)
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(0.2)
+
+
+async def _apply_miami_dade_results_address_filter(driver: "BaseDriver", address: str) -> bool:
+    """Apply the SearchResults Address filter chip and submit it."""
+    street = format_miami_dade_address_for_search(address).strip()
+    if not street:
+        return False
+
+    await _reset_miami_dade_results_sort(driver)
+    if not await _select_miami_dade_results_filter_type(driver, "Address"):
+        await driver._emit_status("Miami-Dade Name Search: could not choose Address filter type.")
+        return False
+
+    await driver._emit_status(
+        f"Miami-Dade Name Search: entering address filter value {street!r}..."
+    )
+    if not await _fill_miami_dade_results_filter_input(driver, street):
+        await driver._emit_status(
+            f"Miami-Dade Name Search: could not type address {street!r} into filter box."
+        )
+        return False
+
+    if not await _click_miami_dade_results_filter_search(driver):
+        await driver._emit_status("Miami-Dade Name Search: could not submit address filter.")
+        return False
+
+    await _wait_for_miami_dade_applied_filter(driver, "Address")
+    await driver.polite_delay(0.5)
     return True
+
+
+async def _clear_miami_dade_results_filter(driver: "BaseDriver") -> bool:
+    """Remove applied SearchResults filter chips and restore the full result set."""
+    removed_any = False
+    remove_buttons = driver.page.locator(".border-primary-subtle div[style*='cursor: pointer']")
+    try:
+        while await remove_buttons.count() > 0:
+            await remove_buttons.first.click(timeout=2000)
+            removed_any = True
+            await driver.polite_delay(0.35)
+    except Exception as exc:
+        logger.debug("Could not remove Miami-Dade applied filter chips: %s", exc)
+
+    await _select_miami_dade_results_filter_type(driver, "Select a filter type")
+    await _reset_miami_dade_results_sort(driver)
+    await driver.polite_delay(0.5)
+    await _scroll_miami_dade_results_to_load_cards(driver)
+    return removed_any
+
+
+async def _maybe_filter_miami_dade_name_results_by_address(
+    driver: "BaseDriver",
+    address: str,
+) -> bool:
+    """Filter name-search results by property address; fall back to unfiltered names if empty."""
+    street = format_miami_dade_address_for_search(address).strip()
+    if not street:
+        return False
+
+    initial_count = await _get_miami_dade_results_returned_count(driver)
+    if initial_count <= 0:
+        return False
+
+    search_results_url = driver.page.url
+    await driver._emit_status(
+        f"Miami-Dade Name Search: filtering {initial_count} name result(s) by address {street!r}..."
+    )
+    if not await _apply_miami_dade_results_address_filter(driver, street):
+        return False
+
+    await _wait_for_miami_dade_result_cards(driver)
+    filtered_count = await _get_miami_dade_results_returned_count(
+        driver,
+        prefer_visible_cards=True,
+    )
+    if filtered_count > 0:
+        await driver._emit_status(
+            f"Miami-Dade Name Search: address filter matched {filtered_count} record(s)."
+        )
+        return True
+
+    await driver._emit_status(
+        f"Miami-Dade Name Search: no records matched address {street!r}; "
+        "removing filter and downloading full name search results."
+    )
+    await _clear_miami_dade_results_filter(driver)
+    await _wait_for_miami_dade_result_cards(driver)
+    restored_count = await _get_miami_dade_results_returned_count(driver)
+    if restored_count <= 0 and search_results_url:
+        try:
+            await driver.page.goto(search_results_url, wait_until="domcontentloaded", timeout=60_000)
+            await driver.polite_delay(1.5)
+            await _scroll_miami_dade_results_to_load_cards(driver)
+            await _wait_for_miami_dade_result_cards(driver)
+        except Exception as exc:
+            logger.debug("Could not restore unfiltered name search results: %s", exc)
+    return False
+
+
+async def _scroll_miami_dade_results_to_load_cards(driver: "BaseDriver") -> int:
+    """Scroll the results list so lazy-loaded TitleSearchTab cards appear."""
+    try:
+        count = await driver.page.evaluate(
+            """async () => {
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                let previous = 0;
+                for (let i = 0; i < 20; i++) {
+                    window.scrollTo(0, document.body.scrollHeight);
+                    await sleep(300);
+                    const count = document.querySelectorAll('.TitleSearchTab').length;
+                    if (count > 0 && count === previous && i > 2) break;
+                    previous = count;
+                }
+                window.scrollTo(0, 0);
+                await sleep(250);
+                return document.querySelectorAll('.TitleSearchTab').length;
+            }"""
+        )
+        return int(count or 0)
+    except Exception:
+        return 0
+
+
+async def _wait_for_miami_dade_result_cards(driver: "BaseDriver") -> int:
+    """Wait until SearchResults cards are rendered and return the visible card count."""
+    try:
+        count = await driver.page.wait_for_function(
+            """() => {
+                const text = (document.body?.innerText || '').toLowerCase();
+                const cards = document.querySelectorAll('.TitleSearchTab').length;
+                if (cards > 0) return cards;
+                if (/\\d+\\s+results?\\s+returned/.test(text)) return 1;
+                return null;
+            }""",
+            timeout=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,
+        )
+        return int(await count.json_value() or 0)
+    except Exception:
+        if await _miami_dade_results_page_has_content(driver):
+            return await _scroll_miami_dade_results_to_load_cards(driver) or 1
+        return 0
+
+
+async def _ensure_on_miami_dade_search_results_page(driver: "BaseDriver") -> bool:
+    """Verify the browser is on SearchResults with cards ready to open."""
+    current_url = (driver.page.url or "").lower()
+    if "searchresults" not in current_url:
+        status = await _wait_for_search_results(
+            driver,
+            timeout_ms=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,
+        )
+        if status != "results":
+            return False
+
+    for attempt in range(4):
+        card_count = await _wait_for_miami_dade_result_cards(driver)
+        if card_count > 0:
+            await driver._emit_status(
+                f"Miami-Dade recorder: search results ready ({card_count} result card(s) visible)."
+            )
+            return True
+
+        if await _miami_dade_results_page_has_content(driver):
+            await driver._emit_status(
+                "Miami-Dade recorder: results page loaded — scrolling to reveal result cards..."
+            )
+            card_count = await _scroll_miami_dade_results_to_load_cards(driver)
+            if card_count > 0:
+                await driver._emit_status(
+                    f"Miami-Dade recorder: search results ready ({card_count} result card(s) visible)."
+                )
+                return True
+            if attempt >= 2:
+                await driver._emit_status(
+                    "Miami-Dade recorder: results page loaded (cards still rendering)."
+                )
+                return True
+
+        await driver.polite_delay(2.0)
+
+    return False
+
+
+async def _navigate_miami_dade_search_results(driver: "BaseDriver", qs: str) -> bool:
+    """Open the Miami-Dade SearchResults page for a returned qs token."""
+    if not qs:
+        return False
+    results_url = (
+        "https://onlineservices.miamidadeclerk.gov/officialrecords/"
+        f"SearchResults?qs={quote(str(qs), safe='')}"
+    )
+    try:
+        await driver.page.goto(results_url, wait_until="domcontentloaded", timeout=60_000)
+        await driver.polite_delay(2.0)
+        return "searchresults" in driver.page.url.lower()
+    except Exception as exc:
+        logger.debug("Failed to open Miami-Dade search results page: %s", exc)
+        return False
+
+
+async def _wait_for_miami_dade_turnstile_token(
+    driver: "BaseDriver",
+    *,
+    timeout_ms: int = 15_000,
+) -> str:
+    """Wait for Cloudflare Turnstile to produce a submit token (required for API search)."""
+    try:
+        token = await driver.page.evaluate(
+            """async (timeoutMs) => {
+                const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                if (!window.turnstile) return '';
+
+                const readExisting = () => {
+                    const widgets = document.querySelectorAll(
+                        '.cf-turnstile, [data-sitekey], [data-cf-turnstile-widget-id]'
+                    );
+                    for (const widget of widgets) {
+                        const widgetId =
+                            widget.getAttribute('data-cf-turnstile-widget-id') ||
+                            widget.id ||
+                            widget.getAttribute('id');
+                        if (!widgetId || !window.turnstile.getResponse) continue;
+                        const existing = window.turnstile.getResponse(widgetId);
+                        if (existing) return existing;
+                    }
+                    return '';
+                };
+
+                let token = readExisting();
+                if (token) return token;
+
+                const started = Date.now();
+                while (Date.now() - started < timeoutMs) {
+                    await wait(500);
+                    token = readExisting();
+                    if (token) return token;
+                }
+                return '';
+            }""",
+            timeout_ms,
+        )
+        return str(token or "")
+    except Exception as exc:
+        logger.debug("Turnstile token wait failed: %s", exc)
+        return ""
+
+
+async def _post_miami_dade_standard_search(
+    driver: "BaseDriver",
+    parsed: dict[str, str],
+    *,
+    turnstile_token: str = "",
+) -> dict[str, Any]:
+    """Call Miami-Dade standardsearch API directly and return the JSON body."""
+    party_name = _build_miami_dade_party_name_query(parsed)
+    if not party_name:
+        return {"ok": False, "reason": "empty_party_name"}
+
+    try:
+        return await driver.page.evaluate(
+            """async ({ partyName, token }) => {
+                const params = new URLSearchParams({
+                    partyName,
+                    dateRangeFrom: '',
+                    dateRangeTo: '',
+                    documentType: '',
+                    searchT: '',
+                    firstQuery: 'y',
+                    searchtype: 'Name/Document',
+                });
+                const response = await fetch(
+                    `/officialrecords/api/home/standardsearch?${params.toString()}`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json',
+                            'x-recaptcha-token': token || '',
+                            'content-type': 'application/json; charset=utf-8',
+                        },
+                    }
+                );
+                let body = null;
+                try {
+                    body = await response.json();
+                } catch (err) {
+                    body = null;
+                }
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    body,
+                    isValidSearch: !!(body && body.isValidSearch),
+                    qs: body && body.qs ? String(body.qs) : '',
+                };
+            }""",
+            {"partyName": party_name, "token": turnstile_token},
+        )
+    except Exception as exc:
+        logger.debug("Miami-Dade standardsearch API call failed: %s", exc)
+        return {"ok": False, "reason": str(exc)}
+
+
+async def _extract_miami_dade_search_qs_from_page(driver: "BaseDriver") -> str:
+    """Read the qs token from the current SearchResults URL, if present."""
+    try:
+        parsed = urlparse(driver.page.url or "")
+        if "searchresults" not in parsed.path.lower():
+            return ""
+        qs_values = parse_qs(parsed.query).get("qs") or []
+        return str(qs_values[0]).strip() if qs_values else ""
+    except Exception:
+        return ""
+
+
+async def _click_and_wait_standard_search(
+    driver: "BaseDriver",
+    *,
+    timeout_ms: int = 30_000,
+) -> dict[str, Any]:
+    """Click Search and capture the standardsearch API response."""
+    result: dict[str, Any] = {"clicked": False}
+    try:
+        async with driver.page.expect_response(
+            lambda resp: "standardsearch" in resp.url.lower()
+            and resp.request.method == "POST",
+            timeout=timeout_ms,
+        ) as response_info:
+            result["clicked"] = await _click_miami_dade_search_button(
+                driver,
+                wait_for_results=False,
+            )
+        if not result["clicked"]:
+            result["reason"] = "click_failed"
+            return result
+
+        response = await response_info.value
+        result["http_ok"] = response.ok
+        result["status"] = response.status
+        try:
+            body = await response.json()
+            result["body"] = body
+            result["isValidSearch"] = bool(body.get("isValidSearch"))
+            result["qs"] = body.get("qs")
+        except Exception as exc:
+            result["parse_error"] = str(exc)
+    except Exception as exc:
+        result["reason"] = str(exc)
+        if result.get("clicked"):
+            await driver.polite_delay(2.5)
+            page_qs = await _extract_miami_dade_search_qs_from_page(driver)
+            if page_qs:
+                result["isValidSearch"] = True
+                result["qs"] = page_qs
+                result["navigated"] = True
+            elif "searchresults" in (driver.page.url or "").lower():
+                result["navigated"] = True
+                result["isValidSearch"] = True
+    return result
+
+
+async def _name_document_validation_errors(driver: "BaseDriver") -> list[str]:
+    """Return visible Formik validation messages on the Name/Document form."""
+    try:
+        raw = await driver.page.evaluate(
+            """() => [...document.querySelectorAll('.text-danger, .errorText')]
+                .filter((el) => el.offsetParent !== null)
+                .map((el) => (el.textContent || '').trim())
+                .filter(Boolean)"""
+        )
+        return [str(item) for item in (raw or []) if str(item).strip()]
+    except Exception:
+        return []
+
+
+async def _submit_miami_dade_name_document_form(
+    driver: "BaseDriver",
+    *,
+    parsed: dict[str, str] | None = None,
+) -> str:
+    """Submit the Name/Document search form and wait for results."""
+    await driver._emit_status("Submitting Name/Document search...")
+    parsed = parsed or {}
+
+    expected_kind = parsed.get("kind")
+    if expected_kind in ("person", "company"):
+        mode = await _get_miami_dade_name_search_mode(driver)
+        if mode != expected_kind:
+            await driver._emit_status(
+                f"Miami-Dade recorder: switching search mode to {expected_kind} before submit..."
+            )
+            if not await _select_miami_dade_name_search_mode(driver, expected_kind):
+                return "submit_failed"
+            if not await _verify_name_document_form_values(driver, parsed):
+                return "submit_failed"
+
+    try:
+        await driver.page.wait_for_function(
+            "() => typeof window.turnstile !== 'undefined'",
+            timeout=8_000,
+        )
+    except Exception:
+        pass
+
+    await driver._emit_status("Waiting for Miami-Dade Turnstile verification token...")
+    turnstile_token = await _wait_for_miami_dade_turnstile_token(driver)
+    if not turnstile_token:
+        await driver._emit_status(
+            "Miami-Dade recorder: Turnstile token not ready — if searches fail, "
+            "Register/Login on the clerk site in Live Browser and re-run."
+        )
+    else:
+        await driver._emit_status("Miami-Dade recorder: Turnstile token acquired.")
+
+    validation_errors = await _name_document_validation_errors(driver)
+    if validation_errors:
+        await driver._emit_status(
+            "Miami-Dade recorder: form validation blocked search — "
+            f"{validation_errors[0][:120]}"
+        )
+
+    party_query = _build_miami_dade_party_name_query(parsed)
+    if party_query:
+        await driver._emit_status(f"Miami-Dade recorder: searching party name {party_query!r}...")
+
+    api_result = await _click_and_wait_standard_search(driver)
+    if api_result.get("navigated") and await _ensure_on_miami_dade_search_results_page(driver):
+        await driver._emit_status("Miami-Dade recorder: search results loaded.")
+        return "results"
+    if api_result.get("isValidSearch") and api_result.get("qs"):
+        current_qs = await _extract_miami_dade_search_qs_from_page(driver)
+        if current_qs:
+            if await _ensure_on_miami_dade_search_results_page(driver):
+                await driver._emit_status("Miami-Dade recorder: search results loaded.")
+                return "results"
+        if await _navigate_miami_dade_search_results(driver, str(api_result["qs"])):
+            if await _ensure_on_miami_dade_search_results_page(driver):
+                await driver._emit_status("Miami-Dade recorder: search results loaded.")
+                return "results"
+
+    if api_result.get("http_ok") and api_result.get("body") is not None:
+        if not api_result.get("isValidSearch"):
+            await driver._emit_status("Miami-Dade recorder: search completed — no records found.")
+            return "empty"
+
+    if not turnstile_token:
+        turnstile_token = await _wait_for_miami_dade_turnstile_token(driver, timeout_ms=10_000)
+
+    await driver._emit_status("Retrying Miami-Dade search via official records API...")
+    direct_result = await _post_miami_dade_standard_search(
+        driver,
+        parsed,
+        turnstile_token=turnstile_token,
+    )
+    if direct_result.get("isValidSearch") and direct_result.get("qs"):
+        current_qs = await _extract_miami_dade_search_qs_from_page(driver)
+        if current_qs:
+            if await _ensure_on_miami_dade_search_results_page(driver):
+                await driver._emit_status("Miami-Dade recorder: search results loaded.")
+                return "results"
+        if await _navigate_miami_dade_search_results(driver, str(direct_result["qs"])):
+            if await _ensure_on_miami_dade_search_results_page(driver):
+                await driver._emit_status("Miami-Dade recorder: search results loaded.")
+                return "results"
+    if direct_result.get("ok") and direct_result.get("body") is not None:
+        if not direct_result.get("isValidSearch"):
+            await driver._emit_status("Miami-Dade recorder: search completed — no records found.")
+            return "empty"
+
+    if await _is_name_document_search_form_visible(driver):
+        await driver._emit_status(
+            "Miami-Dade recorder: search blocked by Turnstile — the site shows "
+            "'No results found' even when records exist. Register/Login in Live Browser."
+        )
+        return "verification_failed"
+
+    status = await _wait_for_search_results(
+        driver,
+        timeout_ms=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,
+    )
+    if status == "results":
+        await driver._emit_status("Miami-Dade recorder: search results loaded.")
+    elif status == "empty":
+        await driver._emit_status("Miami-Dade recorder: search completed — no records found.")
+    elif status == "timeout":
+        await driver._emit_status(
+            "Miami-Dade recorder: search submitted but results did not appear in time."
+        )
+    return status
 
 
 async def _name_document_form_visible(driver: "BaseDriver") -> bool:
@@ -715,16 +1605,15 @@ async def _open_name_document_search(driver: "BaseDriver") -> bool:
         )
 
     if not nav_clicked:
-        for direct_url in (
-            "https://onlineservices.miamidadeclerk.gov/officialrecords/Name/Document",
-            "https://onlineservices.miamidadeclerk.gov/officialrecords/name/document",
-        ):
-            try:
-                await driver.page.goto(direct_url, wait_until="domcontentloaded", timeout=60_000)
-                nav_clicked = True
-                break
-            except Exception as exc:
-                logger.debug("Direct Name/Document navigation failed for %s: %s", direct_url, exc)
+        try:
+            await driver.page.goto(
+                MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL,
+                wait_until="domcontentloaded",
+                timeout=60_000,
+            )
+            nav_clicked = True
+        except Exception as exc:
+            logger.debug("Direct Name/Document navigation failed: %s", exc)
 
     try:
         await driver.page.wait_for_selector(
@@ -755,6 +1644,22 @@ async def _click_first_visible(driver: "BaseDriver", selectors: list[str]) -> bo
     return False
 
 
+async def _clear_first_visible(driver: "BaseDriver", selectors: list[str]) -> bool:
+    for sel in selectors:
+        try:
+            loc = driver.page.locator(sel).first
+            if await loc.count() == 0 or not await loc.is_visible(timeout=1_000):
+                continue
+            await loc.click()
+            await loc.fill("")
+            await loc.evaluate(_SET_REACT_INPUT_VALUE_JS, "")
+            await loc.blur()
+            return True
+        except Exception:
+            continue
+    return False
+
+
 async def _fill_miami_dade_party_name(driver: "BaseDriver", party_name: str) -> bool:
     """Fill the Miami-Dade Name/Document form for a person or company."""
     parsed = parse_miami_dade_party_name_fields(party_name)
@@ -764,46 +1669,52 @@ async def _fill_miami_dade_party_name(driver: "BaseDriver", party_name: str) -> 
     await driver._emit_status(f"Entering party name on Name/Document form: {party_name}")
 
     if parsed["kind"] == "company":
-        await _click_first_visible(driver, ["#companySearchRadio", 'input[name="searchTypeRadio"][value="Company"]'])
-        await driver.polite_delay(0.2)
-        for sel in (
-            "#companyName",
-            'input[name="companyName"]',
-            "#partyName",
-            'input[name="partyName"]',
-        ):
+        if not await _select_miami_dade_name_search_mode(driver, "company"):
+            await driver._emit_status("Miami-Dade recorder: could not select Company search mode.")
+            return False
+        for sel in ("#companyName", 'input[name="companyName"]'):
             if await _fill_first(driver, [sel], parsed["company_name"]):
-                return True
+                await driver.polite_delay(0.2)
+                if await _verify_name_document_form_values(driver, parsed):
+                    return True
         return False
 
-    await _click_first_visible(driver, ["#personSearchRadio", 'input[name="searchTypeRadio"][value="Person"]'])
-    await driver.polite_delay(0.2)
+    if not await _select_miami_dade_name_search_mode(driver, "person"):
+        await driver._emit_status("Miami-Dade recorder: could not select Person search mode.")
+        return False
 
     filled_last = await _fill_first(
         driver,
         ["#lastName", 'input[name="lastName"]'],
         parsed["last_name"],
     )
-    filled_first = await _fill_first(
-        driver,
-        ["#firstName", 'input[name="firstName"]'],
-        parsed["first_name"],
-    )
+    if parsed.get("first_name"):
+        await _fill_first(
+            driver,
+            ["#firstName", 'input[name="firstName"]'],
+            parsed["first_name"],
+        )
+    else:
+        await _clear_first_visible(
+            driver,
+            ["#firstName", 'input[name="firstName"]'],
+        )
     if parsed.get("middle_name"):
         await _fill_first(
             driver,
             ["#middleName", 'input[name="middleName"]'],
             parsed["middle_name"],
         )
+    else:
+        await _clear_first_visible(
+            driver,
+            ["#middleName", 'input[name="middleName"]'],
+        )
 
-    if filled_last and filled_first:
-        return True
-
-    return await _fill_first(
-        driver,
-        ["#partyName", 'input[name="partyName"]'],
-        parsed["full_name"],
-    )
+    if filled_last:
+        await driver.polite_delay(0.2)
+        return await _verify_name_document_form_values(driver, parsed)
+    return False
 
 
 async def _select_miami_dade_party_type(driver: "BaseDriver", party_type: str | None) -> None:
@@ -927,8 +1838,9 @@ _SET_REACT_INPUT_VALUE_JS = """
     if (tracker) {
         tracker.setValue(previousValue);
     }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event('blur', { bubbles: true, composed: true }));
     return el.value;
 }
 """
@@ -1166,15 +2078,19 @@ async def _dismiss_miami_dade_info_modal(driver: "BaseDriver") -> bool:
     return dismissed
 
 
-async def _click_miami_dade_search_button(driver: "BaseDriver") -> bool:
+async def _click_miami_dade_search_button(
+    driver: "BaseDriver",
+    *,
+    wait_for_results: bool = True,
+) -> bool:
     """Click the green SEARCH button on any Miami-Dade recorder search form."""
     search_clicked = False
     search_selectors = [
-        "button.button-green",
+        'button.button-green:has-text("SEARCH")',
         'button[type="submit"]:has-text("SEARCH")',
-        'button:has-text("SEARCH")',
+        'button:has-text("SEARCH"):not(:has-text("REFRESH"))',
+        "button.button-green",
         'button[type="submit"]',
-        'form button.btn',
     ]
     for sel in search_selectors:
         try:
@@ -1194,14 +2110,18 @@ async def _click_miami_dade_search_button(driver: "BaseDriver") -> bool:
         search_clicked = bool(
             await driver.page.evaluate(
                 """() => {
-                    const btn =
-                        document.querySelector('button.button-green') ||
-                        document.querySelector('form button[type="submit"]') ||
-                        [...document.querySelectorAll('button')].find(b =>
-                            b.textContent.trim().toUpperCase() === 'SEARCH'
-                        );
-                    if (btn) {
-                        btn.click();
+                    const buttons = [...document.querySelectorAll('button')];
+                    const searchBtn = buttons.find((btn) => {
+                        const text = (btn.textContent || '').trim().toUpperCase();
+                        return text === 'SEARCH' || (text.includes('SEARCH') && !text.includes('REFRESH'));
+                    });
+                    if (searchBtn) {
+                        searchBtn.click();
+                        return true;
+                    }
+                    const greenBtn = document.querySelector('button.button-green');
+                    if (greenBtn && !/refresh/i.test(greenBtn.textContent || '')) {
+                        greenBtn.click();
                         return true;
                     }
                     const form = document.querySelector('form');
@@ -1214,29 +2134,37 @@ async def _click_miami_dade_search_button(driver: "BaseDriver") -> bool:
             )
         )
 
-    if search_clicked:
-        await driver._emit_status(
-            "Search button clicked; waiting for results (this may take up to 60 seconds)..."
-        )
-        status = await _wait_for_search_results(
-            driver,
-            timeout_ms=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,
-        )
-        if status == "results":
-            await driver._emit_status("Miami-Dade recorder: search results loaded.")
-        elif status == "empty":
-            await driver._emit_status("Miami-Dade recorder: search completed — no records found.")
-        elif status == "verification_failed":
-            await driver._emit_status(
-                "Miami-Dade recorder: Cloudflare Turnstile verification failed; "
-                "the portal's no-results message is not a data result."
-            )
-        elif status == "timeout":
-            await driver._emit_status(
-                "Miami-Dade recorder: search is still loading; continuing to wait for results..."
-            )
+    if not search_clicked:
+        return False
+
+    if not wait_for_results:
         return True
-    return False
+
+    await driver._emit_status(
+        "Search button clicked; waiting for results (this may take up to 60 seconds)..."
+    )
+    status = await _wait_for_search_results(
+        driver,
+        timeout_ms=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,
+    )
+    if status == "results":
+        await driver._emit_status("Miami-Dade recorder: search results loaded.")
+    elif status == "empty":
+        await driver._emit_status("Miami-Dade recorder: search completed — no records found.")
+    elif status == "verification_failed":
+        await driver._emit_status(
+            "Miami-Dade recorder: Cloudflare Turnstile verification failed; "
+            "the portal's no-results message is not a data result."
+        )
+    elif status == "not_submitted":
+        await driver._emit_status(
+            "Miami-Dade recorder: search form did not submit — login may be required."
+        )
+    elif status == "timeout":
+        await driver._emit_status(
+            "Miami-Dade recorder: search is still loading; continuing to wait for results..."
+        )
+    return True
 
 
 async def _open_book_page_search(driver: "BaseDriver") -> None:
@@ -1363,7 +2291,15 @@ async def _wait_for_search_results(
                 );
                 if (loading && loading.offsetParent !== null) return null;
 
-                if (text.includes('no results found')) return 'empty';
+                const onNameDocForm = !!(
+                    document.querySelector('button.button-green') &&
+                    (document.querySelector('#lastName, input[name="lastName"]') ||
+                     document.querySelector('#companyName, input[name="companyName"]'))
+                );
+                if (text.includes('no results found')) {
+                    if (onNameDocForm && !url.includes('searchresults')) return 'not_submitted';
+                    return 'empty';
+                }
                 return null;
             }""",
             timeout=timeout_ms,
@@ -1371,9 +2307,13 @@ async def _wait_for_search_results(
         res = str(await result.json_value())
         if res == "results":
             return "results"
+        if res == "not_submitted":
+            return "not_submitted"
         if res == "empty":
             if getattr(driver, "_miami_dade_verification_error", None):
                 return "verification_failed"
+            if await _is_name_document_search_form_visible(driver):
+                return "not_submitted"
             await _dismiss_miami_dade_info_modal(driver)
             await driver.polite_delay(0.5)
             current_url = driver.page.url.lower()
@@ -1394,8 +2334,12 @@ async def _wait_for_search_results(
     if "no results found" in body:
         if getattr(driver, "_miami_dade_verification_error", None):
             return "verification_failed"
+        if await _is_name_document_search_form_visible(driver):
+            return "not_submitted"
         await _dismiss_miami_dade_info_modal(driver)
         return "empty"
+    if await _is_name_document_search_form_visible(driver):
+        return "not_submitted"
     return "timeout"
 
 
@@ -1437,6 +2381,7 @@ def _build_recorded_document(
     book_type: str = DEFAULT_MIAMI_DADE_BOOK_TYPE,
     property_address: str = "",
     result_index: int = 0,
+    searched_name: str = "",
 ) -> RecordedDocument:
     book_page_label = metadata.get("book_page") or format_book_page_label(book_number, page_number)
     folder_name, pdf_filename = _recorder_pdf_storage_key(
@@ -1444,8 +2389,9 @@ def _build_recorded_document(
         page_number,
         metadata,
         result_index=result_index,
+        searched_name=searched_name,
     )
-    png_filename = f"{folder_name}.png"
+    png_filename = pdf_filename.replace(".pdf", ".png")
     rec_date_raw = metadata.get("recording_date") or ""
     local_img_path = str(Path("local_storage") / folder_name / png_filename)
 
@@ -1462,10 +2408,19 @@ def _build_recorded_document(
         "clerk_file_number": metadata.get("instrument_number"),
         "legal_description": metadata.get("legal_description"),
         "recording_date": rec_date_raw,
-        "storage_category": "recorder",
+        "storage_category": "name_searcher" if searched_name.strip() else "recorder",
     }
     if property_address:
         ocr_json["property_address"] = property_address
+    elif metadata.get("property_address"):
+        ocr_json["property_address"] = metadata.get("property_address")
+    if metadata.get("party_name"):
+        ocr_json["party_name"] = metadata.get("party_name")
+    if metadata.get("card_index"):
+        ocr_json["card_index"] = metadata.get("card_index")
+    if searched_name.strip():
+        ocr_json["searched_name"] = searched_name.strip()
+        ocr_json["source"] = "name_searcher"
 
     return RecordedDocument(
         document_type=metadata.get("document_type") or "Official Record",
@@ -1498,6 +2453,8 @@ async def _download_all_search_results(
     search_label: str = "",
     property_address: str = "",
     prefer_fallback_book_page: bool = False,
+    reset_session_after: bool = True,
+    searched_name: str = "",
 ) -> list[RecordedDocument]:
     """Download PDFs for every result card on the Miami-Dade search results page."""
     status = await _wait_for_search_results(driver)
@@ -1524,6 +2481,20 @@ async def _download_all_search_results(
         )
         await driver.screenshot_on_failure("miami_dade_turnstile_verification_failed")
         return []
+    if status == "not_submitted":
+        await driver._emit_status(
+            "Miami-Dade recorder: search did not submit — register/login on the clerk "
+            "site in Live Browser to pass Turnstile verification, then re-run."
+        )
+        await driver.screenshot_on_failure("miami_dade_party_name_search_not_submitted")
+        return [
+            RecordedDocument(
+                document_type="Search Result",
+                book_page=label or None,
+                source_url=driver.page.url,
+                ocr_json={"status": "not_submitted", "property_address": property_address or None},
+            )
+        ]
     if status != "results":
         await driver._emit_status("Miami-Dade recorder: search completed (timeout waiting for detailed records).")
         if prefer_fallback_book_page:
@@ -1540,7 +2511,12 @@ async def _download_all_search_results(
         ]
 
     search_results_url = driver.page.url
+    await _wait_for_miami_dade_result_cards(driver)
     all_metadata = await _scrape_all_search_results_metadata(driver)
+    if not all_metadata:
+        await driver._emit_status("Miami-Dade recorder: scrolling results list to load cards...")
+        await driver.polite_delay(1.5)
+        all_metadata = await _scrape_all_search_results_metadata(scroll_first=True)
     if not all_metadata:
         first_meta = await _scrape_first_result_metadata(driver)
         if first_meta:
@@ -1562,10 +2538,10 @@ async def _download_all_search_results(
 
     if search_limit and search_limit > 0:
         all_metadata = all_metadata[:search_limit]
-    else:
-        await driver._emit_status(
-            f"Miami-Dade recorder: found {len(all_metadata)} result(s); downloading all documents..."
-        )
+    await driver._emit_status(
+        f"Miami-Dade recorder: downloading {len(all_metadata)} result document(s) "
+        f"for {label or 'search'} before moving to the next name..."
+    )
 
     documents: list[RecordedDocument] = []
     results_page = driver.page
@@ -1586,6 +2562,10 @@ async def _download_all_search_results(
             await driver.polite_delay(1.5)
 
         card_book, card_page = _resolve_book_page_numbers(metadata, "", "")
+        card_metadata = await _scrape_miami_dade_search_result_card_metadata(driver, idx)
+        if card_metadata:
+            metadata = _merge_search_result_metadata(card_metadata, metadata)
+
         opened = await _open_search_result_at_index(driver, idx)
         if not opened:
             await driver._emit_status(
@@ -1597,15 +2577,11 @@ async def _download_all_search_results(
         await driver.save_browser_preview()
 
         record_meta = await _scrape_first_result_metadata(driver)
-        if record_meta:
-            for key, value in record_meta.items():
-                if not value or not str(value).strip():
-                    continue
-                if key == "book_page" and (prefer_fallback_book_page or (card_book and card_page)):
-                    continue
-                existing = metadata.get(key)
-                if not existing or not str(existing).strip():
-                    metadata[key] = value
+        metadata = _merge_search_result_metadata(card_metadata or metadata, record_meta or {})
+        if card_book and card_page and prefer_fallback_book_page:
+            metadata["book_page"] = format_book_page_label(card_book, card_page)
+        elif card_book and card_page:
+            metadata["book_page"] = format_book_page_label(card_book, card_page)
 
         book_number, page_number = _resolve_book_page_numbers(
             metadata,
@@ -1638,12 +2614,16 @@ async def _download_all_search_results(
         await driver.polite_delay(2.0)
         await driver.save_browser_preview()
 
+        # Only explicit party-name searches should be tagged as name_searcher.
+        # search_label is display-only (book/page, address, etc.) and must not become searched_name.
+        effective_searched_name = searched_name.strip() if searched_name and searched_name.strip() else ""
         pdf_path = await _download_document_pdf(
             driver,
             book_number,
             page_number,
             metadata=metadata,
             result_index=idx,
+            searched_name=effective_searched_name,
         )
         if not pdf_path:
             pdf_path = await driver.screenshot_on_failure(f"miami_dade_document_image_{idx + 1}")
@@ -1657,8 +2637,9 @@ async def _download_all_search_results(
                     page_number,
                     pdf_path,
                     book_type=book_type,
-                    property_address=property_address,
+                    property_address=metadata.get("property_address") or property_address,
                     result_index=idx,
+                    searched_name=effective_searched_name,
                 ),
                 party_names,
             )
@@ -1674,7 +2655,8 @@ async def _download_all_search_results(
     await _close_stale_recordpage_tabs(driver, keep=results_page)
     if driver._page_is_alive(results_page):
         await driver.set_active_page(results_page)
-    await _reset_miami_dade_recorder_session(driver)
+    if reset_session_after:
+        await _reset_miami_dade_recorder_session(driver)
 
     if not documents:
         if prefer_fallback_book_page:
@@ -1696,10 +2678,119 @@ async def _download_all_search_results(
     return documents
 
 
-async def _scrape_all_search_results_metadata(driver: "BaseDriver") -> list[dict[str, str]]:
+async def _scrape_miami_dade_search_result_card_metadata(
+    driver: "BaseDriver",
+    index: int,
+) -> dict[str, str]:
+    """Scrape one SearchResults card before opening its record detail page."""
+    try:
+        result = await driver.page.evaluate(
+            """(index) => {
+                const cards = [...document.querySelectorAll('.TitleSearchTab')];
+                const card = cards[index];
+                if (!card) return {};
+
+                const text = card.innerText || '';
+                const getAfter = (label) => {
+                    const reNext = new RegExp(label + '\\\\s*:?\\\\s*\\n+([^\\n]+)', 'i');
+                    const m = text.match(reNext);
+                    if (m && m[1]) {
+                        const val = m[1].trim();
+                        if (!/(party name|document type|rec date|rec book|clerk|address|misc ref|block number|plat book)/i.test(val)) {
+                            return val.split(',')[0].trim();
+                        }
+                    }
+                    const reSame = new RegExp(label + '\\\\s*:\\\\s*([^\\n,]+)', 'i');
+                    const m2 = text.match(reSame);
+                    if (m2 && m2[1]) return m2[1].trim();
+                    return '';
+                };
+
+                const cfnMatch = text.match(/(\\b20\\d\\d\\s*R\\s*\\d+)/i);
+                const clerkFile = getAfter("Clerk's File Number") || getAfter('Clerk File Number') || '';
+                const docType = getAfter('Document Type') || '';
+                const bookPage = getAfter('Rec(?:ording)? Book\\\\/Page') || getAfter('Rec Book\\\\/Page') || '';
+                const recDate = getAfter('Rec(?:ording)? Date') || getAfter('Rec Date') || '';
+                const legal = getAfter('Legal Description') || '';
+                const partyVal = getAfter('Party Name') || '';
+                let grantor = '';
+                let grantee = '';
+                if (partyVal && partyVal.includes('/')) {
+                    const parts = partyVal.split('/');
+                    grantee = parts[0].trim();
+                    grantor = parts.slice(1).join('/').trim();
+                }
+
+                return {
+                    instrument_number: (clerkFile || (cfnMatch ? cfnMatch[1].trim() : '')).split(',')[0].trim(),
+                    book_page: bookPage,
+                    document_type: docType,
+                    recording_date: recDate,
+                    grantor,
+                    grantee,
+                    legal_description: legal,
+                    property_address: getAfter('Address') || '',
+                    party_name: partyVal,
+                    card_index: String(index),
+                };
+            }""",
+            index,
+        )
+        return result or {}
+    except Exception as exc:
+        logger.debug("Could not scrape Miami-Dade search result card #%s: %s", index + 1, exc)
+        return {}
+
+
+def _merge_search_result_metadata(
+    card_metadata: dict[str, str],
+    record_metadata: dict[str, str],
+) -> dict[str, str]:
+    """Prefer SearchResults card fields, then fill gaps from the record detail page."""
+    merged = dict(record_metadata or {})
+    card = card_metadata or {}
+    for key in (
+        "property_address",
+        "party_name",
+        "grantor",
+        "grantee",
+        "document_type",
+        "recording_date",
+        "instrument_number",
+        "book_page",
+        "legal_description",
+    ):
+        value = card.get(key)
+        if value and str(value).strip():
+            merged[key] = str(value).strip()
+    for key, value in (record_metadata or {}).items():
+        if not str(merged.get(key) or "").strip() and value and str(value).strip():
+            merged[key] = str(value).strip()
+    return merged
+
+
+async def _scrape_all_search_results_metadata(
+    driver: "BaseDriver",
+    *,
+    scroll_first: bool = False,
+) -> list[dict[str, str]]:
     try:
         results = await driver.page.evaluate(
-            """() => {
+            """async (scrollFirst) => {
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                if (scrollFirst) {
+                    let previous = 0;
+                    for (let i = 0; i < 30; i++) {
+                        window.scrollTo(0, document.body.scrollHeight);
+                        await sleep(350);
+                        const count = document.querySelectorAll('.TitleSearchTab').length;
+                        if (count > 0 && count === previous && i > 2) break;
+                        previous = count;
+                    }
+                    window.scrollTo(0, 0);
+                    await sleep(300);
+                }
+
                 const cards = [...document.querySelectorAll('.TitleSearchTab')];
                 const scrapeCard = (text) => {
                     const getAfter = (label) => {
@@ -1742,13 +2833,21 @@ async def _scrape_all_search_results_metadata(driver: "BaseDriver") -> list[dict
                         grantee,
                         legal_description: legal,
                         property_address: getAfter('Address') || '',
+                        party_name: partyVal,
                     };
                 };
 
-                return cards
-                    .map(card => scrapeCard(card.innerText || ''))
-                    .filter(item => item.instrument_number || item.book_page);
-            }"""
+                const scraped = [];
+                for (let i = 0; i < cards.length; i++) {
+                    const item = scrapeCard(cards[i].innerText || '');
+                    item.card_index = String(i);
+                    if (item.instrument_number || item.book_page || item.party_name) {
+                        scraped.push(item);
+                    }
+                }
+                return scraped;
+            }""",
+            scroll_first,
         )
         return results or []
     except Exception as exc:
@@ -1827,9 +2926,15 @@ async def _open_search_result_at_index(driver: "BaseDriver", index: int) -> bool
             if not await target.is_visible(timeout=2_000):
                 continue
             await target.scroll_into_view_if_needed()
+            expand = target.locator(".TitleSearchTabExpand, [class*='expand' i], button").first
             try:
-                async with driver.context.expect_page(timeout=7_000) as page_info:
-                    await target.click(timeout=3_000)
+                if await expand.count() > 0 and await expand.is_visible(timeout=500):
+                    target = expand
+            except Exception:
+                pass
+            try:
+                async with driver.context.expect_page(timeout=15_000) as page_info:
+                    await target.click(timeout=5_000)
                 popup = await page_info.value
                 await popup.wait_for_load_state("domcontentloaded")
                 await driver.set_active_page(popup)
@@ -1906,6 +3011,7 @@ async def _scrape_first_result_metadata(driver: "BaseDriver") -> dict[str, str]:
                     grantor,
                     grantee,
                     legal_description: [legal, subdiv].filter(Boolean).join(', '),
+                    property_address: getAfter('Address') || '',
                 };
             }"""
         )
@@ -2037,12 +3143,18 @@ async def _open_document_image(driver: "BaseDriver") -> bool:
     return False
 
 
+def _sanitize_storage_slug(value: str, *, max_len: int = 48) -> str:
+    slug = re.sub(r"[^\w]+", "_", (value or "").strip().upper()).strip("_")
+    return slug[:max_len] if slug else "unknown"
+
+
 def _recorder_pdf_storage_key(
     book_number: str,
     page_number: str,
     metadata: Optional[dict[str, Any]] = None,
     *,
     result_index: int = 0,
+    searched_name: str = "",
 ) -> tuple[str, str]:
     """Build unique folder/file names so multiple results for one book/page do not overwrite."""
     suffix = f"_{result_index + 1}" if result_index > 0 else ""
@@ -2052,8 +3164,14 @@ def _recorder_pdf_storage_key(
         suffix = f"_{inst_clean}_{result_index + 1}"
     elif inst_clean:
         suffix = f"_{inst_clean}"
-    folder_name = f"recorder_{book_number}_{page_number}{suffix}"
-    pdf_filename = f"{folder_name}.pdf"
+    leaf = f"{book_number}_{page_number}{suffix}"
+    if searched_name.strip():
+        name_slug = _sanitize_storage_slug(searched_name)
+        folder_name = f"name_search/{name_slug}/{leaf}"
+        pdf_filename = f"{leaf}.pdf"
+    else:
+        folder_name = f"recorder_{book_number}_{page_number}{suffix}"
+        pdf_filename = f"{folder_name}.pdf"
     return folder_name, pdf_filename
 
 
@@ -2064,14 +3182,16 @@ async def _download_document_pdf(
     metadata: Optional[dict[str, Any]] = None,
     *,
     result_index: int = 0,
+    searched_name: str = "",
 ) -> Optional[str]:
     folder_name, pdf_filename = _recorder_pdf_storage_key(
         book_number,
         page_number,
         metadata,
         result_index=result_index,
+        searched_name=searched_name,
     )
-    png_filename = f"{folder_name}.png"
+    png_filename = pdf_filename.replace(".pdf", ".png")
 
     local_storage_dir = Path("local_storage").resolve() / folder_name
     local_storage_dir.mkdir(parents=True, exist_ok=True)
@@ -2283,15 +3403,24 @@ async def _fill_first(driver: "BaseDriver", selectors: list[str], value: str) ->
             loc = driver.page.locator(sel).first
             if await loc.count() == 0 or not await loc.is_visible(timeout=2_000):
                 continue
+            await loc.scroll_into_view_if_needed()
             await loc.click()
-            # Use the native setter plus real browser events rather than a
-            # direct DOM assignment.  The latter updates what is displayed
-            # but can leave React/Formik state unchanged.
-            await loc.evaluate(_SET_REACT_INPUT_VALUE_JS, value)
+            await driver.polite_delay(0.05)
+            await driver.page.keyboard.press("Control+A")
+            await driver.page.keyboard.press("Backspace")
+            try:
+                await loc.press_sequentially(value, delay=30)
+            except Exception:
+                await loc.fill(value)
+            await driver.polite_delay(0.1)
+            curr = await loc.input_value()
+            if curr != value:
+                await loc.evaluate(_SET_REACT_INPUT_VALUE_JS, value)
+                curr = await loc.input_value()
             await loc.blur()
-            if (await loc.input_value()) != value:
-                continue
-            return True
+            await driver.polite_delay(0.15)
+            if curr == value:
+                return True
         except Exception:
             continue
     return False

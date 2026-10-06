@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from app.config.florida_portals import (
     MIAMI_DADE_SEARCH_URL,
     build_miami_dade_property_search_url,
     extract_miami_dade_folio_from_url,
+    format_miami_dade_address_for_search,
     is_miami_dade_gis,
     normalize_florida_parcel,
     normalize_miami_dade_property_search_url,
@@ -1249,7 +1251,7 @@ class Orchestrator:
         )
 
         node_search_limit = data.get("searchLimit") or data.get("search_limit")
-        search_limit = ctx.search_limit
+        search_limit = None
         if node_search_limit is not None:
             try:
                 parsed_limit = int(node_search_limit)
@@ -1284,6 +1286,7 @@ class Orchestrator:
             search_names,
             playwright_notes=party_notes or None,
             search_limit=search_limit,
+            property_address=self._resolve_name_search_property_address(ctx),
         )
         ctx.total_records += added
 
@@ -1397,11 +1400,13 @@ class Orchestrator:
             driver, ctx.state, ctx.county, ctx.parcel, ctx.owner_name,
             tax_url=tax_url, playwright_notes=notes,
             query_type=ctx.query_type, query_value=ctx.query_value,
+            search_scope=ctx.search_scope,
         )
-        tax_records = [r for r in self.records_repo.list_by_run(self.run_id) if r.get("source") == "tax"]
+        tax_records = [r for r in self.records_repo.list_by_run(self.run_id) if r.get("source") == "tax_record"]
         tax_result = {
             "records_found": len(tax_records),
             "records": tax_records,
+            "tax_record": tax_records[0] if tax_records else None,
             "parcel": ctx.parcel,
         }
         self._record_node_result(ctx, "tax", canvas_id, tax_result)
@@ -1803,11 +1808,42 @@ class Orchestrator:
             await assessor.screenshot_on_failure("assessor_error")
             return 0
 
+    async def _maybe_run_document_ocr(
+        self,
+        file_path: str,
+        document_hint: str | None,
+    ) -> Any | None:
+        """Run Mistral OCR when enabled and not rate-limited; otherwise keep the original doc."""
+        if not self.ocr.is_enabled():
+            return None
+        if self.ocr.is_rate_limited():
+            remaining = self.ocr.rate_limit_remaining_seconds()
+            logger.info(
+                "Skipping Mistral OCR for %s — rate limited (%ss remaining)",
+                file_path,
+                remaining,
+            )
+            return None
+        try:
+            extracted = await self.ocr.extract_document(file_path, document_hint)
+            if extracted and extracted.ocr_json and "error" not in extracted.ocr_json:
+                return extracted
+            if extracted and (extracted.ocr_json or {}).get("rate_limited"):
+                logger.warning(
+                    "Mistral OCR rate limited while processing %s; document saved without OCR",
+                    file_path,
+                )
+        except Exception as ocr_err:
+            logger.warning("Document OCR failed, keeping original: %s", ocr_err)
+        return None
+
     async def _persist_recorder_documents(
         self,
         documents: list[Any],
         search_url: str,
         query_value: str,
+        *,
+        searched_name: str | None = None,
     ) -> int:
         count = 0
         for doc in documents:
@@ -1817,6 +1853,7 @@ class Orchestrator:
                 "download_failed",
                 "no_result_cards",
                 "timeout",
+                "not_submitted",
             ):
                 continue
             if not (
@@ -1828,19 +1865,19 @@ class Orchestrator:
                 if not doc.ocr_json:
                     doc.ocr_json = {"download_path": doc.screenshot_path}
                 if not (doc.ocr_json or {}).get("mistral_analyzed"):
-                    try:
-                        extracted = await self.ocr.extract_document(doc.screenshot_path, doc.document_type)
-                        if extracted and extracted.ocr_json and "error" not in extracted.ocr_json:
-                            doc = extracted
-                    except Exception as ocr_err:
-                        logger.warning("Document OCR failed, keeping original: %s", ocr_err)
-            elif doc.screenshot_path:
-                try:
-                    extracted = await self.ocr.extract_document(doc.screenshot_path, doc.document_type)
-                    if extracted and extracted.ocr_json and "error" not in extracted.ocr_json:
+                    extracted = await self._maybe_run_document_ocr(
+                        doc.screenshot_path,
+                        doc.document_type,
+                    )
+                    if extracted is not None:
                         doc = extracted
-                except Exception as ocr_err:
-                    logger.warning("Document OCR failed, keeping original: %s", ocr_err)
+            elif doc.screenshot_path:
+                extracted = await self._maybe_run_document_ocr(
+                    doc.screenshot_path,
+                    doc.document_type,
+                )
+                if extracted is not None:
+                    doc = extracted
             normalized = await self.normalizer.normalize(
                 "recorder",
                 json.dumps(doc.ocr_json) if doc.ocr_json else query_value,
@@ -1884,6 +1921,11 @@ class Orchestrator:
             )
             if screenshot_path and str(screenshot_path).lower().endswith(".pdf"):
                 merged_ocr.setdefault("download_path", screenshot_path)
+
+            if searched_name and searched_name.strip():
+                merged_ocr["searched_name"] = searched_name.strip()
+                merged_ocr["source"] = "name_searcher"
+                merged_ocr["storage_category"] = "name_searcher"
 
             merged_ocr = self.document_storage.upload_and_merge(
                 self.run_id,
@@ -2030,6 +2072,7 @@ class Orchestrator:
                     query_value = format_book_page_label(book_number, page_number)
                     recorder_url = str(sale_entry.get("recorder_url") or "").strip()
                     documents: list[Any] = []
+                    download_all_cards = ctx.search_scope == "full"
 
                     if recorder_url:
                         documents = await miami_dade_open_assessor_recorder_link_and_download(
@@ -2038,28 +2081,19 @@ class Orchestrator:
                             book_number,
                             page_number,
                             search_limit=None,
+                            download_all_cards=download_all_cards,
                         )
 
                     if not documents:
-                        if idx == 0 and not recorder_url:
-                            documents = await recorder.search(
-                                search_url,
-                                QueryType.BOOK_PAGE,
-                                query_value,
-                                book_number=book_number,
-                                page_number=page_number,
-                                search_limit=None,
-                            )
-                        else:
-                            await recorder._emit_status(
-                                f"Miami-Dade recorder: falling back to book/page search for {query_value}..."
-                            )
-                            documents = await miami_dade_book_page_search_and_download(
-                                recorder,
-                                book_number,
-                                page_number,
-                                search_limit=None,
-                            )
+                        await recorder._emit_status(
+                            f"Miami-Dade recorder: searching book/page form for {query_value}..."
+                        )
+                        documents = await miami_dade_book_page_search_and_download(
+                            recorder,
+                            book_number,
+                            page_number,
+                            search_limit=None,
+                        )
 
                     await recorder.save_browser_preview()
 
@@ -2168,6 +2202,265 @@ class Orchestrator:
             await recorder.screenshot_on_failure("recorder_error")
             return 0
 
+    def _resolve_name_search_property_address(self, ctx: RunContext) -> str:
+        """Resolve the property street address used to filter name-search results."""
+        candidates: list[str] = []
+
+        if ctx.address:
+            candidates.append(str(ctx.address).strip())
+        if ctx.query_type == QueryType.ADDRESS and ctx.query_value:
+            candidates.append(str(ctx.query_value).strip())
+
+        run = self.runs_repo.get_run(self.run_id) or {}
+        plan = run.get("plan_json") or {}
+        input_data = get_input_node_data(plan.get("pipeline_graph"))
+        input_address = _data_str(input_data, "address", "property_address")
+        if input_address:
+            candidates.append(input_address)
+
+        assessor = next(
+            (r for r in self.records_repo.list_by_run(self.run_id) if r.get("source") == "assessor"),
+            None,
+        )
+        if isinstance(assessor, dict):
+            raw_json = assessor.get("raw_json") or {}
+            for key in ("property_address", "situs_address", "address"):
+                value = assessor.get(key) or raw_json.get(key)
+                if value:
+                    candidates.append(str(value).strip())
+
+        seen: set[str] = set()
+        for raw in candidates:
+            formatted = format_miami_dade_address_for_search(raw).strip()
+            key = formatted.lower()
+            if formatted and key not in seen:
+                seen.add(key)
+                return formatted
+        return ""
+
+    async def _miami_dade_name_searcher_search_and_download(
+        self,
+        recorder: GilaRecorderDriver,
+        party_name: str,
+        *,
+        playwright_notes: Optional[str] = None,
+        search_limit: Optional[int] = None,
+        property_address: str = "",
+    ) -> list[Any]:
+        """Name Searcher: submit one Miami-Dade name search and download every result record."""
+        from app.config.florida_portals import MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL
+        from app.drivers.recorder.acclaimweb_recorder import resolve_party_type_from_notes
+        from app.drivers.recorder.miami_dade_recorder import (
+            _build_recorded_document,
+            _close_stale_recordpage_tabs,
+            _collect_document_party_names,
+            _download_document_pdf,
+            _ensure_on_miami_dade_search_results_page,
+            _maybe_filter_miami_dade_name_results_by_address,
+            _merge_search_result_metadata,
+            _open_document_image,
+            _open_name_document_search,
+            _open_search_result_at_index,
+            _resolve_book_page_numbers,
+            _scrape_miami_dade_search_result_card_metadata,
+            _scroll_miami_dade_results_to_load_cards,
+            _scrape_first_result_metadata,
+            _search_party_name_form,
+            _wait_for_miami_dade_result_cards,
+        )
+        from app.extraction.miami_dade_name_searches import sanitize_miami_dade_party_name_for_search
+        from app.extraction.miami_dade_party_scrape import apply_party_names_to_recorded_document
+
+        sanitized = sanitize_miami_dade_party_name_for_search(party_name)
+        if not sanitized:
+            return []
+
+        party_type = resolve_party_type_from_notes(playwright_notes or "")
+        current_url = (recorder.page.url or "").lower() if recorder.page else ""
+        if "/name/document" not in current_url:
+            if "officialrecords" not in current_url:
+                await recorder.safe_goto(
+                    MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL,
+                    wait_selector=(
+                        "#lastName, input[name='lastName'], #companyName, "
+                        "input[name='companyName'], button.button-green"
+                    ),
+                    timeout=60_000,
+                )
+                await recorder.dismiss_netronline_modals()
+                await recorder._click_disclaimer()
+            else:
+                await _open_name_document_search(recorder)
+
+        await recorder._emit_status(
+            f"Name Searcher: searching Miami-Dade Name/Document for {sanitized!r}..."
+        )
+        search_status = await _search_party_name_form(
+            recorder,
+            sanitized,
+            party_type=party_type,
+        )
+        if search_status == "empty":
+            await recorder._emit_status(f"Name Searcher: no records found for {sanitized!r}.")
+            return []
+        if search_status != "results":
+            await recorder._emit_status(
+                f"Name Searcher: search results did not load for {sanitized!r} — skipping downloads."
+            )
+            return []
+
+        if not await _ensure_on_miami_dade_search_results_page(recorder):
+            await recorder._emit_status(
+                f"Name Searcher: results page not ready for {sanitized!r}."
+            )
+            return []
+
+        await _wait_for_miami_dade_result_cards(recorder)
+        await _scroll_miami_dade_results_to_load_cards(recorder)
+
+        if property_address.strip():
+            await recorder._emit_status(
+                f"Name Searcher: filtering results by property address {property_address!r}..."
+            )
+            await _maybe_filter_miami_dade_name_results_by_address(
+                recorder,
+                property_address,
+            )
+        else:
+            await recorder._emit_status(
+                "Name Searcher: no property address from Input node — downloading full name results."
+            )
+
+        reported_total = 0
+        try:
+            body_text = await recorder.page.inner_text("body")
+            match = re.search(r"(\d+)\s+results?\s+returned", body_text, re.I)
+            if match:
+                reported_total = int(match.group(1))
+        except Exception:
+            reported_total = 0
+
+        try:
+            card_count = await recorder.page.locator(".TitleSearchTab").count()
+        except Exception:
+            card_count = 0
+
+        available = max(card_count, reported_total)
+        if available <= 0:
+            await recorder._emit_status(
+                f"Name Searcher: no result cards found on page for {sanitized!r}."
+            )
+            return []
+
+        max_downloads = min(available, 500)
+        if search_limit and search_limit > 0:
+            max_downloads = min(max_downloads, search_limit)
+
+        await recorder._emit_status(
+            f"Name Searcher: downloading {max_downloads} original record(s) for "
+            f"{sanitized!r} before moving to the next name..."
+        )
+
+        documents: list[Any] = []
+        search_results_url = recorder.page.url
+        results_page = recorder.page
+
+        for idx in range(max_downloads):
+            if idx > 0:
+                await _close_stale_recordpage_tabs(recorder, keep=results_page)
+                await recorder.set_active_page(results_page)
+                if "searchresults" not in (recorder.page.url or "").lower():
+                    try:
+                        await recorder.page.goto(
+                            search_results_url,
+                            wait_until="domcontentloaded",
+                            timeout=60_000,
+                        )
+                    except Exception:
+                        pass
+                await recorder.polite_delay(1.5)
+
+            try:
+                await recorder.page.evaluate(
+                    """(index) => {
+                        const cards = document.querySelectorAll('.TitleSearchTab');
+                        const card = cards[index];
+                        if (card) card.scrollIntoView({block: 'center'});
+                    }""",
+                    idx,
+                )
+            except Exception:
+                pass
+
+            await recorder._emit_status(
+                f"Name Searcher: opening result {idx + 1} of {max_downloads} for {sanitized!r}..."
+            )
+            card_metadata = await _scrape_miami_dade_search_result_card_metadata(recorder, idx)
+            opened = await _open_search_result_at_index(recorder, idx)
+            if not opened:
+                await recorder._emit_status(
+                    f"Name Searcher: could not open result #{idx + 1}; skipping."
+                )
+                continue
+
+            await recorder.polite_delay(2.0)
+            record_metadata = await _scrape_first_result_metadata(recorder)
+            metadata = _merge_search_result_metadata(card_metadata, record_metadata)
+
+            book_number, page_number = _resolve_book_page_numbers(metadata, "", "")
+            if not book_number or not page_number:
+                await recorder._emit_status(
+                    f"Name Searcher: result #{idx + 1} missing book/page; skipping PDF."
+                )
+                continue
+
+            metadata["source_url"] = recorder.page.url
+            party_names = await _collect_document_party_names(recorder, metadata)
+            await _open_document_image(recorder)
+            await recorder.polite_delay(2.0)
+
+            pdf_path = await _download_document_pdf(
+                recorder,
+                book_number,
+                page_number,
+                metadata=metadata,
+                result_index=idx,
+                searched_name=sanitized,
+            )
+            if not pdf_path:
+                pdf_path = await recorder.screenshot_on_failure(f"name_searcher_doc_{idx + 1}")
+
+            documents.append(
+                apply_party_names_to_recorded_document(
+                    _build_recorded_document(
+                        metadata,
+                        book_number,
+                        page_number,
+                        pdf_path,
+                        result_index=idx,
+                        searched_name=sanitized,
+                        property_address=metadata.get("property_address") or "",
+                    ),
+                    party_names,
+                )
+            )
+
+            for pg in list(recorder.context.pages):
+                if pg != results_page and "recordpage" in pg.url.lower():
+                    try:
+                        await pg.close()
+                    except Exception:
+                        pass
+
+        await _close_stale_recordpage_tabs(recorder, keep=results_page)
+        if recorder._page_is_alive(results_page):
+            await recorder.set_active_page(results_page)
+
+        await recorder._emit_status(
+            f"Name Searcher: finished {sanitized!r} — downloaded {len(documents)} document(s)."
+        )
+        return documents
+
     async def _search_recorder_name_queue(
         self,
         base: BaseDriver,
@@ -2177,6 +2470,7 @@ class Orchestrator:
         *,
         playwright_notes: Optional[str] = None,
         search_limit: Optional[int] = None,
+        property_address: str = "",
     ) -> int:
         """Run recorder party-name searches for each extracted name."""
         from app.config.florida_portals import is_miami_dade_recorder
@@ -2185,6 +2479,7 @@ class Orchestrator:
             format_acclaimweb_party_name,
             is_acclaimweb_recorder,
         )
+        from app.extraction.miami_dade_name_searches import sanitize_miami_dade_party_name_for_search
 
         if not names:
             return 0
@@ -2198,39 +2493,62 @@ class Orchestrator:
         if ctx.state.upper() == "FL":
             search_url = resolve_florida_recorder_url(url, ctx.county)
 
+        is_miami_name_search = is_miami_dade_recorder(search_url)
+
         total = 0
         try:
             await self.run_logger.source_started(SourceType.RECORDER, search_url)
             for idx, name in enumerate(names):
-                await self.run_logger.log(
-                    "node_step",
-                    node="NameSearcherNode",
-                    message=f"Name search {idx + 1}/{len(names)}: {name}",
-                )
-
-                if idx > 0 and (
-                    is_miami_dade_recorder(search_url)
-                    or (recorder.page and is_miami_dade_recorder(recorder.page.url))
-                ):
-                    await miami_dade_prepare_recorder_queue_step(recorder)
-
                 if is_acclaimweb_recorder(search_url) or (
                     recorder.page and is_acclaimweb_recorder(recorder.page.url)
                 ):
                     query_value = format_acclaimweb_party_name(name)
+                elif is_miami_name_search:
+                    query_value = sanitize_miami_dade_party_name_for_search(name)
                 else:
                     query_value = name
 
-                documents = await recorder.search(
-                    search_url,
-                    QueryType.OWNER,
-                    query_value,
-                    search_limit=search_limit,
+                await self.run_logger.log(
+                    "node_step",
+                    node="NameSearcherNode",
+                    message=(
+                        f"Name search {idx + 1}/{len(names)}: {query_value} "
+                        f"(download all results before next name)"
+                    ),
                 )
+
+                if is_miami_name_search or (
+                    recorder.page and is_miami_dade_recorder(recorder.page.url)
+                ):
+                    documents = await self._miami_dade_name_searcher_search_and_download(
+                        recorder,
+                        query_value,
+                        playwright_notes=playwright_notes,
+                        search_limit=search_limit,
+                        property_address=property_address,
+                    )
+                else:
+                    documents = await recorder.search(
+                        search_url,
+                        QueryType.OWNER,
+                        query_value,
+                        search_limit=search_limit,
+                    )
+
                 await recorder.save_browser_preview()
                 total += await self._persist_recorder_documents(
-                    documents, search_url, query_value
+                    documents,
+                    search_url,
+                    query_value,
+                    searched_name=query_value,
                 )
+
+                has_more_names = idx < len(names) - 1
+                if has_more_names and (
+                    is_miami_name_search
+                    or (recorder.page and is_miami_dade_recorder(recorder.page.url))
+                ):
+                    await miami_dade_prepare_recorder_queue_step(recorder)
 
             base._page = recorder._page
             base._browser_stream = recorder._browser_stream
@@ -2542,6 +2860,7 @@ class Orchestrator:
         playwright_notes: Optional[str] = None,
         query_type: Optional[QueryType] = None,
         query_value: Optional[str] = None,
+        search_scope: str = "full",
     ) -> int:
         t0 = time.monotonic()
         tax = FloridaTaxDriver(screenshot_dir=base.screenshot_dir)
@@ -2569,6 +2888,7 @@ class Orchestrator:
                 portal_url=tax_url or None,
                 query_type=query_type,
                 query_value=query_value,
+                search_scope=search_scope,
             )
             await tax.save_browser_preview()
             if not record:

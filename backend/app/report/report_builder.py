@@ -22,6 +22,7 @@ from app.db.report_storage import (
 from app.db.supabase_client import get_memory_store, get_supabase
 from app.extraction.miami_dade_name_searches import (
     build_name_searcher_report_entries,
+    group_documents_by_name_search,
     resolve_name_searches_for_report,
 )
 from app.report.pdf_exporter import DEFAULT_REPORTS_DIR, PdfExporter
@@ -312,6 +313,12 @@ class ReportBuilder:
             records[0] if records else None,
         )
         tax_record = next((r for r in records if r.get("source") == "tax_record"), None)
+        if not tax_record:
+            plan_json = run.get("plan_json") or {}
+            tax_node = (plan_json.get("node_results") or {}).get("tax") or {}
+            cached = tax_node.get("tax_record")
+            if isinstance(cached, dict) and cached.get("raw_json"):
+                tax_record = cached
         sources_trail = []
 
         for e in events:
@@ -416,6 +423,10 @@ class ReportBuilder:
             plan_json,
             documents=documents,
         )
+        name_search_groups, recorder_primary_documents = group_documents_by_name_search(
+            documents,
+            name_searches,
+        )
 
         report_json: dict[str, Any] = {
             "run_id": run_id,
@@ -431,6 +442,8 @@ class ReportBuilder:
             "documents": documents,
             "chain_of_title": chain_of_title,
             "name_searches": name_searches,
+            "name_search_groups": name_search_groups,
+            "recorder_primary_documents": recorder_primary_documents,
             "sources_trail": sources_trail,
             "gis_screenshot_path": gis_screenshot_path,
             "gis_screenshot_url": gis_screenshot_url,
@@ -453,6 +466,8 @@ class ReportBuilder:
             chain_of_title=chain_of_title,
             chain_docs=chain_docs,
             name_searches=name_searches,
+            name_search_groups=name_search_groups,
+            recorder_primary_documents=recorder_primary_documents,
             gis_screenshot_data_uri=gis_screenshot_data_uri,
             ai_agent_response=ai_agent_response,
             ai_agent_model=ai_agent_model,

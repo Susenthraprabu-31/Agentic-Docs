@@ -111,3 +111,12 @@ def test_get_assessor_sales_book_pages_skips_explicit_input_book_page():
     )
 
     assert orchestrator._get_assessor_sales_book_pages(ctx) == []
+
+
+def test_resolve_annual_bills_capture_count_respects_search_scope():
+    from app.drivers.tax.florida_tax_driver import resolve_annual_bills_capture_count
+
+    assert resolve_annual_bills_capture_count("full", 13) == 13
+    assert resolve_annual_bills_capture_count("current", 13) == 2
+    assert resolve_annual_bills_capture_count("full", 0) == 0
+    assert resolve_annual_bills_capture_count("current", 1) == 1

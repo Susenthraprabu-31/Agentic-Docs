@@ -11,10 +11,11 @@ _SOURCE_PRIORITY = {"assessor": 0, "tax_record": 1}
 
 
 def _record_key(rec: dict) -> str | None:
+    source = rec.get("source") or "unknown"
     apn = rec.get("apn")
     if apn:
-        return str(apn).strip().upper()
-    source = rec.get("source") or "unknown"
+        # Assessor and tax collector records share APN but serve different report sections.
+        return f"{str(apn).strip().upper()}:{source}"
     return f"__no_apn__:{source}:{id(rec)}"
 
 
@@ -47,7 +48,7 @@ def _document_key(doc: dict) -> str:
 
 
 def deduplicate_records(records: list[dict]) -> list[dict]:
-    """Keep one record per APN; prefer assessor over tax_record."""
+    """Keep one record per APN+source pair (assessor and tax_record may share APN)."""
     by_key: dict[str, dict] = {}
     for rec in records:
         key = _record_key(rec)
