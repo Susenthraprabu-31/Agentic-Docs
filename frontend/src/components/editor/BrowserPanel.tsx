@@ -534,7 +534,8 @@ function ConfigurationTab({
             <option value="full">Full Search</option>
           </select>
           <p className="text-[10px] text-zinc-500 mt-1">
-            Current Search downloads only the latest assessor sale deed. Full Search downloads all assessor sales history.
+            Current Search uses the latest assessor sale deed and searches only the current owner name in Name Searcher.
+            Full Search downloads all assessor sales history and searches all recorder party names.
           </p>
         </div>
 
@@ -588,7 +589,7 @@ function ConfigurationTab({
               checked={Boolean(data.expandVariations)}
               onChange={(e) => patch({ expandVariations: e.target.checked })}
             />
-            Generate nickname and entity permutations before searching
+            Generate nickname, compound-surname, and entity permutations before searching (recommended)
           </label>
         </div>
 

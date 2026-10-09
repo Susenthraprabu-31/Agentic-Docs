@@ -892,25 +892,52 @@ async def _count_miami_dade_visible_result_cards(driver: "BaseDriver") -> int:
         return 0
 
 
+def _parse_miami_dade_results_returned_count(body_text: str) -> int:
+    match = re.search(r"(\d+)\s+results?\s+returned", body_text or "", re.I)
+    return int(match.group(1)) if match else 0
+
+
 async def _get_miami_dade_results_returned_count(
     driver: "BaseDriver",
     *,
     prefer_visible_cards: bool = False,
 ) -> int:
     """Read the SearchResults count from visible cards or the page header."""
-    if prefer_visible_cards:
-        visible = await _count_miami_dade_visible_result_cards(driver)
-        if visible >= 0:
-            return visible
-
+    reported = 0
     try:
         body_text = await driver.page.inner_text("body")
-        match = re.search(r"(\d+)\s+results?\s+returned", body_text, re.I)
-        if match:
-            return int(match.group(1))
+        reported = _parse_miami_dade_results_returned_count(body_text)
     except Exception:
-        pass
-    return await _count_miami_dade_visible_result_cards(driver)
+        reported = 0
+
+    card_count = await _count_miami_dade_visible_result_cards(driver)
+    if prefer_visible_cards and card_count > 0:
+        return max(card_count, reported)
+    if reported > 0:
+        return max(reported, card_count)
+    return card_count
+
+
+async def _resolve_miami_dade_name_search_download_count(
+    driver: "BaseDriver",
+    *,
+    search_limit: int | None = None,
+) -> int:
+    """Return how many SearchResults cards should be downloaded after filters apply."""
+    await _scroll_miami_dade_results_to_load_cards(driver)
+    await _wait_for_miami_dade_result_cards(driver)
+    await _scroll_miami_dade_results_to_load_cards(driver)
+
+    reported = await _get_miami_dade_results_returned_count(driver)
+    card_count = await _count_miami_dade_visible_result_cards(driver)
+    available = max(reported, card_count)
+    if available <= 0:
+        return 0
+
+    max_downloads = min(available, 500)
+    if search_limit and search_limit > 0:
+        max_downloads = min(max_downloads, search_limit)
+    return max_downloads
 
 
 def _find_miami_dade_results_filter_controls(driver: "BaseDriver"):
@@ -1072,7 +1099,9 @@ async def _apply_miami_dade_results_address_filter(driver: "BaseDriver", address
         return False
 
     await _wait_for_miami_dade_applied_filter(driver, "Address")
-    await driver.polite_delay(0.5)
+    await driver.polite_delay(0.75)
+    await _wait_for_miami_dade_result_cards(driver)
+    await _scroll_miami_dade_results_to_load_cards(driver)
     return True
 
 
@@ -1098,8 +1127,14 @@ async def _clear_miami_dade_results_filter(driver: "BaseDriver") -> bool:
 async def _maybe_filter_miami_dade_name_results_by_address(
     driver: "BaseDriver",
     address: str,
+    *,
+    fallback_to_unfiltered: bool = True,
 ) -> bool:
-    """Filter name-search results by property address; fall back to unfiltered names if empty."""
+    """Filter name-search results by property address.
+
+    When ``fallback_to_unfiltered`` is False and the filter matches nothing, restore the
+    unfiltered result page but return False so the caller can skip to the next name.
+    """
     street = format_miami_dade_address_for_search(address).strip()
     if not street:
         return False
@@ -1121,15 +1156,23 @@ async def _maybe_filter_miami_dade_name_results_by_address(
         prefer_visible_cards=True,
     )
     if filtered_count > 0:
+        await _scroll_miami_dade_results_to_load_cards(driver)
+        refreshed_count = await _get_miami_dade_results_returned_count(driver)
         await driver._emit_status(
-            f"Miami-Dade Name Search: address filter matched {filtered_count} record(s)."
+            f"Miami-Dade Name Search: address filter matched {refreshed_count or filtered_count} record(s)."
         )
         return True
 
-    await driver._emit_status(
-        f"Miami-Dade Name Search: no records matched address {street!r}; "
-        "removing filter and downloading full name search results."
-    )
+    if fallback_to_unfiltered:
+        await driver._emit_status(
+            f"Miami-Dade Name Search: no records matched address {street!r}; "
+            "removing filter and downloading full name search results."
+        )
+    else:
+        await driver._emit_status(
+            f"Miami-Dade Name Search: no records matched address {street!r}; "
+            "skipping this name variation and moving to the next name."
+        )
     await _clear_miami_dade_results_filter(driver)
     await _wait_for_miami_dade_result_cards(driver)
     restored_count = await _get_miami_dade_results_returned_count(driver)
@@ -1176,7 +1219,8 @@ async def _wait_for_miami_dade_result_cards(driver: "BaseDriver") -> int:
                 const text = (document.body?.innerText || '').toLowerCase();
                 const cards = document.querySelectorAll('.TitleSearchTab').length;
                 if (cards > 0) return cards;
-                if (/\\d+\\s+results?\\s+returned/.test(text)) return 1;
+                const match = text.match(/(\\d+)\\s+results?\\s+returned/);
+                if (match) return parseInt(match[1], 10);
                 return null;
             }""",
             timeout=MIAMI_DADE_SEARCH_RESULTS_TIMEOUT_MS,

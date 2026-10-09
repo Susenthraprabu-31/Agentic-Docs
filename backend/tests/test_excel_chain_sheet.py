@@ -24,7 +24,7 @@ def test_generate_chain_sheet_excel_structure_and_styling():
             "gross_tax": 18450.25,
             "tax_account": "03-5105-002-0230",
         },
-        "chain_of_title": [
+        "recorder_primary_documents": [
             {
                 "grantor": "AP 620 LLC",
                 "grantee": "BENJAMIN LEON JR AND SILVIA LEON",
@@ -33,6 +33,7 @@ def test_generate_chain_sheet_excel_structure_and_styling():
                 "book_page": "27529/1785",
                 "instrument_number": "2010 R 853064",
                 "comments": "Lot 25",
+                "ocr_json": {"source": "recorder"},
             },
             {
                 "grantor": "BENJAMIN LEON JR AND SILVIA LEON",
@@ -42,6 +43,7 @@ def test_generate_chain_sheet_excel_structure_and_styling():
                 "book_page": "31894/4474",
                 "instrument_number": "2020 R 223930",
                 "comments": "Lot : 24,25",
+                "ocr_json": {"source": "recorder"},
             },
             {
                 "grantor": "JOHN H RUIZ",
@@ -52,6 +54,7 @@ def test_generate_chain_sheet_excel_structure_and_styling():
                 "instrument_number": "2022 R 301183",
                 "amount": 20000000.0,
                 "comments": "$20,000,000.00",
+                "ocr_json": {"source": "recorder"},
             },
         ],
     }
@@ -124,6 +127,92 @@ def test_generate_chain_sheet_excel_structure_and_styling():
     assert ws2["B3"].value == "run-test-1508692"
 
 
+def test_build_chain_sheet_entries_includes_name_search_documents():
+    report_data = {
+        "recorder_primary_documents": [
+            {
+                "document_type": "DEED - DEE",
+                "recording_date": "2022-01-24",
+                "book_page": "32977/324",
+                "instrument_number": "2022 R 66756",
+                "grantor": "LIFT STATIONS OF SOUTH FLORIDA LLC",
+                "grantee": "MIAMI EDGE INVESTMENTS INC",
+                "ocr_json": {"source": "recorder"},
+            }
+        ],
+        "name_search_groups": [
+            {
+                "name": "MIAMI EDGE INVESTMENTS INC",
+                "documents": [
+                    {
+                        "document_type": "MORTGAGE - MOR",
+                        "recording_date": "2022-01-24",
+                        "book_page": "32977/326",
+                        "instrument_number": "2022 R 66757",
+                        "grantor": "MIAMI EDGE INVESTMENTS INC",
+                        "grantee": "RBI MORTGAGES LLC",
+                        "ocr_json": {"source": "name_searcher", "searched_name": "MIAMI EDGE INVESTMENTS INC"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    entries = build_chain_sheet_entries(report_data)
+    book_pages = {_normalize_book_page(e.get("book_page")) for e in entries}
+    assert "32977/324" in book_pages
+    assert "32977/326" in book_pages
+
+
+def test_generate_chain_sheet_excel_leaves_comments_empty_without_amount_or_notes():
+    report_data = {
+        "property": {
+            "legal_description": "GARDEN CITY LOT 24, 25 BLK 9",
+        },
+        "recorder_primary_documents": [
+            {
+                "document_type": "DEED - DEE",
+                "recording_date": "2022-01-24",
+                "book_page": "32977/324",
+                "instrument_number": "2022 R 66756",
+                "grantor": "LIFT STATIONS OF SOUTH FLORIDA LLC",
+                "grantee": "MIAMI EDGE INVESTMENTS INC",
+                "ocr_json": {"source": "recorder"},
+            }
+        ],
+    }
+
+    excel_io = generate_chain_sheet_excel(report_data)
+    wb = openpyxl.load_workbook(excel_io)
+    ws1 = wb["Sheet1"]
+
+    assert ws1["G16"].value in (None, "")
+
+
+def test_build_chain_sheet_entries_excludes_assessor_only_sales():
+    report_data = {
+        "chain_of_title": [
+            {
+                "document_type": "Sale",
+                "recording_date": "2017-06-13",
+                "book_page": "30576-2086",
+                "sale_price": 4268000,
+            },
+            {
+                "document_type": "Sale",
+                "recording_date": "1971-01-01",
+                "book_page": "18859-3923",
+                "sale_price": 16000,
+            },
+        ],
+        "recorder_primary_documents": [],
+        "name_search_groups": [],
+    }
+
+    entries = build_chain_sheet_entries(report_data)
+    assert entries == []
+
+
 def test_build_chain_sheet_entries_enriches_assessor_sales_with_recorder_deed():
     report_data = {
         "chain_of_title": [
@@ -154,7 +243,7 @@ def test_build_chain_sheet_entries_enriches_assessor_sales_with_recorder_deed():
     }
 
     entries = build_chain_sheet_entries(report_data)
-    assert len(entries) == 2
+    assert len(entries) == 1
 
     vesting = next(e for e in entries if _normalize_book_page(e.get("book_page")) == "31687/1679")
     assert vesting["grantor"] == "D R HORTON INC"

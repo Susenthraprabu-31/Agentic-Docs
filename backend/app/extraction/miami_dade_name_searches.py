@@ -14,7 +14,13 @@ _NOISE_RE = re.compile(
 _ENTITY_MARKERS = re.compile(
     r"\b(LTD|LLC|INC|CORP|CORPORATION|CO|COMPANY|BANK|DEV|DEVELOPMENT|"
     r"SUBDIVISION|SUBD|ASSOCIATION|ASSN|NA|N\.A\.|TRUST|ESTATE|MORTGAGE|"
-    r"FUND|HOLDINGS|GROUP|PARTNERS|LP|LLP|LIMITED)\b",
+    r"FUND|HOLDINGS|GROUP|PARTNERS|LP|LLP|LIMITED|INVESTMENTS)\b",
+    re.I,
+)
+_ENTITY_SUFFIX_RE = re.compile(
+    r"\b(A FLORIDA CORPORATION|FLORIDA CORPORATION|A FL CORP|LIMITED LIABILITY COMPANY|"
+    r"LIMITED PARTNERSHIP|LIMITED LIABILITY PARTNERSHIP|NATIONAL ASSOCIATION|"
+    r"CORPORATION|CORPORATE|CORP|COMPANY|CO|LLC|LLP|LP|LTD|INC)\b",
     re.I,
 )
 _FIRST_NAME_NICKNAMES: dict[str, list[str]] = {
@@ -131,6 +137,24 @@ def _is_entity_name(name: str) -> bool:
     return bool(_ENTITY_MARKERS.search(name)) or "#" in name or "&" in name
 
 
+def _strip_entity_suffixes(name: str) -> str:
+    cleaned = _ENTITY_SUFFIX_RE.sub(" ", name)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _party_match_key(name: str) -> str:
+    key = _strip_entity_suffixes(normalize_party_name(name))
+    return re.sub(r"[^\w]+", "", key)
+
+
+def _party_names_refer_to_same_entity(left: str, right: str) -> bool:
+    left_key = _party_match_key(left)
+    right_key = _party_match_key(right)
+    if not left_key or not right_key:
+        return False
+    return left_key == right_key or left_key in right_key or right_key in left_key
+
+
 def _expand_individual_name_variations(name: str) -> list[str]:
     tokens = name.split()
     if len(tokens) < 2:
@@ -217,6 +241,44 @@ def _expand_entity_name_variations(name: str) -> list[str]:
     add(re.sub(r"[.,]", "", name))
     add(re.sub(r"\s+", " ", re.sub(r"[.,]", " ", name)))
 
+    stripped = _strip_entity_suffixes(name)
+    if stripped and stripped != name:
+        add(stripped)
+
+    return dedupe_party_names(variations)
+
+
+def _expand_compound_surname_variations(name: str) -> list[str]:
+    """Generate hyphenated/joined/split surname searches (e.g. CORTES RIOS JUAN C)."""
+    normalized = normalize_party_name(name)
+    tokens = normalized.split()
+    if len(tokens) < 3 or _is_entity_name(normalized):
+        return []
+
+    variations: list[str] = []
+
+    def add(value: str) -> None:
+        cleaned = normalize_party_name(value)
+        if cleaned and not _NOISE_RE.match(cleaned):
+            variations.append(cleaned)
+
+    if len(tokens) >= 4:
+        compound = " ".join(tokens[:2])
+        remainder = " ".join(tokens[2:])
+        add(f"{compound} {remainder}")
+        add(f"{compound.replace(' ', '-')} {remainder}")
+        add(f"{compound.replace(' ', '')} {remainder}")
+        add(f"{tokens[0]} {remainder}")
+        add(f"{tokens[1]} {remainder}")
+    elif len(tokens) == 3:
+        compound = f"{tokens[0]} {tokens[1]}"
+        first = tokens[2]
+        add(compound)
+        add(compound.replace(" ", "-"))
+        add(compound.replace(" ", ""))
+        add(f"{tokens[0]} {first}")
+        add(f"{tokens[1]} {first}")
+
     return dedupe_party_names(variations)
 
 
@@ -227,7 +289,75 @@ def expand_name_search_variations(name: str) -> list[str]:
         return []
     if _is_entity_name(normalized):
         return _expand_entity_name_variations(normalized)
-    return _expand_individual_name_variations(normalized)
+    variations = _expand_individual_name_variations(normalized)
+    variations.extend(_expand_compound_surname_variations(normalized))
+    return dedupe_party_names(variations)
+
+
+def dedupe_equivalent_party_names(names: list[str]) -> list[str]:
+    """Collapse entity aliases such as 'MIAMI EDGE INVESTMENTS' and 'MIAMI EDGE INVESTMENTS INC'."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in names:
+        normalized = normalize_party_name(raw)
+        if not normalized:
+            continue
+        key = _party_match_key(normalized)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+    return result
+
+
+def build_names_to_search(base_names: list[str], *, expand_variations: bool = True) -> list[str]:
+    """Expand base party names into the full recorder search queue."""
+    base_names = dedupe_equivalent_party_names(base_names)
+    if not expand_variations:
+        return dedupe_party_names(base_names)
+
+    expanded: list[str] = []
+    for base_name in base_names:
+        normalized = normalize_party_name(base_name)
+        if not normalized:
+            continue
+        expanded.append(normalized)
+        expanded.extend(expand_name_search_variations(normalized))
+    return dedupe_equivalent_party_names(expanded)
+
+
+def build_name_search_queue(
+    base_names: list[str],
+    *,
+    expand_variations: bool = True,
+) -> list[tuple[str, bool]]:
+    """Return party names to search with a flag for generated variations."""
+    base_names = dedupe_equivalent_party_names(base_names)
+    if not expand_variations:
+        return [(name, False) for name in dedupe_party_names(base_names)]
+
+    queued: list[tuple[str, bool]] = []
+    seen_entity_keys: set[str] = set()
+    seen_labels: set[str] = set()
+    for base_name in base_names:
+        normalized = normalize_party_name(base_name)
+        if not normalized:
+            continue
+        if normalized not in seen_labels:
+            seen_labels.add(normalized)
+            queued.append((normalized, False))
+            entity_key = _party_match_key(normalized)
+            if entity_key:
+                seen_entity_keys.add(entity_key)
+        for variant in expand_name_search_variations(normalized):
+            variant_name = normalize_party_name(variant)
+            if not variant_name or variant_name == normalized:
+                continue
+            if variant_name in seen_labels:
+                continue
+            seen_labels.add(variant_name)
+            queued.append((variant_name, True))
+    return queued
 
 
 def _subdivision_name_variations(raw: str) -> list[str]:
@@ -260,6 +390,33 @@ def _document_source_label(doc: dict[str, Any]) -> str:
 def is_entity_party_name(name: str) -> bool:
     """Return True when a party name looks like a company/entity rather than a person."""
     return _is_entity_name(name)
+
+
+def is_base_name_for_search(name: str, base_names: list[str]) -> bool:
+    """Return True when a queued name is an original/base party name (not a generated variation)."""
+    normalized = sanitize_miami_dade_party_name_for_search(name)
+    if not normalized:
+        return False
+    base_normalized = {
+        sanitize_miami_dade_party_name_for_search(base)
+        for base in base_names
+        if sanitize_miami_dade_party_name_for_search(base)
+    }
+    return normalized in base_normalized
+
+
+def should_apply_address_filter_for_name_search(
+    name: str,
+    *,
+    property_address: str,
+    is_name_variation: bool = False,
+) -> bool:
+    """Address filter applies only to individual name variations, not base names or companies."""
+    if not property_address.strip():
+        return False
+    if is_entity_party_name(name):
+        return False
+    return is_name_variation
 
 
 def parse_miami_dade_party_name_fields(name: str) -> dict[str, str]:
@@ -353,6 +510,92 @@ def collect_recorder_party_names_for_search(
     names: list[str] = []
     for base_name, _source in collect_base_name_sources(documents):
         names.append(base_name)
+    return dedupe_party_names(names)
+
+
+def collect_current_owner_names_for_search(
+    *,
+    property_record: dict[str, Any] | None = None,
+    ctx_owner_name: str | None = None,
+    input_owner_name: str | None = None,
+) -> list[str]:
+    """Collect only the current owner-of-record name(s) for Current Search name lookups."""
+    names: list[str] = []
+    for raw in (input_owner_name, ctx_owner_name):
+        names.extend(split_party_name_phrase(str(raw or "")))
+
+    if property_record:
+        names.extend(split_party_name_phrase(str(property_record.get("owner_name") or "")))
+        raw_json = property_record.get("raw_json") or {}
+        for row in raw_json.get("owner_rows") or []:
+            if not isinstance(row, dict):
+                continue
+            for key in ("Owner Name", "owner_name", "name", "Owner"):
+                if row.get(key):
+                    names.extend(split_party_name_phrase(str(row[key])))
+                    break
+
+    return dedupe_party_names(names)
+
+
+def collect_related_individual_names_from_documents(
+    documents: list[dict[str, Any]],
+    anchor_names: list[str],
+) -> list[str]:
+    """Collect individual party names from recorder documents tied to the current owner."""
+    if not anchor_names:
+        return []
+
+    individuals: list[str] = []
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+        ocr = doc.get("ocr_json") or {}
+        if ocr.get("source") in ("assessor_sales", "assessor", "tax_bill", "gis"):
+            continue
+        if doc.get("document_type") in ("AI Title Analysis", "AI Chatbot Response", "gis_map"):
+            continue
+
+        metadata = {**ocr, **doc}
+        parties = collect_party_names_from_metadata(metadata)
+        if not any(
+            _party_names_refer_to_same_entity(party, anchor)
+            for party in parties
+            for anchor in anchor_names
+        ):
+            continue
+
+        for party in parties:
+            if party and not is_entity_party_name(party):
+                individuals.append(party)
+
+    return dedupe_party_names(individuals)
+
+
+def collect_current_owner_search_names(
+    *,
+    property_record: dict[str, Any] | None = None,
+    ctx_owner_name: str | None = None,
+    input_owner_name: str | None = None,
+    documents: list[dict[str, Any]] | None = None,
+    chain_of_title: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    """Collect current owner and related individual parties for Current Search name lookups."""
+    names = collect_current_owner_names_for_search(
+        property_record=property_record,
+        ctx_owner_name=ctx_owner_name,
+        input_owner_name=input_owner_name,
+    )
+    names.extend(
+        collect_related_individual_names_from_documents(documents or [], names)
+    )
+
+    for entry in chain_of_title or []:
+        if not isinstance(entry, dict):
+            continue
+        for key in ("grantor", "grantee"):
+            names.extend(split_party_name_phrase(str(entry.get(key) or "")))
+
     return dedupe_party_names(names)
 
 

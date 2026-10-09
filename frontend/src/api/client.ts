@@ -352,8 +352,15 @@ export interface RecordingDetails {
   grantee?: string;
   grantors?: string[];
   grantees?: string[];
+  beneficiaries?: string[];
+  borrowers?: string[];
+  first_party?: string;
+  second_party?: string;
+  attorney?: string;
   consideration?: string;
   sale_price?: string;
+  conveyance?: string;
+  warranty?: string;
   documentary_stamps?: string;
   recording_fee?: string;
   deed_doc_fee?: string;
@@ -361,6 +368,8 @@ export interface RecordingDetails {
   folio_number?: string;
   order_number?: string;
   prepared_by?: string;
+  pages?: string;
+  marital_status?: string;
   legal_description?: string;
   property_address?: string;
 }

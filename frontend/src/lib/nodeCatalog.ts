@@ -224,7 +224,7 @@ export const SIDEBAR_NODES: SidebarNodeDef[] = [
 
       enabled: true,
 
-      expandVariations: false,
+      expandVariations: true,
 
       partyType: "both",
 

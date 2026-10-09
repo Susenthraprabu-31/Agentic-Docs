@@ -42,3 +42,27 @@ def test_parse_miami_dade_warranty_deed_fields():
 
 def test_parse_recording_details_empty_text():
     assert parse_recording_details("") == {}
+
+
+WARRANTY_DEED_TEXT = """
+WARRANTY DEED
+This deed made this 29th day of December, 2021
+between LIFT STATIONS OF SOUTH FLORIDA, LLC, a Florida Limited Liability Company,
+and MIAMI EDGE INVESTMENTS, INC., a Florida corporation,
+in consideration of the sum of TEN AND NO/100 DOLLARS ($10.00) and other good and valuable considerations,
+the receipt and sufficiency of which are hereby acknowledged,
+grants, bargains, sells, alienates, remises, releases, conveys and confirms unto the Grantee
+the following described property in Miami-Dade County, Florida:
+Lot 3, Block 30, FLORAL PARK, according to the Plat thereof, as recorded in Plat Book 8, Page 3,
+of the Public Records of Miami-Dade County, Florida.
+Parcel Identification No.: 30-3122-052-5300
+"""
+
+
+def test_parse_warranty_deed_consideration_and_parties():
+    details = parse_recording_details(WARRANTY_DEED_TEXT, document_hint="Warranty Deed")
+
+    assert "10.00" in str(details.get("consideration"))
+    assert details.get("parcel_id") == "30-3122-052-5300"
+    assert "FLORAL PARK" in str(details.get("legal_description"))
+    assert details.get("warranty") == "Warranty Deed"

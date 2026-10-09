@@ -1,9 +1,17 @@
 from app.extraction.miami_dade_name_searches import (
+    build_names_to_search,
+    dedupe_equivalent_party_names,
+    collect_current_owner_names_for_search,
+    collect_current_owner_search_names,
     collect_recorder_party_names_for_search,
+    collect_related_individual_names_from_documents,
     dedupe_party_names,
     expand_name_search_variations,
+    build_name_search_queue,
+    is_base_name_for_search,
     parse_miami_dade_party_name_fields,
     sanitize_miami_dade_party_name_for_search,
+    should_apply_address_filter_for_name_search,
     build_name_searcher_report_entries,
     group_documents_by_name_search,
     resolve_name_searches_for_report,
@@ -36,6 +44,109 @@ def test_sanitize_miami_dade_party_name_removes_commas_and_unwraps_entity():
     assert sanitize_miami_dade_party_name_for_search("INC, D R HORTON") == "D R HORTON INC"
     assert sanitize_miami_dade_party_name_for_search("D R HORTON, INC") == "D R HORTON INC"
     assert sanitize_miami_dade_party_name_for_search("MORALES, JUAN A") == "MORALES JUAN A"
+
+
+def test_collect_current_owner_names_for_search_uses_assessor_owner():
+    names = collect_current_owner_names_for_search(
+        property_record={
+            "owner_name": "FERNANDEZ AURELIO; TORRES MARIA",
+            "raw_json": {
+                "owner_rows": [
+                    {"Owner Name": "FERNANDEZ AURELIO"},
+                    {"Owner Name": "TORRES MARIA"},
+                ]
+            },
+        },
+    )
+    assert names == ["FERNANDEZ AURELIO", "TORRES MARIA"]
+    recorder_names = collect_recorder_party_names_for_search(
+        [
+            {
+                "ocr_json": {
+                    "grantor": "OLD GRANTOR",
+                    "grantee": "OLD GRANTEE",
+                }
+            }
+        ]
+    )
+    assert "OLD GRANTOR" in recorder_names
+    assert "OLD GRANTOR" not in names
+
+
+def test_expand_compound_surname_variations_like_manual_title_search():
+    variants = expand_name_search_variations("CORTES RIOS JUAN C")
+    assert "CORTES RIOS JUAN C" in variants
+    assert "CORTES-RIOS JUAN C" in variants
+    assert "CORTESRIOS JUAN C" in variants
+    assert "CORTES JUAN C" in variants
+    assert "RIOS JUAN C" in variants
+
+
+def test_dedupe_equivalent_party_names_collapses_entity_aliases():
+    names = dedupe_equivalent_party_names(
+        [
+            "MIAMI EDGE INVESTMENTS INC",
+            "MIAMI EDGE INVESTMENTS",
+            "CORTES RIOS JUAN C",
+        ]
+    )
+    assert names == ["MIAMI EDGE INVESTMENTS INC", "CORTES RIOS JUAN C"]
+
+
+def test_build_names_to_search_expands_entity_owner_name():
+    names = build_names_to_search(["MIAMI EDGE INVESTMENTS INC"], expand_variations=True)
+    assert names == ["MIAMI EDGE INVESTMENTS INC"]
+    variants = expand_name_search_variations("MIAMI EDGE INVESTMENTS INC")
+    assert "MIAMI EDGE INVESTMENTS" in variants
+
+
+def test_collect_related_individual_names_from_owner_documents():
+    documents = [
+        {
+            "grantee": "MIAMI EDGE INVESTMENTS INC A FLORIDA CORPORATION",
+            "grantor": "CORTES RIOS JUAN C",
+            "ocr_json": {
+                "grantee": "MIAMI EDGE INVESTMENTS INC A FLORIDA CORPORATION",
+                "grantor": "CORTES RIOS JUAN C",
+                "party_names": ["CORTES RIOS JUAN C", "MIAMI EDGE INVESTMENTS INC"],
+            },
+        },
+        {
+            "grantee": "MIAMI EDGE INVESTMENTS INC",
+            "grantor": "FUENTES JUAN P",
+            "ocr_json": {
+                "grantee": "MIAMI EDGE INVESTMENTS INC",
+                "grantor": "FUENTES JUAN P",
+            },
+        },
+    ]
+    related = collect_related_individual_names_from_documents(
+        documents,
+        ["MIAMI EDGE INVESTMENTS INC"],
+    )
+    assert "CORTES RIOS JUAN C" in related
+    assert "FUENTES JUAN P" in related
+
+
+def test_collect_current_owner_search_names_includes_chain_parties():
+    names = collect_current_owner_search_names(
+        property_record={"owner_name": "MIAMI EDGE INVESTMENTS INC"},
+        chain_of_title=[
+            {"grantor": "CORTES RIOS JUAN C", "grantee": "MIAMI EDGE INVESTMENTS INC"},
+            {"grantor": "FUENTES JUAN P", "grantee": "CORTES RIOS JUAN C"},
+        ],
+    )
+    assert "MIAMI EDGE INVESTMENTS INC" in names
+    assert "CORTES RIOS JUAN C" in names
+    assert "FUENTES JUAN P" in names
+
+
+def test_collect_current_owner_names_prefers_explicit_input_owner():
+    names = collect_current_owner_names_for_search(
+        input_owner_name="MORALES JUAN A",
+        ctx_owner_name="OTHER OWNER",
+    )
+    assert names == ["MORALES JUAN A", "OTHER OWNER"]
 
 
 def test_collect_recorder_party_names_for_search():
@@ -203,3 +314,43 @@ def test_resolve_name_searches_for_report_from_node_results():
     assert len(entries) == 2
     assert entries[0]["name"] == "MORALES JUAN A"
     assert entries[1]["name"] == "D R HORTON INC"
+
+
+def test_is_base_name_for_search_recognizes_original_party_names():
+    base_names = ["MIAMI EDGE INVESTMENTS INC", "CORTES RIOS JUAN C"]
+    assert is_base_name_for_search("MIAMI EDGE INVESTMENTS INC", base_names)
+    assert is_base_name_for_search("CORTES RIOS JUAN C", base_names)
+    assert not is_base_name_for_search("CORTES JUAN C", base_names)
+
+
+def test_build_name_search_queue_marks_variations():
+    queue = build_name_search_queue(["CORTES RIOS JUAN C"], expand_variations=True)
+    flags = {name: is_variation for name, is_variation in queue}
+    assert flags["CORTES RIOS JUAN C"] is False
+    assert flags.get("CORTES-RIOS JUAN C") is True
+    assert flags.get("CORTES JUAN C") is True
+
+
+def test_should_apply_address_filter_only_for_individual_variations():
+    address = "1918 NW 53 ST"
+
+    assert not should_apply_address_filter_for_name_search(
+        "MIAMI EDGE INVESTMENTS INC",
+        property_address=address,
+        is_name_variation=False,
+    )
+    assert not should_apply_address_filter_for_name_search(
+        "CORTES RIOS JUAN C",
+        property_address=address,
+        is_name_variation=False,
+    )
+    assert should_apply_address_filter_for_name_search(
+        "CORTES-RIOS JUAN C",
+        property_address=address,
+        is_name_variation=True,
+    )
+    assert not should_apply_address_filter_for_name_search(
+        "CORTES-RIOS JUAN C",
+        property_address="",
+        is_name_variation=True,
+    )

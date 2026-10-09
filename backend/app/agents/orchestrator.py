@@ -44,10 +44,11 @@ from app.extraction.assessor_book_page import (
 )
 from app.extraction.book_page import format_book_page_label, parse_book_page
 from app.extraction.miami_dade_name_searches import (
+    build_names_to_search,
+    build_name_searcher_report_entries,
+    collect_current_owner_search_names,
     collect_recorder_party_names_for_search,
     dedupe_party_names,
-    expand_name_search_variations,
-    build_name_searcher_report_entries,
 )
 from app.extraction.schemas import CountySources, QueryType, RunStatus, SourceType
 from app.agents.ai_agent_coordinator import complete_pending, fail_pending, wait_for_pending
@@ -1205,29 +1206,54 @@ class Orchestrator:
             for doc in documents
             if isinstance(doc, dict)
         ]
-        base_names = collect_recorder_party_names_for_search(normalized_documents)
+        if ctx.search_scope == "current":
+            self._refresh_parcel(ctx)
+            assessor_record = self._get_assessor_record()
+            run = self.runs_repo.get_run(self.run_id) or {}
+            input_data = get_input_node_data((run.get("plan_json") or {}).get("pipeline_graph"))
+            input_owner = _data_str(input_data, "ownerName", "owner_name")
+            assessor_raw = (assessor_record or {}).get("raw_json") or {}
+            base_names = collect_current_owner_search_names(
+                property_record=assessor_record,
+                ctx_owner_name=ctx.owner_name,
+                input_owner_name=input_owner or None,
+                documents=normalized_documents,
+                chain_of_title=assessor_raw.get("chain_of_title") or [],
+            )
+            name_source_label = "current owner and related parties"
+            empty_detail = "Skipped — no current owner name found (run Assessor node first)"
+        else:
+            base_names = collect_recorder_party_names_for_search(normalized_documents)
+            name_source_label = "recorder parties"
+            empty_detail = "Skipped — no party names extracted"
+
         if not base_names:
             await self.run_logger.source_skipped(
                 SourceType.RECORDER,
-                "No party names found on recorder documents — run Recorder node first",
+                f"No {name_source_label} found for name search"
+                + (" — run Assessor node first" if ctx.search_scope == "current" else " — run Recorder node first"),
             )
             await self.run_logger.node_completed(
-                "NameSearcherNode", detail="Skipped — no party names extracted"
+                "NameSearcherNode", detail=empty_detail
             )
             self._record_node_result(
                 ctx,
                 "name_searcher",
                 canvas_id,
-                {"names_searched": [], "documents_added": 0, "source_names": []},
+                {
+                    "names_searched": [],
+                    "documents_added": 0,
+                    "source_names": [],
+                    "search_scope": ctx.search_scope,
+                },
             )
             return
 
-        expand_variations = bool(
-            data.get("expandVariations")
-            or data.get("expand_variations")
-            or _data_str(data, "expandVariations", "expand_variations").lower()
-            in ("1", "true", "yes", "on")
-        )
+        raw_expand = data.get("expandVariations", data.get("expand_variations", True))
+        if isinstance(raw_expand, bool):
+            expand_variations = raw_expand
+        else:
+            expand_variations = str(raw_expand).strip().lower() in ("1", "true", "yes", "on")
         party_type = _data_str(data, "partyType", "party_type") or "both"
         max_names_raw = data.get("maxNames") or data.get("max_names") or 0
         try:
@@ -1235,15 +1261,15 @@ class Orchestrator:
         except (TypeError, ValueError):
             max_names = 0
 
-        search_names = list(base_names)
-        if expand_variations:
-            expanded: list[str] = []
-            for base_name in base_names:
-                expanded.extend(expand_name_search_variations(base_name))
-            search_names = dedupe_party_names(expanded)
+        from app.extraction.miami_dade_name_searches import build_name_search_queue
 
+        name_search_queue = build_name_search_queue(
+            base_names,
+            expand_variations=expand_variations,
+        )
         if max_names > 0:
-            search_names = search_names[:max_names]
+            name_search_queue = name_search_queue[:max_names]
+        search_names = [name for name, _ in name_search_queue]
 
         name_search_entries = build_name_searcher_report_entries(
             normalized_documents,
@@ -1268,12 +1294,17 @@ class Orchestrator:
         elif party_type in ("both", "all"):
             party_notes = f"{party_notes} all parties".strip()
 
+        scope_note = (
+            "Current Search: using current owner name(s) only"
+            if ctx.search_scope == "current"
+            else "Full Search: using all recorder party names"
+        )
         await self.run_logger.log(
             "node_step",
             node="NameSearcherNode",
             message=(
-                f"Extracted {len(base_names)} party name(s) from recorder documents; "
-                f"searching {len(search_names)} name variation(s): "
+                f"{scope_note}; searching {len(search_names)} name variation(s) "
+                f"from {len(base_names)} {name_source_label}: "
                 f"{', '.join(search_names[:8])}"
                 f"{'...' if len(search_names) > 8 else ''}"
             ),
@@ -1283,7 +1314,7 @@ class Orchestrator:
             driver,
             url,
             ctx,
-            search_names,
+            name_search_queue,
             playwright_notes=party_notes or None,
             search_limit=search_limit,
             property_address=self._resolve_name_search_property_address(ctx),
@@ -1299,6 +1330,7 @@ class Orchestrator:
             "documents_found": len(all_docs),
             "expand_variations": expand_variations,
             "party_type": party_type,
+            "search_scope": ctx.search_scope,
         }
         self._record_node_result(ctx, "name_searcher", canvas_id, result)
         await self.run_logger.node_completed(
@@ -2246,6 +2278,7 @@ class Orchestrator:
         playwright_notes: Optional[str] = None,
         search_limit: Optional[int] = None,
         property_address: str = "",
+        apply_address_filter: bool = False,
     ) -> list[Any]:
         """Name Searcher: submit one Miami-Dade name search and download every result record."""
         from app.config.florida_portals import MIAMI_DADE_NAME_DOCUMENT_SEARCH_URL
@@ -2257,6 +2290,7 @@ class Orchestrator:
             _download_document_pdf,
             _ensure_on_miami_dade_search_results_page,
             _maybe_filter_miami_dade_name_results_by_address,
+            _resolve_miami_dade_name_search_download_count,
             _merge_search_result_metadata,
             _open_document_image,
             _open_name_document_search,
@@ -2268,7 +2302,10 @@ class Orchestrator:
             _search_party_name_form,
             _wait_for_miami_dade_result_cards,
         )
-        from app.extraction.miami_dade_name_searches import sanitize_miami_dade_party_name_for_search
+        from app.extraction.miami_dade_name_searches import (
+            is_entity_party_name,
+            sanitize_miami_dade_party_name_for_search,
+        )
         from app.extraction.miami_dade_party_scrape import apply_party_names_to_recorded_document
 
         sanitized = sanitize_miami_dade_party_name_for_search(party_name)
@@ -2318,47 +2355,54 @@ class Orchestrator:
         await _wait_for_miami_dade_result_cards(recorder)
         await _scroll_miami_dade_results_to_load_cards(recorder)
 
-        if property_address.strip():
+        # Base/full names and companies download all results. Address filter applies only to
+        # individual name variations (compound surnames, nicknames, etc.).
+        is_company_search = is_entity_party_name(sanitized)
+        if apply_address_filter and property_address.strip():
             await recorder._emit_status(
-                f"Name Searcher: filtering results by property address {property_address!r}..."
+                f"Name Searcher: filtering name variation {sanitized!r} by address "
+                f"{property_address!r}..."
             )
-            await _maybe_filter_miami_dade_name_results_by_address(
+            matched = await _maybe_filter_miami_dade_name_results_by_address(
                 recorder,
                 property_address,
+                fallback_to_unfiltered=False,
+            )
+            if not matched:
+                await recorder._emit_status(
+                    f"Name Searcher: no address matches for variation {sanitized!r}; "
+                    "skipping to next name."
+                )
+                return []
+        elif is_company_search:
+            await recorder._emit_status(
+                f"Name Searcher: company search {sanitized!r} — downloading all results "
+                "(no address filter)."
             )
         else:
             await recorder._emit_status(
-                "Name Searcher: no property address from Input node — downloading full name results."
+                f"Name Searcher: full-name search {sanitized!r} — downloading all results "
+                f"{'(no property address)' if not property_address.strip() else '(base name, no address filter)'}."
             )
 
-        reported_total = 0
-        try:
-            body_text = await recorder.page.inner_text("body")
-            match = re.search(r"(\d+)\s+results?\s+returned", body_text, re.I)
-            if match:
-                reported_total = int(match.group(1))
-        except Exception:
-            reported_total = 0
-
-        try:
-            card_count = await recorder.page.locator(".TitleSearchTab").count()
-        except Exception:
-            card_count = 0
-
-        available = max(card_count, reported_total)
-        if available <= 0:
+        max_downloads = await _resolve_miami_dade_name_search_download_count(
+            recorder,
+            search_limit=search_limit,
+        )
+        if max_downloads <= 0:
             await recorder._emit_status(
                 f"Name Searcher: no result cards found on page for {sanitized!r}."
             )
             return []
 
-        max_downloads = min(available, 500)
-        if search_limit and search_limit > 0:
-            max_downloads = min(max_downloads, search_limit)
-
+        filter_note = (
+            f" (address filter: {property_address.strip()})"
+            if apply_address_filter and property_address.strip()
+            else ""
+        )
         await recorder._emit_status(
             f"Name Searcher: downloading {max_downloads} original record(s) for "
-            f"{sanitized!r} before moving to the next name..."
+            f"{sanitized!r}{filter_note} before moving to the next name..."
         )
 
         documents: list[Any] = []
@@ -2466,7 +2510,7 @@ class Orchestrator:
         base: BaseDriver,
         url: str,
         ctx: RunContext,
-        names: list[str],
+        names: list[str] | list[tuple[str, bool]],
         *,
         playwright_notes: Optional[str] = None,
         search_limit: Optional[int] = None,
@@ -2479,7 +2523,10 @@ class Orchestrator:
             format_acclaimweb_party_name,
             is_acclaimweb_recorder,
         )
-        from app.extraction.miami_dade_name_searches import sanitize_miami_dade_party_name_for_search
+        from app.extraction.miami_dade_name_searches import (
+            sanitize_miami_dade_party_name_for_search,
+            should_apply_address_filter_for_name_search,
+        )
 
         if not names:
             return 0
@@ -2498,7 +2545,13 @@ class Orchestrator:
         total = 0
         try:
             await self.run_logger.source_started(SourceType.RECORDER, search_url)
-            for idx, name in enumerate(names):
+            for idx, entry in enumerate(names):
+                if isinstance(entry, tuple):
+                    name, is_name_variation = entry
+                else:
+                    name = entry
+                    is_name_variation = False
+
                 if is_acclaimweb_recorder(search_url) or (
                     recorder.page and is_acclaimweb_recorder(recorder.page.url)
                 ):
@@ -2508,12 +2561,21 @@ class Orchestrator:
                 else:
                     query_value = name
 
+                apply_address_filter = should_apply_address_filter_for_name_search(
+                    query_value,
+                    property_address=property_address,
+                    is_name_variation=is_name_variation,
+                )
+                mode_note = (
+                    f"address filter: {property_address.strip()}"
+                    if apply_address_filter
+                    else "download all results"
+                )
                 await self.run_logger.log(
                     "node_step",
                     node="NameSearcherNode",
                     message=(
-                        f"Name search {idx + 1}/{len(names)}: {query_value} "
-                        f"(download all results before next name)"
+                        f"Name search {idx + 1}/{len(names)}: {query_value} ({mode_note})"
                     ),
                 )
 
@@ -2526,6 +2588,7 @@ class Orchestrator:
                         playwright_notes=playwright_notes,
                         search_limit=search_limit,
                         property_address=property_address,
+                        apply_address_filter=apply_address_filter,
                     )
                 else:
                     documents = await recorder.search(

@@ -35,6 +35,82 @@ def _split_party_names(value: Optional[str]) -> list[str]:
     return [name for name in names if name]
 
 
+def _extract_consideration(normalized: str) -> Optional[str]:
+    """Extract deed consideration from labeled fields or body text."""
+    labeled = _first_match(
+        r"(?:Consideration|Amount)\s*[:#]?\s*(\$?\s*[\d,]+(?:\.\d{2})?)",
+        normalized,
+    )
+    if labeled:
+        return labeled
+
+    prose = _first_match(
+        r"consideration\s+of\s+(?:the\s+sum\s+of\s+)?([^,\n;]+?)(?:\s+and\s+other\s+good|\s*,|\s*;|\s*$)",
+        normalized,
+        re.I,
+    )
+    if prose:
+        return _clean(prose)
+
+    spelled_out = _first_match(
+        r"sum\s+of\s+((?:[A-Z][A-Z\s/\-]*DOLLARS?)\s*\(\$[\d,]+(?:\.\d{2})?\))",
+        normalized,
+        re.I,
+    )
+    if spelled_out:
+        return _clean(spelled_out)
+
+    parenthetical = _first_match(
+        r"consideration[^$\n]{0,120}\(\$([\d,]+(?:\.\d{2})?)\)",
+        normalized,
+        re.I,
+    )
+    if parenthetical:
+        return f"${parenthetical}"
+
+    return None
+
+
+RECORDING_DETAIL_SCALAR_KEYS: tuple[str, ...] = (
+    "document_type",
+    "recorded_date",
+    "executed_date",
+    "book",
+    "page",
+    "book_page",
+    "instrument_number",
+    "clerk_file_number",
+    "grantor",
+    "grantee",
+    "legal_description",
+    "property_address",
+    "sale_price",
+    "consideration",
+    "documentary_stamps",
+    "recording_fee",
+    "deed_doc_fee",
+    "parcel_id",
+    "folio_number",
+    "order_number",
+    "prepared_by",
+    "pages",
+    "conveyance",
+    "warranty",
+    "marital_status",
+    "first_party",
+    "second_party",
+    "attorney",
+)
+
+RECORDING_DETAIL_LIST_KEYS: tuple[str, ...] = (
+    "grantors",
+    "grantees",
+    "beneficiaries",
+    "borrowers",
+    "party_names",
+)
+
+
 def parse_recording_details(text: str, *, document_hint: Optional[str] = None) -> dict[str, Any]:
     """Extract structured recording fields from OCR markdown/text."""
     if not text or not text.strip():
@@ -89,10 +165,7 @@ def parse_recording_details(text: str, *, document_hint: Optional[str] = None) -
         r"(?:Sales?\s*Price|Sale\s*Amount|Purchase\s*Price)\s*[:#]?\s*(\$?\s*[\d,]+(?:\.\d{2})?)",
         normalized,
     )
-    consideration = _first_match(
-        r"(?:Consideration|Amount)\s*[:#]?\s*(\$?\s*[\d,]+(?:\.\d{2})?)",
-        normalized,
-    )
+    consideration = _extract_consideration(normalized)
     documentary_stamps = _first_match(
         r"(?:Documentary\s*Stamps?|Doc(?:umentary)?\s*Stamp(?:s)?)\s*[:#]?\s*(\$?\s*[\d,]+(?:\.\d{2})?)",
         normalized,
@@ -102,12 +175,36 @@ def parse_recording_details(text: str, *, document_hint: Optional[str] = None) -
         normalized,
     )
     parcel_id = _first_match(
-        r"(?:Parcel(?:\s*I\.?D\.?)?(?:\s*\(folio\))?(?:\s*(?:No\.?|Number|#))?|Folio(?:\s*(?:No\.?|Number|#))?)\s*[:#]?\s*([\d\-]+)",
+        r"(?:Parcel(?:\s+(?:I\.?D\.?|Identification))?(?:\s*\(folio\))?(?:\s*(?:No\.?|Number|#))?|Folio(?:\s*(?:No\.?|Number|#))?)\s*[:#]?\s*([\d\-]+)",
         normalized,
     )
     order_number = _first_match(r"(?:Order\s*(?:No\.?|Number|#))\s*[:#]?\s*([A-Z0-9\-]+)", normalized)
     prepared_by = _first_match(
         r"(?:Prepared\s+By|Return\s+To|Prepared\s+For)\s*[:#]?\s*([^\n]+)",
+        normalized,
+    )
+    pages = _first_match(r"(?:Pages?|Page\s+Count)\s*[:#]?\s*(\d+)", normalized)
+    conveyance = _first_match(
+        r"(?:Conveyance|Interest\s+Conveyed)\s*[:#]?\s*([^\n]+)",
+        normalized,
+    )
+    if "warranty deed" in lower:
+        warranty = "Warranty Deed"
+    else:
+        warranty = _first_match(r"(?:Warranty\s+Type)\s*[:#]?\s*([^\n]+)", normalized)
+    marital_status = _first_match(
+        r"(?:Marital\s+Status|Status)\s*[:#]?\s*([^\n]+)",
+        normalized,
+    )
+    attorney = _first_match(r"(?:Attorney|Counsel)\s*[:#]?\s*([^\n]+)", normalized)
+    first_party = _first_match(r"(?:First\s+Party|Party\s+1)\s*[:#]?\s*([^\n]+)", normalized)
+    second_party = _first_match(r"(?:Second\s+Party|Party\s+2)\s*[:#]?\s*([^\n]+)", normalized)
+    beneficiaries = _all_matches(
+        r"(?:Beneficiar(?:y|ies))\s*[:#]?\s*([^\n]+)",
+        normalized,
+    )
+    borrowers = _all_matches(
+        r"(?:Borrower(?:s)?)\s*[:#]?\s*([^\n]+)",
         normalized,
     )
 
@@ -121,6 +218,12 @@ def parse_recording_details(text: str, *, document_hint: Optional[str] = None) -
             r"((?:Lot\s+\d+.*?)(?:Miami-Dade County,?\s*Florida|Public Records)[^\n]*)",
             normalized,
             re.I | re.S,
+        )
+    if not legal_description:
+        legal_description = _first_match(
+            r"(?:described\s+as\s+follows|property\s+described\s+as)\s*:?\s*([^\n]+(?:\n(?![A-Z][A-Za-z ]{2,20}:)[^\n]+)*)",
+            normalized,
+            re.I,
         )
 
     property_address = _first_match(
@@ -163,6 +266,11 @@ def parse_recording_details(text: str, *, document_hint: Optional[str] = None) -
         "grantee": grantee,
         "grantors": grantors,
         "grantees": grantees,
+        "beneficiaries": beneficiaries,
+        "borrowers": borrowers,
+        "first_party": first_party,
+        "second_party": second_party,
+        "attorney": attorney,
         "consideration": consideration or sale_price,
         "sale_price": sale_price,
         "documentary_stamps": documentary_stamps,
@@ -172,6 +280,10 @@ def parse_recording_details(text: str, *, document_hint: Optional[str] = None) -
         "folio_number": parcel_id,
         "order_number": order_number,
         "prepared_by": prepared_by,
+        "pages": pages,
+        "conveyance": conveyance,
+        "warranty": warranty,
+        "marital_status": marital_status,
         "legal_description": legal_description,
         "property_address": property_address,
     }

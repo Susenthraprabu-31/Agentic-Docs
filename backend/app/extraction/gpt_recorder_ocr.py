@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.config.settings import get_settings
-from app.extraction.recording_details_parser import parse_recording_details
+from app.extraction.recording_details_parser import (
+    RECORDING_DETAIL_LIST_KEYS,
+    RECORDING_DETAIL_SCALAR_KEYS,
+    parse_recording_details,
+)
 from app.extraction.schemas import RecordedDocument
 
 logger = logging.getLogger(__name__)
@@ -37,6 +41,15 @@ RECORDER_GPT_SCHEMA: dict[str, Any] = {
         "folio_number": {"type": "string"},
         "order_number": {"type": "string"},
         "prepared_by": {"type": "string"},
+        "pages": {"type": "string"},
+        "conveyance": {"type": "string"},
+        "warranty": {"type": "string"},
+        "marital_status": {"type": "string"},
+        "first_party": {"type": "string"},
+        "second_party": {"type": "string"},
+        "attorney": {"type": "string"},
+        "beneficiaries": {"type": "array", "items": {"type": "string"}},
+        "borrowers": {"type": "array", "items": {"type": "string"}},
         "ocr_text": {"type": "string"},
     },
     "additionalProperties": True,
@@ -50,6 +63,10 @@ Rules:
 - For Miami-Dade style documents, CFN is the clerk file / instrument number (e.g. 2003 R 823605).
 - book_page format should be like 21794/3635 when both are present.
 - grantors and grantees may be multiple; include arrays when helpful.
+- Always extract consideration when present, including spelled-out deed language such as
+  "TEN AND NO/100 DOLLARS ($10.00)".
+- Extract beneficiaries, borrowers, attorney, marital status, conveyance, warranty, and page count when shown.
+- Prefer party names from the body of the deed over any unrelated names elsewhere on the page.
 - ocr_text should contain the main body text you read (up to 8000 characters).
 - If a field is not present, omit it rather than guessing."""
 
@@ -185,35 +202,18 @@ class GptRecorderOcrService:
                 "ocr_engine": "gpt",
                 "ocr_source": suffix.lstrip("."),
             }
-            for key in (
-                "legal_description",
-                "property_address",
-                "clerk_file_number",
-                "instrument_number",
-                "book_page",
-                "book",
-                "page",
-                "recorded_date",
-                "executed_date",
-                "sale_price",
-                "consideration",
-                "documentary_stamps",
-                "recording_fee",
-                "parcel_id",
-                "folio_number",
-                "order_number",
-                "prepared_by",
-            ):
+            for key in RECORDING_DETAIL_SCALAR_KEYS:
+                value = recording_details.get(key)
+                if value:
+                    merged_ocr[key] = value
+
+            for key in RECORDING_DETAIL_LIST_KEYS:
                 value = recording_details.get(key)
                 if value:
                     merged_ocr[key] = value
 
             grantors = recording_details.get("grantors") or []
             grantees = recording_details.get("grantees") or []
-            if grantors:
-                merged_ocr["grantors"] = grantors
-            if grantees:
-                merged_ocr["grantees"] = grantees
 
             book_page = recording_details.get("book_page")
             if book_page and "/" in str(book_page):

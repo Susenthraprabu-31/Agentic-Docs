@@ -80,35 +80,108 @@ function isRecentRateLimit(ocr: Record<string, unknown> | undefined): boolean {
   return Date.now() - when < 120_000;
 }
 
+const RECORDING_SCALAR_FIELDS = [
+  "document_type",
+  "recorded_date",
+  "executed_date",
+  "book",
+  "page",
+  "book_page",
+  "instrument_number",
+  "clerk_file_number",
+  "grantor",
+  "grantee",
+  "consideration",
+  "sale_price",
+  "conveyance",
+  "warranty",
+  "documentary_stamps",
+  "recording_fee",
+  "deed_doc_fee",
+  "parcel_id",
+  "folio_number",
+  "order_number",
+  "prepared_by",
+  "pages",
+  "marital_status",
+  "first_party",
+  "second_party",
+  "attorney",
+  "legal_description",
+  "property_address",
+] as const;
+
+const RECORDING_LIST_FIELDS = [
+  "grantors",
+  "grantees",
+  "beneficiaries",
+  "borrowers",
+] as const;
+
+function readStringField(source: Record<string, unknown>, key: string): string | undefined {
+  const value = source[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringList(source: Record<string, unknown>, key: string): string[] {
+  const value = source[key];
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
+}
+
 function mergeRecordingDetails(doc: DocumentDetail | null): RecordingDetails {
   const ocr = (doc?.ocr_json || {}) as Record<string, unknown>;
   const nested = (ocr.recording_details || {}) as RecordingDetails;
-  return {
-    ...nested,
-    ...(doc?.recording_details || {}),
-    document_type: doc?.document_type || nested.document_type,
-    recorded_date:
-      doc?.recording_date ||
-      nested.recorded_date ||
-      (typeof ocr.recording_date === "string" ? ocr.recording_date : undefined),
-    book_page:
-      doc?.book_page ||
-      nested.book_page ||
-      (typeof ocr.book_page === "string" ? ocr.book_page : undefined),
-    instrument_number:
-      doc?.instrument_number ||
-      nested.instrument_number ||
-      nested.clerk_file_number ||
-      (typeof ocr.clerk_file_number === "string" ? ocr.clerk_file_number : undefined),
-    grantor: doc?.grantor || nested.grantor,
-    grantee: doc?.grantee || nested.grantee,
-    legal_description:
-      nested.legal_description ||
-      (typeof ocr.legal_description === "string" ? ocr.legal_description : undefined),
-    property_address:
-      nested.property_address ||
-      (typeof ocr.property_address === "string" ? ocr.property_address : undefined),
-  };
+  const fromDoc = (doc?.recording_details || {}) as RecordingDetails;
+  const merged: RecordingDetails = { ...nested, ...fromDoc };
+
+  for (const key of RECORDING_SCALAR_FIELDS) {
+    const value = readStringField(ocr, key) || readStringField(nested as Record<string, unknown>, key);
+    if (value) {
+      merged[key] = value;
+    }
+  }
+
+  for (const key of RECORDING_LIST_FIELDS) {
+    const values = [
+      ...readStringList(ocr, key),
+      ...readStringList(nested as Record<string, unknown>, key),
+      ...readStringList(fromDoc as Record<string, unknown>, key),
+    ];
+    if (values.length) {
+      merged[key] = [...new Set(values)];
+    }
+  }
+
+  const ocrAnalyzed = Boolean(ocr.gpt_analyzed || ocr.mistral_analyzed);
+
+  merged.document_type = doc?.document_type || merged.document_type;
+  merged.recorded_date =
+    doc?.recording_date ||
+    merged.recorded_date ||
+    readStringField(ocr, "recording_date");
+  merged.book_page = doc?.book_page || merged.book_page || readStringField(ocr, "book_page");
+  merged.instrument_number =
+    doc?.instrument_number ||
+    merged.instrument_number ||
+    merged.clerk_file_number ||
+    readStringField(ocr, "clerk_file_number") ||
+    readStringField(ocr, "instrument_number");
+
+  if (!ocrAnalyzed) {
+    merged.grantor = doc?.grantor || merged.grantor;
+    merged.grantee = doc?.grantee || merged.grantee;
+  } else if (!merged.grantor && merged.grantors?.length) {
+    merged.grantor = merged.grantors[0];
+  } else if (!merged.grantee && merged.grantees?.length) {
+    merged.grantee = merged.grantees[0];
+  }
+
+  if (!merged.consideration && merged.sale_price) {
+    merged.consideration = merged.sale_price;
+  }
+
+  return merged;
 }
 
 export default function DocumentViewer() {
@@ -208,23 +281,38 @@ export default function DocumentViewer() {
     return [...new Set(names.map((name) => String(name).trim()).filter(Boolean))];
   }, [doc]);
 
+  const ocrAnalyzed = useMemo(
+    () => Boolean(doc?.ocr_json?.gpt_analyzed || doc?.ocr_json?.mistral_analyzed),
+    [doc],
+  );
+
   const grantors = useMemo(() => {
     const names = [
       ...(details.grantors || []),
       ...(details.grantor ? [details.grantor] : []),
-      ...(doc?.grantor ? [doc.grantor] : []),
+      ...(!ocrAnalyzed && doc?.grantor ? [doc.grantor] : []),
     ];
     return [...new Set(names.map((name) => name.trim()).filter(Boolean))];
-  }, [details, doc]);
+  }, [details, doc, ocrAnalyzed]);
 
   const grantees = useMemo(() => {
     const names = [
       ...(details.grantees || []),
       ...(details.grantee ? [details.grantee] : []),
-      ...(doc?.grantee ? [doc.grantee] : []),
+      ...(!ocrAnalyzed && doc?.grantee ? [doc.grantee] : []),
     ];
     return [...new Set(names.map((name) => name.trim()).filter(Boolean))];
-  }, [details, doc]);
+  }, [details, doc, ocrAnalyzed]);
+
+  const beneficiaries = useMemo(
+    () => [...new Set((details.beneficiaries || []).map((name) => name.trim()).filter(Boolean))],
+    [details],
+  );
+
+  const borrowers = useMemo(
+    () => [...new Set((details.borrowers || []).map((name) => name.trim()).filter(Boolean))],
+    [details],
+  );
 
   const pdfUrl = docId ? getDocumentFileUrl(docId, true) : null;
   const previewSrc = doc?.preview_url || null;
@@ -427,28 +515,37 @@ export default function DocumentViewer() {
                 </div>
               )}
 
-              <SectionTitle title="Recording" />
+              <SectionTitle title="Recording Details" />
               <DetailRow label="Recorded" value={formatDate(details.recorded_date)} />
               <DetailRow label="Executed" value={formatDate(details.executed_date) || details.executed_date} />
               <DetailRow label="Book / Page" value={details.book_page} />
               <DetailRow label="Instrument #" value={details.instrument_number || details.clerk_file_number} />
+              <DetailRow label="Pages" value={details.pages} />
               <DetailRow label="Document Type" value={details.document_type || doc.document_type} />
               <DetailRow label="County" value={countyLabel} />
 
+              <SectionTitle title="Parties" />
+              <PartyPills title="Grantors" names={grantors} />
+              <PartyPills title="Grantees" names={grantees} />
+              <PartyPills title="Beneficiaries" names={beneficiaries} />
+              <PartyPills title="Borrowers" names={borrowers} />
+              <DetailRow label="First Party" value={details.first_party} />
+              <DetailRow label="Second Party" value={details.second_party} />
+              <DetailRow label="Attorney" value={details.attorney} />
+              {partyNames.length > 0 && <PartyPills title="Parties" names={partyNames} />}
+
               <SectionTitle title="Transaction" />
-              <DetailRow label="Sale Price" value={details.sale_price} />
+              <DetailRow label="Conveyance" value={details.conveyance} />
+              <DetailRow label="Warranty" value={details.warranty} />
               <DetailRow label="Consideration" value={details.consideration} />
+              <DetailRow label="Sale Price" value={details.sale_price} />
               <DetailRow label="Documentary Stamps" value={details.documentary_stamps} />
               <DetailRow label="Recording Fee" value={details.recording_fee || details.deed_doc_fee} />
               <DetailRow label="Order #" value={details.order_number} />
               <DetailRow label="Prepared By" value={details.prepared_by} />
 
-              <SectionTitle title="Parties" />
-              <PartyPills title="Grantors" names={grantors} />
-              <PartyPills title="Grantees" names={grantees} />
-              {partyNames.length > 0 && <PartyPills title="Parties" names={partyNames} />}
-
               <SectionTitle title="Legal & Property" />
+              <DetailRow label="Marital Status" value={details.marital_status} />
               <DetailRow label="Legal Description" value={details.legal_description} />
               <DetailRow label="Property Address" value={details.property_address} />
               <DetailRow label="Parcel / Folio" value={details.parcel_id || details.folio_number} />

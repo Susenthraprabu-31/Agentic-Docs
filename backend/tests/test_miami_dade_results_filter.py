@@ -1,11 +1,9 @@
-import re
-
 from app.config.florida_portals import format_miami_dade_address_for_search
+from app.drivers.recorder.miami_dade_recorder import _parse_miami_dade_results_returned_count
 
 
 def _parse_results_returned_count(body_text: str) -> int:
-    match = re.search(r"(\d+)\s+results?\s+returned", body_text, re.I)
-    return int(match.group(1)) if match else 0
+    return _parse_miami_dade_results_returned_count(body_text)
 
 
 def test_parse_results_returned_count():

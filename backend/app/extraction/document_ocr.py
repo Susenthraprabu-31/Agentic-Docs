@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.config.settings import get_settings
-from app.extraction.recording_details_parser import parse_recording_details
+from app.extraction.recording_details_parser import (
+    RECORDING_DETAIL_LIST_KEYS,
+    RECORDING_DETAIL_SCALAR_KEYS,
+    parse_recording_details,
+)
 from app.extraction.schemas import RecordedDocument
 
 logger = logging.getLogger(__name__)
@@ -128,35 +132,18 @@ class DocumentOcrService:
                 "mistral_ocr_model": self.settings.mistral_ocr_model,
                 "ocr_source": path.suffix.lower().lstrip("."),
             }
-            for key in (
-                "legal_description",
-                "property_address",
-                "clerk_file_number",
-                "instrument_number",
-                "book_page",
-                "book",
-                "page",
-                "recorded_date",
-                "executed_date",
-                "sale_price",
-                "consideration",
-                "documentary_stamps",
-                "recording_fee",
-                "parcel_id",
-                "folio_number",
-                "order_number",
-                "prepared_by",
-            ):
+            for key in RECORDING_DETAIL_SCALAR_KEYS:
+                value = recording_details.get(key)
+                if value:
+                    merged_ocr[key] = value
+
+            for key in RECORDING_DETAIL_LIST_KEYS:
                 value = recording_details.get(key)
                 if value:
                     merged_ocr[key] = value
 
             grantors = recording_details.get("grantors") or []
             grantees = recording_details.get("grantees") or []
-            if grantors:
-                merged_ocr["grantors"] = grantors
-            if grantees:
-                merged_ocr["grantees"] = grantees
 
             book_page = recording_details.get("book_page")
             if book_page and "/" in book_page:
